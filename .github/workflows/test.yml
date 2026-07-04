@@ -21,7 +21,7 @@ concurrency:
 jobs:
   pytest:
     runs-on: ${{ matrix.os }}
-    
+
     strategy:
       fail-fast: false
       matrix:
