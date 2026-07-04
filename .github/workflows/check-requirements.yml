@@ -27,6 +27,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install pip-tools
+        run: pip install pip-tools
+
       - name: Regenerate requirements.txt
         run: scripts/generate_requirements.sh
 
