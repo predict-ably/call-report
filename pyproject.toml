@@ -84,6 +84,8 @@ show_missing = true
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod"
 ]
 
 [tool.mypy]

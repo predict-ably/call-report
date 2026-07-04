@@ -20,3 +20,4 @@ github_checks:
 ignore:
   - "docs/"
   - "tests/"
+  - ".github/"
