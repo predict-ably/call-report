@@ -69,6 +69,18 @@ indent-style = "space"
 docstring-code-format = true
 docstring-code-line-length = "dynamic"
 
+[tool.coverage.run]
+source = ["call_report"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]
+
 [tool.mypy]
 python_version = "3.10"
 files = ["src", "tests"]
