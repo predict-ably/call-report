@@ -1,0 +1,65 @@
+name: Weekly maintenance
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit-autoupdate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Auto-update pre-commit hook revisions
+        uses: browniebroke/pre-commit-autoupdate-action@v1.0.1
+
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.PR_APP_ID }}
+          private-key: ${{ secrets.PR_APP_KEY }}
+
+      - name: Open a PR with updated hooks
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          commit-message: "chore: update pre-commit hooks"
+          title: "[MNT] Update pre-commit hooks"
+          body: "Automated weekly update of .pre-commit-config.yaml hook revisions."
+          branch: chore/pre-commit-autoupdate
+          delete-branch: true
+          labels: maintenance
+
+  scorecard:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Run OSSF Scorecard analysis
+        uses: ossf/scorecard-action@v2.4.3
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: false
+
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
