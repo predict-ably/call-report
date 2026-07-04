@@ -27,8 +27,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.PR_APP_ID }}
-          private-key: ${{ secrets.PR_APP_KEY }}
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Open a PR with updated hooks
         uses: peter-evans/create-pull-request@v8
