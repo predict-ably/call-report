@@ -61,3 +61,12 @@ repos:
     rev: v1.0.2
     hooks:
       - id: sphinx-lint
+
+  - repo: local
+    hooks:
+      - id: generate-requirements
+        name: Regenerate requirements.txt
+        entry: scripts/generate_requirements.sh
+        language: script
+        files: ^pyproject\.toml$
+        pass_filenames: false

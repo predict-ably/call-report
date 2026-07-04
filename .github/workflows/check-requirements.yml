@@ -1,0 +1,39 @@
+name: check-requirements
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  check-requirements:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate requirements.txt
+        run: scripts/generate_requirements.sh
+
+      - name: Verify requirements.txt is up to date
+        run: |
+          if ! git diff --exit-code requirements.txt; then
+            echo "::error::requirements.txt is out of date with pyproject.toml. Run scripts/generate_requirements.sh locally and commit the updated requirements.txt."
+            exit 1
+          fi
+          echo "requirements.txt is up to date."
