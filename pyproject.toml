@@ -32,6 +32,11 @@ dev = [
     "pre-commit>=3.7",
     "mypy>=1.10",
 ]
+docs = [
+    "sphinx>=7",
+    "pydata-sphinx-theme>=0.15",
+    "numpydoc>=1.7",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/call_report"]
