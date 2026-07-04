@@ -21,9 +21,12 @@ jobs:
         with:
           node-version: "18"
 
-      - name: Regenerate CONTRIBUTORS.md
+      - name: Setup all-contributors-cli
         run: |
           npm install -g all-contributors-cli
+
+      - name: Regenerate CONTRIBUTORS.md
+        run: |
           npx all-contributors generate
 
       - name: Create GitHub App token
@@ -37,9 +40,9 @@ jobs:
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ steps.app-token.outputs.token }}
-          commit-message: "docs: update CONTRIBUTORS.md"
+          commit-message: "automatic update of `CONTRIBUTORS.md`"
           title: "[MNT] Automated CONTRIBUTORS.md update"
-          body: "Automated regeneration of CONTRIBUTORS.md from .all-contributorsrc."
+          body: "Automated regeneration of CONTRIBUTORS.md from `.all-contributorsrc`."
           branch: chore/update-contributors
           delete-branch: true
-          labels: maintenance
+          labels: maintenance, no-changelog

@@ -26,4 +26,4 @@ jobs:
       - name: Audit dependencies for known vulnerabilities
         uses: pypa/gh-action-pip-audit@v1.1.0
         with:
-          inputs: .
+          inputs: requirements.txt

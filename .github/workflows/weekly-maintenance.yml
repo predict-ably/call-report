@@ -34,12 +34,11 @@ jobs:
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ steps.app-token.outputs.token }}
-          commit-message: "chore: update pre-commit hooks"
+          commit-message: "Update pre-commit hooks"
           title: "[MNT] Update pre-commit hooks"
-          body: "Automated weekly update of .pre-commit-config.yaml hook revisions."
+          body: "Automated weekly update of `.pre-commit-config.yaml` hook revisions."
           branch: chore/pre-commit-autoupdate
-          delete-branch: true
-          labels: maintenance
+          labels: maintenance, full-pre-commit, no-changelog
 
   scorecard:
     runs-on: ubuntu-latest
@@ -47,8 +46,10 @@ jobs:
       security-events: write
       id-token: write
       contents: read
+
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout code
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -58,6 +59,13 @@ jobs:
           results_file: results.sarif
           results_format: sarif
           publish_results: false
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 14
 
       - name: Upload SARIF to code scanning
         uses: github/codeql-action/upload-sarif@v4
