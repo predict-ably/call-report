@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "call-report"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Tools for working with regulatory call report data filed by regulated U.S. financial institutions."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -35,6 +35,9 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/call_report"]
+
+[tool.hatch.version]
+path = "src/call_report/__init__.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

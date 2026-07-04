@@ -1,0 +1,54 @@
+name: Publish to TestPyPI
+
+on:
+  push:
+    tags:
+      - 'v*-test'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - run: pip install build
+
+      - run: pip install -e .
+
+      - name: Verify tag matches package version
+        run: |
+          PKG_VERSION=$(python -c "from call_report import __version__; print(__version__)")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG_VERSION="${TAG_VERSION%-test}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package __version__ ($PKG_VERSION). Did you forget to bump __version__ before tagging?"
+            exit 1
+          fi
+          echo "Tag version $TAG_VERSION matches package version $PKG_VERSION"
+
+      - run: python -m build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
