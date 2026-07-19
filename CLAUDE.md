@@ -115,6 +115,8 @@ endpoints, and parsing quirks. Treat any reference only as a behavioral guide: v
 its assumptions against the live source, and reimplement idiomatically in Python
 following this repo's conventions — never port another language's structure verbatim.
 
+Note that the references for a given data source are in individual folders within `references/`. For example, `fca-call-report` contains information useful for the FCA call report implementation.
+
 ## Development environment
 
 Editable install with dev tooling:
