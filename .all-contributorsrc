@@ -1,0 +1,25 @@
+{
+  "projectName": "call-report",
+  "projectOwner": "RNKuhns",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "CONTRIBUTORS.md"
+  ],
+  "imageSize": 100,
+  "commit": false,
+  "contributorsPerLine": 7,
+  "contributorsSortAlphabetically": true,
+  "skipCi": true,
+  "contributors": [
+    {
+      "login": "RNKuhns",
+      "name": "RNKuhns",
+      "avatar_url": "https://avatars.githubusercontent.com/RNKuhns",
+      "profile": "https://github.com/RNKuhns",
+      "contributions": [
+        "code"
+      ]
+    }
+  ]
+}

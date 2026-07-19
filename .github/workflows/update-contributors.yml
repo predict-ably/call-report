@@ -1,0 +1,50 @@
+name: Update contributors
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .all-contributorsrc
+
+permissions:
+  contents: read
+
+jobs:
+  update-contributors:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "18"
+
+      - name: Setup all-contributors-cli
+        run: |
+          npm install -g all-contributors-cli
+
+      - name: Regenerate CONTRIBUTORS.md
+        run: |
+          npx all-contributors generate
+
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Open a PR with regenerated CONTRIBUTORS.md
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          commit-message: "automatic update of `CONTRIBUTORS.md`"
+          title: "[MNT] Automated CONTRIBUTORS.md update"
+          body: "Automated regeneration of CONTRIBUTORS.md from `.all-contributorsrc`."
+          branch: chore/update-contributors
+          delete-branch: true
+          labels: maintenance, no-changelog

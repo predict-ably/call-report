@@ -32,6 +32,11 @@ dev = [
     "pre-commit>=3.7",
     "mypy>=1.10",
 ]
+docs = [
+    "sphinx>=7",
+    "pydata-sphinx-theme>=0.15",
+    "numpydoc>=1.7",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/call_report"]
@@ -53,6 +58,7 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["S101"]
+"docs/conf.py" = ["A001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["call_report"]
@@ -68,6 +74,20 @@ quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
 docstring-code-line-length = "dynamic"
+
+[tool.coverage.run]
+source = ["call_report"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod"
+]
 
 [tool.mypy]
 python_version = "3.10"

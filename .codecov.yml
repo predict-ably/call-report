@@ -1,0 +1,23 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 90%
+        threshold: 1%
+        informational: false
+    patch:
+      default:
+        target: 90%
+        threshold: 1%
+        informational: false
+
+comment:
+  require_changes: true
+
+github_checks:
+  annotations: true
+
+ignore:
+  - "docs/"
+  - "tests/"
+  - ".github/"

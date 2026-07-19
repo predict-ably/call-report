@@ -1,0 +1,51 @@
+name: check-requirements
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  check-requirements-in-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-tools
+        run: pip install pip-tools
+
+      - name: Regenerate requirements.txt
+        run: scripts/generate_requirements.sh
+
+      - name: Check for drift in requirements.txt and report
+        run: |
+          if ! git diff --quiet requirements.txt; then
+            echo "::group::requirements.txt is out of sync — diff below"
+            git diff requirements.txt
+            echo "::endgroup::"
+            echo "::error::requirements.txt is out of sync with pyproject.toml. Fix locally with: ./scripts/generate_requirements.sh && git add requirements.txt && git commit"
+            # Mark that we need to upload the corrected file and fail
+            echo "DRIFT_DETECTED=true" >> "$GITHUB_ENV"
+          else
+            echo "requirements.txt is in sync."
+          fi
+
+      - name: Fail if drift was detected
+        if: env.DRIFT_DETECTED == 'true'
+        run: exit 1

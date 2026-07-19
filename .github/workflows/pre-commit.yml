@@ -1,0 +1,88 @@
+name: pre-commit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-py3.12-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-py3.12-
+
+      - name: Get changed files
+        if: ${{ github.event_name == 'pull_request' }}
+        # uses v47.0.5
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
+        id: changed-files
+
+      - name: List changed files
+        if: ${{ github.event_name == 'pull_request' }}
+        run: echo '${{ steps.changed-files.outputs.all_changed_files }}'
+
+      # Check the full repository on pushes to main
+      - name: Full pre-commit
+        if: ${{ github.event_name == 'push' }}
+        uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files
+
+      # Check the full repository on PRs that are explicitly labelled
+      - name: Full pre-commit on labelled PR
+        if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-pre-commit') }}
+        uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files
+
+      # Otherwise only check changed files on PRs
+      - name: Local pre-commit
+        if: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-pre-commit') }}
+        uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --files ${{ steps.changed-files.outputs.all_changed_files }}
+
+  codespell-annotations:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Annotate locations with typos
+        uses: codespell-project/codespell-problem-matcher@v1
+
+      - name: Codespell
+        uses: codespell-project/actions-codespell@v2
