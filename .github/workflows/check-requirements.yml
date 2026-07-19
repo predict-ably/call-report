@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  check-requirements:
+  check-requirements-in-sync:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,10 +33,19 @@ jobs:
       - name: Regenerate requirements.txt
         run: scripts/generate_requirements.sh
 
-      - name: Verify requirements.txt is up to date
+      - name: Check for drift in requirements.txt and report
         run: |
-          if ! git diff --exit-code requirements.txt; then
-            echo "::error::requirements.txt is out of date with pyproject.toml. Run scripts/generate_requirements.sh locally and commit the updated requirements.txt."
-            exit 1
+          if ! git diff --quiet requirements.txt; then
+            echo "::group::requirements.txt is out of sync — diff below"
+            git diff requirements.txt
+            echo "::endgroup::"
+            echo "::error::requirements.txt is out of sync with pyproject.toml. Fix locally with: ./scripts/generate_requirements.sh && git add requirements.txt && git commit"
+            # Mark that we need to upload the corrected file and fail
+            echo "DRIFT_DETECTED=true" >> "$GITHUB_ENV"
+          else
+            echo "requirements.txt is in sync."
           fi
-          echo "requirements.txt is up to date."
+
+      - name: Fail if drift was detected
+        if: env.DRIFT_DETECTED == 'true'
+        run: exit 1
