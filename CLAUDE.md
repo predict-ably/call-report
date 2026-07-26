@@ -48,9 +48,9 @@ Context on data from different sources to achieve this:
 [NCUA Natural Person Credit Union & Corporate Credit Union Call Report Data](https://ncua.gov/ana)(lysis/credit-union-corporate-call-report-data/quarterly-data)
 
 ### Version 0.2 Release Goals
-Implement the **FCA call report source** with the ability to download the recent FCA call report data.
+Create the interface for the **FCA call report source** that does not require network access. This is the API for the package first. Then we will work toward handling the ability to download the files from FCA as a follow-on segment of work.
 
-One difficulty will be that when downloading the data the FCA uses cloadfare. Consider Python solutions for being able to download the data despite this. Otherwise, suggest that the package includes support for downloading the data from the package itself (e.g., ships with the data) or we host the data in an Azure BLOB.
+One difficulty when we proceed to downloading the files will be that when downloading the data the FCA uses cloudfare. Consider Python solutions for being able to download the data despite this. Otherwise, suggest that the package includes support for downloading the data from the package itself (e.g., ships with the data) or we host the data in an Azure BLOB.
 
 Note that each FCA release includes metadata and the files with the actual data. We need to be able to process both. Users should also be able to specify a range of FCA call report release and have the object oriented interface provide them with all of that data.
 
