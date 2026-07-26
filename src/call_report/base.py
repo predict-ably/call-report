@@ -12,7 +12,7 @@ import inspect
 from abc import ABC, abstractmethod
 from typing import Any, Self
 
-from call_report.periods import ReportingPeriod
+from call_report.types import ReportingPeriod
 
 _REPR_LINE_LENGTH = 88  # matches this project's configured ruff line-length
 _REPR_INDENT = " " * 4
@@ -52,7 +52,7 @@ def _format_repr(*, class_name: str, params: dict[str, Any]) -> str:
 class BaseCallReport(ABC):
     """Abstract base for every source-specific call report entry point.
 
-    Concrete subclasses (one per :class:`~call_report.enums.Source`) accept
+    Concrete subclasses (one per :class:`~call_report.types.Source`) accept
     `start` and `end` as their first two constructor parameters, store all
     constructor parameters verbatim as identically-named attributes (doing
     no validation work in ``__init__``, per the sklearn estimator

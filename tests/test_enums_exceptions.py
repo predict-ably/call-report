@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from call_report.enums import FileKind, Quarter, Source
 from call_report.exceptions import (
     CallReportError,
     DownloadError,
@@ -13,6 +12,7 @@ from call_report.exceptions import (
     PeriodNotAvailableError,
     ScheduleNotFoundError,
 )
+from call_report.types import FileKind, Quarter, Source
 
 
 def test_quarter_is_ordered() -> None:
@@ -23,6 +23,13 @@ def test_quarter_is_ordered() -> None:
 def test_quarter_values() -> None:
     """Quarter values are the 1-4 ordinal, not the end month."""
     assert [q.value for q in Quarter] == [1, 2, 3, 4]
+
+
+def test_quarter_month_helpers() -> None:
+    """first_month, last_month, and months describe a quarter's calendar span."""
+    assert Quarter.Q2.first_month == 4
+    assert Quarter.Q2.last_month == 6
+    assert Quarter.Q2.months == (4, 5, 6)
 
 
 def test_source_members() -> None:

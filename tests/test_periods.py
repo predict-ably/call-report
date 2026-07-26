@@ -1,4 +1,4 @@
-"""Tests for the source-agnostic period vocabulary (call_report.periods)."""
+"""Tests for the source-agnostic period vocabulary (call_report.types)."""
 
 from __future__ import annotations
 
@@ -6,9 +6,8 @@ from datetime import date
 
 import pytest
 
-from call_report.enums import Quarter
 from call_report.exceptions import InvalidPeriodError
-from call_report.periods import PeriodRange, ReportingPeriod
+from call_report.types import PeriodRange, Quarter, ReportingPeriod
 
 VALID_QUARTER_ENDS = [
     ("2026-03-31", 2026, Quarter.Q1, 3),
@@ -223,3 +222,34 @@ def test_period_range_is_keyword_only() -> None:
     """PeriodRange takes no positional arguments."""
     with pytest.raises(TypeError):
         PeriodRange("2025-03-31", "2026-03-31")  # type: ignore[call-arg]
+
+
+def test_from_period_end_rejects_non_string_non_date() -> None:
+    """A value that is neither a string nor a date is rejected."""
+    with pytest.raises(InvalidPeriodError, match=r"string or datetime\.date"):
+        ReportingPeriod.from_period_end(value=20260331)  # type: ignore[arg-type]
+
+
+def test_period_range_stepped_slice_returns_tuple() -> None:
+    """A stepped slice returns a plain tuple, not a contiguous PeriodRange."""
+    period_range = PeriodRange(start="2025-03-31", end="2026-03-31")
+    stepped = period_range[::2]
+    assert isinstance(stepped, tuple)
+    assert stepped == (
+        ReportingPeriod.from_period_end(value="2025-03-31"),
+        ReportingPeriod.from_period_end(value="2025-09-30"),
+        ReportingPeriod.from_period_end(value="2026-03-31"),
+    )
+
+
+def test_period_range_equality_with_non_range_is_false() -> None:
+    """Comparing a PeriodRange to a non-PeriodRange is False, not an error."""
+    period_range = PeriodRange(start="2025-03-31", end="2026-03-31")
+    assert period_range != 42
+    assert (period_range == "not a range") is False
+
+
+def test_period_range_repr() -> None:
+    """Repr shows the range's start and end labels."""
+    period_range = PeriodRange(start="2025-09-30", end="2026-03-31")
+    assert repr(period_range) == "PeriodRange(start='2025Q3', end='2026Q1')"

@@ -51,11 +51,11 @@ source.
    :toctree: generated
    :nosignatures:
 
-   call_report.periods.ReportingPeriod
-   call_report.periods.PeriodRange
-   call_report.enums.Quarter
-   call_report.enums.Source
-   call_report.enums.FileKind
+   call_report.types.ReportingPeriod
+   call_report.types.PeriodRange
+   call_report.types.Quarter
+   call_report.types.Source
+   call_report.types.FileKind
 
 Shared interface
 -----------------

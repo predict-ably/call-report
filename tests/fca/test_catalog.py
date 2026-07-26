@@ -10,7 +10,7 @@ from call_report.fca.catalog import (
     LATEST_KNOWN_PERIOD,
     construct_fca_download_url,
 )
-from call_report.periods import ReportingPeriod
+from call_report.types import ReportingPeriod
 
 
 @pytest.mark.parametrize(

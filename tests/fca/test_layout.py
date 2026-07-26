@@ -127,3 +127,18 @@ def test_parse_layout_is_keyword_only(tmp_path: Path) -> None:
     path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
     with pytest.raises(TypeError):
         parse_layout(path)  # type: ignore[call-arg]
+
+
+def test_parse_layout_skips_incomplete_variable_line(tmp_path: Path) -> None:
+    """A tokenized line with fewer than three fields is skipped, not parsed.
+
+    The trailing ``BAZ Numeric`` entry has no decimal position, so after
+    tokenization it yields a two-token line that must be dropped rather than
+    raising on the missing decimal-position field.
+    """
+    lines = [*RC_LINES_7COL, "  BAZ  Numeric"]
+    path = write_layout(tmp_path, root="RC", variable_lines=lines)
+    layout = parse_layout(path=path)
+    names = [row["name"] for row in layout.variables_as_dicts()]
+    assert "BAZ" not in names
+    assert layout.scenario == "single"

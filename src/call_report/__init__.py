@@ -5,7 +5,7 @@ Source-specific functionality lives in its own sub-module (e.g.
 (configuration, the period vocabulary, enums, exceptions, the base
 interface) live in their own top-level modules -- import them from there
 (e.g. ``from call_report.config import get_config``,
-``from call_report.periods import ReportingPeriod``) rather than from this
+``from call_report.types import ReportingPeriod``) rather than from this
 package root.
 """
 

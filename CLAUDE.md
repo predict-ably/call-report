@@ -129,7 +129,7 @@ Common commands:
 
 ```bash
 pytest                      # run tests
-pytest --cov=call_report --cov-report=term-missing --cov-fail-under=90
+pytest --cov=call_report --cov-report=term-missing --cov-fail-under=100
 ruff check .                # lint
 ruff format .               # format
 mypy                        # type-check (config targets src and tests)
@@ -153,7 +153,7 @@ sphinx-build -b html docs docs/_build/html
 - **Lint/format** via `ruff` (line length 88, double quotes). The lint rule set is broad
   (includes `E,W,F,I,UP,B,C4,SIM,TID,N,A,S,T20,PTH,RUF,D,Q`) — notably `PTH` (use
   `pathlib` over `os.path`), `S` (bandit security), and `T20` (no stray `print`).
-- **Tests** live in `tests/` and run under `pytest`; branch coverage must stay ≥ 90%.
+- **Tests** live in `tests/` and run under `pytest`; branch coverage must stay at 100%.
   Add tests alongside every new feature.
 - **First-party** import name is `call_report` (underscore); the distribution name is
   `call-report` (hyphen).
@@ -174,6 +174,7 @@ sphinx-build -b html docs docs/_build/html
 - Fix the underlying issue rather than suppressing a check. Don't reach for `# noqa`, `# type: ignore`, or `# numpydoc ignore` to make a lint/type/docstring failure go away unless the check is genuinely wrong for that line — e.g. two hooks make contradictory demands on the same object (such as ruff's `D418` forbidding docstrings on `@typing.overload` stubs while numpydoc-validation requires one). In that narrow case, prefer the most targeted available suppression (a specific `# numpydoc ignore=<CODE>` over a blanket `# noqa`), and only for the exact object in conflict — not the surrounding code.
 - Use type hints everywhere, and make them precise and well-defined rather than reaching for `Any`. Prefer specific types, generics (`list[str]`, `Mapping[str, int]`), protocols, unions (`X | None`), and type variables that capture the real contract. Only use `Any` when it is genuinely the right choice for that context (e.g. bridging truly dynamic data), and prefer narrowing it as soon as the type is known. The package ships a `py.typed` marker, so its annotations are part of the public contract downstream users type-check against.
 - Prefer small, well-tested increments. You should plan your implementation, then develop basic tests that can be used to check your implementation as it is being created. Then add the implementation and add any advanced testing.
+- Aim for 100% test coverage (branch coverage included); the coverage gate is set to 100%. This is the starting goal for every change: cover the edge cases, error branches, and fallbacks, not just the happy path. Only fall back from 100% when a line is genuinely not meaningfully testable — and in that case exclude it explicitly and narrowly (e.g. `# pragma: no cover` on an `@overload`/`Protocol` stub's `...` body) rather than lowering the gate or leaving real code untested.
 - Keep runtime dependencies minimal and deliberate, and **ask before adding any new dependency** (runtime, optional, or dev). `narwhals` is the one hard runtime third-party dependency currently and the **only** third-party library that may be hard-imported at module scope anywhere in `src/` at this time; any updates must be approved.
 - Every third-party dependency other than `narwhals` must stay optional and must never be hard-imported at module scope in `src/` (test files may import them freely):
   - **Dataframe backends** (`pandas`, `polars`, `pyarrow`) are reached only through `narwhals` (e.g. `nw.from_dict(data, backend=...)` and `frame.to_native()` in `src/call_report/_backend.py`), which imports the selected backend lazily. They therefore stay optional install extras and are only ever test/dev dependencies.

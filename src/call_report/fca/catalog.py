@@ -7,7 +7,7 @@ FCA's own publication page is
 from __future__ import annotations
 
 from call_report.exceptions import PeriodNotAvailableError
-from call_report.periods import ReportingPeriod
+from call_report.types import ReportingPeriod
 
 _MODERN_ERA_BASE_URL = "https://www.fca.gov/template-fca/bank/"
 _LEGACY_ERA_BASE_URL = "https://www.fca.gov/template-fca/download/CallReportData/"

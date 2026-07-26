@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import overload
 
-from call_report.enums import Quarter
 from call_report.exceptions import InvalidPeriodError
+from call_report.types._enums import Quarter
 
 _QUARTER_BY_END_MONTH: dict[int, Quarter] = {
     quarter.last_month: quarter for quarter in Quarter
@@ -339,11 +339,14 @@ class PeriodRange(Sequence[ReportingPeriod]):
         return len(self._periods)
 
     @overload
-    def __getitem__(self, index: int) -> ReportingPeriod: ...  # numpydoc ignore=GL08
+    def __getitem__(self, index: int) -> ReportingPeriod:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+
     @overload
     def __getitem__(
         self, index: slice
-    ) -> Sequence[ReportingPeriod]: ...  # numpydoc ignore=GL08
+    ) -> Sequence[ReportingPeriod]:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
 
     def __getitem__(
         self, index: int | slice

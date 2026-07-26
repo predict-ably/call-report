@@ -21,7 +21,7 @@ from call_report.exceptions import (
 from call_report.fca import FCACallReport, FCASchedule
 from call_report.fca.layout import FCALayout
 from call_report.fca.transport import LocalDirectoryTransport
-from call_report.periods import ReportingPeriod
+from call_report.types import ReportingPeriod
 from tests.conftest import write_data, write_layout
 from tests.fca.conftest import RC_LINES_7COL
 

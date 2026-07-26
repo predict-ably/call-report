@@ -25,7 +25,7 @@ from call_report.fca.institutions import INSTITUTIONS_ROOT, _read_institutions_f
 from call_report.fca.layout import FCALayout, parse_layout
 from call_report.fca.reader import _read_schedule_frame
 from call_report.fca.transport import FCATransport, LocalDirectoryTransport
-from call_report.periods import PeriodRange, ReportingPeriod
+from call_report.types import PeriodRange, ReportingPeriod
 
 SchemaPolicy = Literal["union", "intersection", "strict"]
 

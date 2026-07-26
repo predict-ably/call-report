@@ -14,7 +14,7 @@ from typing import Protocol
 
 from call_report.exceptions import DownloadError
 from call_report.fca.catalog import construct_fca_download_url
-from call_report.periods import ReportingPeriod
+from call_report.types import ReportingPeriod
 
 
 class FCATransport(Protocol):
@@ -48,7 +48,7 @@ class FCATransport(Protocol):
         DownloadError
             If the period's files cannot be resolved.
         """
-        ...
+        ...  # pragma: no cover
 
 
 def _default_dirname(period: ReportingPeriod) -> str:

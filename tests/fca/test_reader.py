@@ -210,3 +210,51 @@ def test_read_schedule_file_is_keyword_only(tmp_path: Path) -> None:
     layout = parse_layout(path=layout_path)
     with pytest.raises(TypeError):
         read_schedule_file(data_path, layout)  # type: ignore[call-arg]
+
+
+def test_cast_non_numeric_value_falls_back_to_string(tmp_path: Path) -> None:
+    """A Numeric-typed field holding a non-numeric value is kept as a string."""
+    layout_path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    data_path = write_data(
+        tmp_path,
+        root="RC",
+        year=2026,
+        month=3,
+        rows=["6,10,0,3,2026,610000,NA"],  # TOTASSETS is Numeric but the value is "NA"
+    )
+    layout = parse_layout(path=layout_path)
+    row = _rows(read_schedule_file(data_path=data_path, layout=layout))[0]
+    assert row["TOTASSETS"] == "NA"
+
+
+def test_read_single_multiple_trims_trailing_comma_artifact(tmp_path: Path) -> None:
+    """A trailing comma's dangling empty field is trimmed, not kept as a group."""
+    layout_path = write_layout(tmp_path, root="RCB", variable_lines=RCB_LINES)
+    data_path = write_data(
+        tmp_path,
+        root="RCB",
+        year=2025,
+        month=9,
+        rows=["6,10,0,9,2025,610000,10,100,1.50,"],  # trailing comma -> dangling field
+    )
+    layout = parse_layout(path=layout_path)
+    rows = _rows(read_schedule_file(data_path=data_path, layout=layout))
+    assert len(rows) == 1
+    assert rows[0]["INV_CODE"] == 10
+    assert rows[0]["AMOUNT"] == 100
+
+
+def test_single_multiple_single_non_divisible_middle_raises(tmp_path: Path) -> None:
+    """A reconstructed record whose middle isn't a group-width multiple errors."""
+    layout_path = write_layout(tmp_path, root="RCR7", variable_lines=RCR7_LINES)
+    data_path = write_data(
+        tmp_path,
+        root="RCR7",
+        year=2025,
+        month=12,
+        # 6 leading + 2 middle (not a multiple of the 3-wide group) + 1 trailing.
+        rows=["6,10,0,12,2025,610000,", "10,100,", "900"],
+    )
+    layout = parse_layout(path=layout_path)
+    with pytest.raises(LayoutParseError):
+        read_schedule_file(data_path=data_path, layout=layout)

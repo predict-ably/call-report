@@ -84,3 +84,11 @@ def test_build_frame_and_finalize_are_keyword_only() -> None:
     frame = build_frame(data={"UNINUM": [1]})
     with pytest.raises(TypeError):
         finalize(frame)  # type: ignore[call-arg]
+
+
+def test_concat_rejects_unknown_schema_policy() -> None:
+    """An unrecognized schema policy raises a clear ValueError."""
+    with config_context(dataframe_backend="pandas"):
+        frame = build_frame(data={"UNINUM": [1]})
+        with pytest.raises(ValueError, match="Unknown schema policy"):
+            concat(frames=[frame], how="bogus")  # type: ignore[arg-type]

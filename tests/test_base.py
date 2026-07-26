@@ -7,7 +7,7 @@ from typing import Any, Self
 import pytest
 
 from call_report.base import BaseCallReport
-from call_report.periods import ReportingPeriod
+from call_report.types import ReportingPeriod
 
 
 def test_base_call_report_cannot_be_instantiated_directly() -> None:

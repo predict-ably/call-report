@@ -8,7 +8,7 @@ import pytest
 
 from call_report.exceptions import DownloadError
 from call_report.fca.transport import LocalDirectoryTransport
-from call_report.periods import ReportingPeriod
+from call_report.types import ReportingPeriod
 
 
 def test_local_directory_transport_resolves_default_modern_dirname(

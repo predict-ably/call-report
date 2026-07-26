@@ -7,9 +7,10 @@ from pathlib import Path
 import narwhals as nw
 import pytest
 
+from call_report.exceptions import DownloadError
 from call_report.fca.institutions import read_institutions
 from tests.conftest import write_data, write_layout
-from tests.fca.conftest import INST_LINES
+from tests.fca.conftest import INST_LINES, RC_LINES_7COL
 
 
 def test_read_institutions_returns_roster(tmp_path: Path) -> None:
@@ -63,3 +64,14 @@ def test_read_institutions_is_keyword_only(tmp_path: Path) -> None:
     )
     with pytest.raises(TypeError):
         read_institutions(tmp_path)  # type: ignore[call-arg]
+
+
+def test_read_institutions_missing_pair_raises(tmp_path: Path) -> None:
+    """A release with no INST layout/data pair raises DownloadError."""
+    # Write an unrelated RC pair but no INST files.
+    write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    write_data(
+        tmp_path, root="RC", year=2026, month=3, rows=["6,10,0,3,2026,610000,1000000"]
+    )
+    with pytest.raises(DownloadError, match="INST"):
+        read_institutions(release_dir=tmp_path)
