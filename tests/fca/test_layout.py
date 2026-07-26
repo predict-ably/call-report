@@ -9,7 +9,7 @@ import pytest
 from call_report.exceptions import LayoutParseError
 from call_report.fca.layout import parse_layout
 from tests.conftest import write_layout
-from tests.fca.conftest import INST_LINES, RC_LINES_7COL, RCB_LINES, RCX_LINES
+from tests.fca.conftest import INST_LINES, RC_LINES_7COL, RCB_LINES, RCR7_LINES
 
 
 def test_parse_layout_single_scenario(tmp_path: Path) -> None:
@@ -57,7 +57,7 @@ def test_parse_layout_single_multiple_scenario(tmp_path: Path) -> None:
 
 def test_parse_layout_single_multiple_single_scenario(tmp_path: Path) -> None:
     """A layout with single/multi/single runs is scenario 'single_multiple_single'."""
-    path = write_layout(tmp_path, root="RCX", variable_lines=RCX_LINES)
+    path = write_layout(tmp_path, root="RCR7", variable_lines=RCR7_LINES)
     layout = parse_layout(path=path)
     assert layout.scenario == "single_multiple_single"
     assert layout.leading_columns == (
@@ -126,4 +126,4 @@ def test_parse_layout_is_keyword_only(tmp_path: Path) -> None:
     """parse_layout takes no positional arguments."""
     path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
     with pytest.raises(TypeError):
-        parse_layout(path)  # type: ignore[misc]
+        parse_layout(path)  # type: ignore[call-arg]

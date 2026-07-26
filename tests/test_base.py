@@ -80,4 +80,4 @@ def test_get_params_is_keyword_only() -> None:
     """get_params takes no positional arguments."""
     stub = _StubCallReport(start="2024-03-31")
     with pytest.raises(TypeError):
-        stub.get_params(True)  # type: ignore[misc]
+        stub.get_params(True)  # type: ignore[call-arg]

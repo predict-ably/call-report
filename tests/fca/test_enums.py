@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from call_report.exceptions import ScheduleNotFoundError
-from call_report.fca.enums import FCASchedule, coerce_schedule
+from call_report.fca.enums import FCASchedule, coerce_fca_call_report_schedule
 
 
 def test_fca_schedule_covers_full_observed_history() -> None:
@@ -22,23 +22,23 @@ def test_fca_schedule_covers_full_observed_history() -> None:
 
 
 @pytest.mark.parametrize("value", ["RCB", "rcb", "Rcb", "rCb"])
-def test_coerce_schedule_is_case_insensitive(value: str) -> None:
+def test_coerce_fca_call_report_schedule_is_case_insensitive(value: str) -> None:
     """Schedule names are accepted regardless of case."""
-    assert coerce_schedule(value=value) is FCASchedule.RCB
+    assert coerce_fca_call_report_schedule(value=value) is FCASchedule.RCB
 
 
-def test_coerce_schedule_passes_through_enum_member() -> None:
+def test_coerce_fca_call_report_schedule_passes_through_enum_member() -> None:
     """An already-FCASchedule value is returned unchanged."""
-    assert coerce_schedule(value=FCASchedule.RC) is FCASchedule.RC
+    assert coerce_fca_call_report_schedule(value=FCASchedule.RC) is FCASchedule.RC
 
 
-def test_coerce_schedule_rejects_unknown_name() -> None:
+def test_coerce_fca_call_report_schedule_rejects_unknown_name() -> None:
     """An unrecognized schedule name raises a clear, actionable error."""
     with pytest.raises(ScheduleNotFoundError, match="NOT_A_SCHEDULE"):
-        coerce_schedule(value="NOT_A_SCHEDULE")
+        coerce_fca_call_report_schedule(value="NOT_A_SCHEDULE")
 
 
-def test_coerce_schedule_is_keyword_only() -> None:
-    """coerce_schedule takes no positional arguments."""
+def test_coerce_fca_call_report_schedule_is_keyword_only() -> None:
+    """coerce_fca_call_report_schedule takes no positional arguments."""
     with pytest.raises(TypeError):
-        coerce_schedule("RCB")  # type: ignore[misc]
+        coerce_fca_call_report_schedule("RCB")  # type: ignore[call-arg]

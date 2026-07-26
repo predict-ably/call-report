@@ -46,7 +46,7 @@ RCB_LINES = [
     "  **AMOUNT2   Numeric    2  Amount 2",
 ]
 
-RCX_LINES = [
+RCR7_LINES = [
     "  SYSTEM     Numeric   0  System Code",
     "  DIST       Numeric   0  District Code",
     "  ASSOC      Numeric   0  Association Code",
@@ -101,14 +101,14 @@ def _write_rcb(directory: Path, *, year: int, month: int, rows: list[str]) -> No
     write_data(directory, root="RCB", year=year, month=month, rows=rows)
 
 
-def _write_rcx(directory: Path, *, year: int, month: int, rows: list[str]) -> None:
-    write_layout(directory, root="RCX", variable_lines=RCX_LINES)
-    write_data(directory, root="RCX", year=year, month=month, rows=rows)
+def _write_rcr7(directory: Path, *, year: int, month: int, rows: list[str]) -> None:
+    write_layout(directory, root="RCR7", variable_lines=RCR7_LINES)
+    write_data(directory, root="RCR7", year=year, month=month, rows=rows)
 
 
 @pytest.fixture
 def release_2025q3(tmp_path: Path) -> Path:
-    """Build a modern-naming release with a 7-column RC (no TOTLIAB yet) and no RCX."""
+    """Build a modern-naming release with a 7-column RC (no TOTLIAB yet) and no RCR7."""
     directory = tmp_path / "2025September"
     directory.mkdir()
     _write_inst(
@@ -143,7 +143,7 @@ def release_2025q3(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def release_2025q4(tmp_path: Path) -> Path:
-    """Build a modern-naming release with an 8-column RC (gained TOTLIAB) and RCX."""
+    """Build a modern-naming release with an 8-column RC (gained TOTLIAB) and RCR7."""
     directory = tmp_path / "2025December"
     directory.mkdir()
     _write_inst(
@@ -176,7 +176,7 @@ def release_2025q4(tmp_path: Path) -> Path:
             "6,20,0,12,2025,620000,10,60,0.60,20,160,1.60,30,160,1.60",
         ],
     )
-    _write_rcx(
+    _write_rcr7(
         directory,
         year=2025,
         month=12,
@@ -195,7 +195,7 @@ def release_2025q4(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def release_2026q1(tmp_path: Path) -> Path:
-    """Build a modern-naming release, one quarter after 2025Q4, with RCX present."""
+    """Build a modern-naming release, one quarter after 2025Q4, with RCR7 present."""
     directory = tmp_path / "2026March"
     directory.mkdir()
     _write_inst(
@@ -220,7 +220,7 @@ def release_2026q1(tmp_path: Path) -> Path:
         month=3,
         rows=["6,10,0,3,2026,610000,10,120,1.70,20,220,2.70,30,320,3.70"],
     )
-    _write_rcx(
+    _write_rcr7(
         directory,
         year=2026,
         month=3,

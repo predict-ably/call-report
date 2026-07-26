@@ -32,7 +32,7 @@ def test_set_config_updates_backend() -> None:
 def test_set_config_rejects_unknown_backend() -> None:
     """An unsupported backend name raises a clear, actionable error."""
     with pytest.raises(ValueError, match="dataframe_backend"):
-        set_config(dataframe_backend="not-a-real-backend")
+        set_config(dataframe_backend="not-a-real-backend")  # type: ignore[arg-type]
 
 
 def test_set_config_rejects_lazy_for_non_lazy_capable_backend() -> None:
@@ -125,4 +125,4 @@ def test_set_config_no_args_is_a_noop() -> None:
 def test_config_functions_are_keyword_only() -> None:
     """set_config takes no positional arguments."""
     with pytest.raises(TypeError):
-        set_config("pandas")  # type: ignore[misc]
+        set_config("pandas")  # type: ignore[call-arg]

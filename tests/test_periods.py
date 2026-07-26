@@ -120,13 +120,13 @@ def test_reporting_period_ordering_and_hashing() -> None:
 def test_reporting_period_is_keyword_only() -> None:
     """The ReportingPeriod dataclass constructor takes no positional args."""
     with pytest.raises(TypeError):
-        ReportingPeriod(2026, Quarter.Q1)  # type: ignore[misc]
+        ReportingPeriod(2026, Quarter.Q1)  # type: ignore[call-arg]
 
 
 def test_from_period_end_is_keyword_only() -> None:
     """from_period_end takes no positional args."""
     with pytest.raises(TypeError):
-        ReportingPeriod.from_period_end("2026-03-31")  # type: ignore[misc]
+        ReportingPeriod.from_period_end("2026-03-31")  # type: ignore[call-arg]
 
 
 # ---------------------------------------------------------------------------
@@ -222,4 +222,4 @@ def test_period_range_equality() -> None:
 def test_period_range_is_keyword_only() -> None:
     """PeriodRange takes no positional arguments."""
     with pytest.raises(TypeError):
-        PeriodRange("2025-03-31", "2026-03-31")  # type: ignore[misc]
+        PeriodRange("2025-03-31", "2026-03-31")  # type: ignore[call-arg]

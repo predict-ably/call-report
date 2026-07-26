@@ -60,10 +60,10 @@ def test_local_directory_transport_resolve_is_keyword_only(tmp_path: Path) -> No
     transport = LocalDirectoryTransport(data_dir=tmp_path)
     period = ReportingPeriod.from_period_end(value="2026-03-31")
     with pytest.raises(TypeError):
-        transport.resolve(period)  # type: ignore[misc]
+        transport.resolve(period)  # type: ignore[call-arg]
 
 
 def test_local_directory_transport_is_keyword_only(tmp_path: Path) -> None:
     """LocalDirectoryTransport's constructor takes no positional arguments."""
     with pytest.raises(TypeError):
-        LocalDirectoryTransport(tmp_path)  # type: ignore[misc]
+        LocalDirectoryTransport(tmp_path)  # type: ignore[call-arg]

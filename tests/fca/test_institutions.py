@@ -26,7 +26,7 @@ def test_read_institutions_returns_roster(tmp_path: Path) -> None:
         ],
     )
     result = read_institutions(release_dir=tmp_path)
-    rows = nw.from_native(result).rows(named=True)  # type: ignore[arg-type]
+    rows = nw.from_native(result).rows(named=True)
     assert len(rows) == 2
     by_uninum = {r["UNINUM"]: r for r in rows}
     # windows-1252 decoding must round-trip non-ASCII institution names correctly.
@@ -46,7 +46,7 @@ def test_read_institutions_legacy_naming(tmp_path: Path) -> None:
         rows=['6,10,0,3,2003,610000,"FCB of Wichita","KS"'],
     )
     result = read_institutions(release_dir=tmp_path)
-    rows = nw.from_native(result).rows(named=True)  # type: ignore[arg-type]
+    rows = nw.from_native(result).rows(named=True)
     assert rows[0]["UNINUM"] == 610000
     assert rows[0]["SHORTNAME"] == "FCB of Wichita"
 
@@ -62,4 +62,4 @@ def test_read_institutions_is_keyword_only(tmp_path: Path) -> None:
         rows=['6,10,0,3,2026,610000,"X","TX"'],
     )
     with pytest.raises(TypeError):
-        read_institutions(tmp_path)  # type: ignore[misc]
+        read_institutions(tmp_path)  # type: ignore[call-arg]

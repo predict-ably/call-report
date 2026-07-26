@@ -11,6 +11,7 @@ correctly without knowing how many codes "should" be present.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import narwhals as nw
 import pytest
@@ -19,11 +20,11 @@ from call_report.exceptions import LayoutParseError
 from call_report.fca.layout import parse_layout
 from call_report.fca.reader import read_schedule_file
 from tests.conftest import write_data, write_layout
-from tests.fca.conftest import RC_LINES_7COL, RCB_LINES, RCX_LINES
+from tests.fca.conftest import RC_LINES_7COL, RCB_LINES, RCR7_LINES
 
 
-def _rows(native_frame: object) -> list[dict[str, object]]:
-    return nw.from_native(native_frame).rows(named=True)  # type: ignore[arg-type]
+def _rows(native_frame: Any) -> list[dict[str, Any]]:
+    return nw.from_native(native_frame).rows(named=True)
 
 
 def test_read_single_scenario(tmp_path: Path) -> None:
@@ -114,10 +115,10 @@ def test_read_single_multiple_single_scenario_line_wrapped_ragged(
     real 2024-Q1 RCR7 pattern) -- reconstruction must not assume a fixed
     number of code lines per record.
     """
-    layout_path = write_layout(tmp_path, root="RCX", variable_lines=RCX_LINES)
+    layout_path = write_layout(tmp_path, root="RCR7", variable_lines=RCR7_LINES)
     data_path = write_data(
         tmp_path,
-        root="RCX",
+        root="RCR7",
         year=2025,
         month=12,
         rows=[
@@ -208,4 +209,4 @@ def test_read_schedule_file_is_keyword_only(tmp_path: Path) -> None:
     )
     layout = parse_layout(path=layout_path)
     with pytest.raises(TypeError):
-        read_schedule_file(data_path, layout)  # type: ignore[misc]
+        read_schedule_file(data_path, layout)  # type: ignore[call-arg]
