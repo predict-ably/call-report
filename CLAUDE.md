@@ -170,9 +170,8 @@ sphinx-build -b html docs docs/_build/html
 - `.pre-commit-config.yaml` — lint/format/type/docstring hooks.
 
 ## Working style
-
-- Prefer small, well-tested increments. You should plan your implementation, then develop basic tests that can be used to check your implementation as it is being created. Then add the implementation and add any advanced testing. Run `ruff`, `mypy`, and `pytest` before
-  considering a change done.
+- Always run the package's pre-commit routine and tests on proposed code changes to ensure they pass. Run `ruff`, `mypy`, and `pytest` before considering any change done.
+- Prefer small, well-tested increments. You should plan your implementation, then develop basic tests that can be used to check your implementation as it is being created. Then add the implementation and add any advanced testing.
 - Keep runtime dependencies minimal and deliberate; the package currently has none. However, it is acknowledge that the package will depend on a library to fetch data from the web, like requests. It will also require support for Python dataframe libraries.
 - The goal is to support multiple Python dataframe libraries. We should have a package level configuration that lets users indicate the dataframe backend to use. Lets try to use narwhals to support this wherever possible. If we have to manually support multiple Python dataframe libraries, the goal is to make them "soft" dependencies (i.e., optional) and only required if configured to use that library.
   Discuss before adding a hard runtime dependency.
