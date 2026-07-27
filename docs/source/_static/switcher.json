@@ -1,4 +1,10 @@
 [
+
+    {
+        "name": "0.1.0",
+        "version": "v0.1.0",
+        "url": "https://call-report.readthedocs.io/en/v0.1.0/"
+    },
     {
         "name": "dev",
         "version": "latest",

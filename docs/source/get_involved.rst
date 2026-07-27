@@ -9,9 +9,6 @@ of any size -- bug reports, documentation fixes, or code -- are welcome. If
 you run into trouble getting set up, please open a
 `GitHub issue <https://github.com/predict-ably/call-report/issues>`_.
 
-Everyone participating is expected to follow our
-:ref:`Code of Conduct <code_of_conduct>`.
-
 .. toctree::
    :maxdepth: 1
    :hidden:
@@ -21,6 +18,7 @@ Everyone participating is expected to follow our
    get_involved/code_style
    get_involved/documentation_style
    get_involved/release_process
+   get_involved/code_of_conduct
 
 .. grid:: 1 2 2 2
     :gutter: 3
@@ -60,11 +58,9 @@ Everyone participating is expected to follow our
 
         Releasing a new version of the package.
 
-.. _code_of_conduct:
+    .. grid-item-card:: Code of Conduct
+        :text-align: left
+        :link: get_involved/code_of_conduct
+        :link-type: doc
 
-Code of Conduct
-================
-
-See `CODE_OF_CONDUCT.md
-<https://github.com/predict-ably/call-report/blob/main/CODE_OF_CONDUCT.md>`_
-in the repository root.
+        Conduct expectations for community members.
