@@ -47,9 +47,22 @@ Context on data from different sources to achieve this:
 
 [NCUA Natural Person Credit Union & Corporate Credit Union Call Report Data](https://ncua.gov/ana)(lysis/credit-union-corporate-call-report-data/quarterly-data)
 
-### Version 0.2 Release Goals
-Create the interface for the **FCA call report source** that does not require network access. This is the API for the package first. Then we will work toward handling the ability to download the files from FCA as a follow-on segment of work.
+### Version 0.2 Release Goals: Functionality to Process Metadata and Data
+Finish creating the interface for the **FCA call report source** that does not require network access to download files. We will work toward handling the ability to download the files from FCA as a follow-on segment of work in release version 0.3.
 
+This release will include several related processing capabilities for creating a standardized dataset from the FCA call report data.
+
+1. We need to reason about and design a API for call report schedule APIs. This may be a further refinement of FCALayout or an update. This of a schema like object (e.g., like PyArrow or Polars schema) that provides a mapping of column names to column metadata (including definition, first and last period), etc. I will provide some ideas in the references section. We'll need some concept of schema drift over time. This includes comparing differences in schemas, but also being able to request schemas for a given schedule as a of given date. Do we have a master schema for each schedule that is cross-time, and it can return the schema present on a given date as a schema object? The schema should be dataframe agnostic at its core -- but have a method like to_dataframe(dataframe_type) that returns a dataframe with the schema information.
+
+2. We can then inspect all the files from 2000 onwards to define schedule specific metadata schemas for each schedule and ship them with the project for user ease.
+
+3. We need to extract the distinct UNINUM values that represent distinct institutions in the data from 2000 onwards. We need to create an API for getting information about the institution. It's most recent name, the lineage of names, addresses and other metadata stored as of the dates they changed. This will let us inspect that information at a point-in-time (quarter). We also will build toward the ability to know the current UNINUM post-merger of institutions so we can merger adjust. But that relies on other information. So it might come later. We just need the API for now. We should be able to get information on a single instution or convert all the institutions into a dataframe of information.
+
+When we handle mergers and other Farm Credit System institution combinations, we'll need to do so based on the information published on the FCA website from 2003 onwards: [mergers are on archive report page](https://www.fca.gov/about/report-archives).
+
+4. This release will also include functioanlity to process the FCA data supported in the Version 0.1 release download into several common architectures. This includes a long dataframe that has the UNINUM, Release_Date, Schedule, Variable_Name, and Value stored (long-format). The ability to pivot to wide-format (note we'll have to handle variables that appear in multiple schedules when we do this). Finally, we want to make it easy to create sub-architecture related to specific call-report schedules. For example, a dataset at the level of the "loan portfolio" that includes the dollars of exposure, charge-offs, non-performing loans, etc that are reported across multiple portfolios. We can provide a function that takes in the schedules and provides a Dataframe with institutions, loan portfolio, and release dates defining the rows and each variable measured for that combination parsed into a column.
+
+### Version 0.3 Release Goals: Download FCA Call Reports
 One difficulty when we proceed to downloading the files will be that when downloading the data the FCA uses cloudfare. Consider Python solutions for being able to download the data despite this. Otherwise, suggest that the package includes support for downloading the data from the package itself (e.g., ships with the data) or we host the data in an Azure BLOB.
 
 Note that each FCA release includes metadata and the files with the actual data. We need to be able to process both. Users should also be able to specify a range of FCA call report release and have the object oriented interface provide them with all of that data.
@@ -60,13 +73,6 @@ FCA makes the current Call Report instructions available here [online](https://w
 
 Consider the impact of [FCA Call Report Disclosures]
 (https://www.fca.gov/bank-oversight/call-report-disclosures) that outline potential issues.
-
-### Version 0.3 Release Goals: Process FCA Call Reports
-This release will include several related processing capabilities for creating a standardized dataset from the FCA call report data. This should be by providing an object-oriented interface to return a DataFrame of mergers that happened over time and the current UNINUM (institution identifier) for any prior UNINUM.
-
-The first is to handle mergers and other Farm Credit System institution combinations based on the information published on the FCA website from 2003 onwards: [mergers are on archive report page](https://www.fca.gov/about/report-archives).
-
-This release will also include functioanlity to process the FCA data supported in the Version 0.2 release download into several common sub-data architectures related to specific call-report schedules. For example, a dataset at the level of the "loan portfolio" that includes the dollars of exposure, charge-offs, non-performing loans, etc.
 
 ### Version 0.4+ Release Goals
 After the completion of the releases to support the FCA call report, the project's releases will move on to generalize the patterns to support the FFIEC, FDIC
