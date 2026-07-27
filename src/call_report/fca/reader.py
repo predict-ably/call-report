@@ -162,7 +162,8 @@ def _read_single(
     for the missing trailing columns (FCA regenerates layout files against
     the *current* schema, so an older quarter's data can be missing columns
     added in a later revision); a row with more fields than expected is a
-    hard error.
+    hard error, except for dangling trailing-comma artifacts (see below),
+    which are trimmed rather than rejected.
 
     Parameters
     ----------
@@ -183,12 +184,19 @@ def _read_single(
     Raises
     ------
     LayoutParseError
-        If a line has more fields than `layout` describes.
+        If a line has more fields than `layout` describes (beyond dangling
+        trailing-comma artifacts).
     """
     expected = len(layout.leading_columns)
     rows: list[dict[str, Any]] = []
     for line in lines:
         fields = _parse_csv_line(line=line)
+        # Trailing dangling empty fields are a trailing-comma artifact, not
+        # genuinely extra columns -- confirmed on several legacy (2004-2008)
+        # single-scenario schedules (e.g. RC1, RCH, RCI, RI, RIB), some with
+        # more than one trailing comma.
+        while len(fields) > expected and fields[-1] == "":
+            fields = fields[:-1]
         if len(fields) < expected:
             fields = [*fields, *([""] * (expected - len(fields)))]
         elif len(fields) > expected:

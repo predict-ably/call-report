@@ -164,6 +164,15 @@ sphinx-build -b html docs/source docs/_build/html
 
 - `src/call_report/` — the package (src layout).
 - `tests/` — pytest suite.
+- `data/` — real, source-published regulatory
+- archives checked into the repo,
+  one subfolder per source (e.g. `data/fca-call-report/`, so it stays
+  unambiguous once FFIEC/FDIC/NCUA equivalents are added). Not shipped in the
+  built wheel (`[tool.hatch.build.targets.wheel] packages` only includes
+  `src/call_report`); it exists so the repo itself ships ready-to-use
+  historical data (no live/Cloudflare-protected download needed) and so
+  `tests/fca/test_release_archive.py` can regression-test every real archived
+  release. Update it by dropping in each new quarter's zip as FCA publishes it.
 - `docs/` — Sphinx documentation.
 - `scripts/` — maintenance/release helpers.
 - `pyproject.toml` — build, dependencies, and all tool configuration.

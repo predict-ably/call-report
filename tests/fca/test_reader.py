@@ -185,6 +185,29 @@ def test_read_single_scenario_excess_fields_raises(tmp_path: Path) -> None:
         read_schedule_file(data_path=data_path, layout=layout)
 
 
+def test_read_single_scenario_trims_trailing_comma_artifacts(tmp_path: Path) -> None:
+    """Dangling trailing-comma fields are trimmed, not treated as excess columns.
+
+    Confirmed against several real, legacy (2004-2008) 'single'-scenario FCA
+    schedules (e.g. RCH, RCI) whose rows end in more than one trailing
+    comma -- the row must parse the same as if those commas were absent,
+    rather than raising as a genuinely-oversized row would.
+    """
+    layout_path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    data_path = write_data(
+        tmp_path,
+        root="RC",
+        year=2004,
+        month=3,
+        # 7 fields expected; 3 dangling trailing commas add 3 empty fields.
+        rows=["6,10,0,3,2004,610000,1000000,,,"],
+    )
+    layout = parse_layout(path=layout_path)
+    result = read_schedule_file(data_path=data_path, layout=layout)
+    row = _rows(result)[0]
+    assert row["TOTASSETS"] == 1000000
+
+
 def test_read_single_multiple_non_divisible_remainder_raises(tmp_path: Path) -> None:
     """A row whose remainder doesn't divide evenly by the multi-column width errors."""
     layout_path = write_layout(tmp_path, root="RCB", variable_lines=RCB_LINES)
