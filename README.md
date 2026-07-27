@@ -9,16 +9,18 @@
 
 ## Installation
 
-The package is not yet published to PyPI. To install it for development, clone the repository and install it in editable mode along with its development dependencies:
-
-```bash
-pip install -e ".[dev]"
-```
-
-Once published, it will be installable with:
+Install the latest release from PyPI:
 
 ```bash
 pip install call-report
+```
+
+### Development install
+
+To work on `call-report` itself, clone the repository and install it in editable mode along with its development dependencies:
+
+```bash
+pip install -e ".[dev]"
 ```
 
 ## License
