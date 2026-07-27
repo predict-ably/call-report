@@ -1,28 +1,37 @@
-"""The injectable FCA transport interface and its local-directory implementation.
+"""The injectable FCA transport interface and its local implementations.
 
 `FCATransport` is the seam a future network-based transport (handling
 FCA's Cloudflare-protected downloads) will slot in behind, without changing
-any public signature on `call_report.fca.report.FCACallReport`.
+any public signature on `call_report.fca.report.FCACallReport`. Every
+`FCACallReport` requires one explicitly -- there is no implicit default --
+so it is always clear which files a given instance will read.
 """
 
 from __future__ import annotations
 
+import tempfile
+import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from call_report.core import ReportingPeriod
 from call_report.exceptions import DownloadError
 from call_report.fca.catalog import construct_fca_download_url
-from call_report.types import ReportingPeriod
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_PACKAGED_ARCHIVE_ROOT = _REPO_ROOT / "data" / "fca-call-report"
 
 
 class FCATransport(Protocol):
     """The interface FCACallReport uses to resolve a period's local files.
 
     Any object implementing `resolve` can be passed as an
-    `FCACallReport`'s ``transport=`` argument; `LocalDirectoryTransport` is
-    the only implementation shipped so far.
+    `FCACallReport`'s ``transport=`` argument. Two implementations are
+    shipped so far: `LocalDirectoryTransport`, for a user-supplied directory
+    of already-extracted releases, and `PackagedArchiveTransport`, for the
+    historical release zips checked into this repository.
     """  # numpydoc ignore=PR01
 
     def resolve(self, *, period: ReportingPeriod) -> Path:
@@ -77,11 +86,10 @@ class LocalDirectoryTransport:
     """A transport that resolves periods to pre-extracted local directories.
 
     Expects `data_dir` to contain one subdirectory per period, each holding
-    that period's already-downloaded-and-unzipped FCA release files. This
-    is the supported transport while network downloading is not yet
-    implemented; a future release can add a network-based transport
-    implementing the same `FCATransport` interface without changing
-    `FCACallReport`'s public signature.
+    that period's already-downloaded-and-unzipped FCA release files. A
+    future release can add a network-based transport implementing the same
+    `FCATransport` interface without changing `FCACallReport`'s public
+    signature.
 
     Attributes
     ----------
@@ -135,3 +143,94 @@ class LocalDirectoryTransport:
                 f"retrieval strategy."
             )
         return directory
+
+
+@dataclass(kw_only=True)
+class PackagedArchiveTransport:
+    """A transport that resolves periods to the release zips shipped in ``data/``.
+
+    By default, resolves against this repository's own
+    ``data/fca-call-report/`` archive -- one zip per period, named after
+    FCA's own download filename (e.g. ``"2026March.zip"``) -- so a checkout
+    of this repository has ready-to-use historical data with no network
+    access required. Each zip is extracted, once per period, into a private
+    temporary directory that is cleaned up when this transport is garbage
+    collected.
+
+    That archive is not included in the distributed wheel (see
+    ``pyproject.toml``'s ``[tool.hatch.build.targets.wheel]``), so this
+    transport is only useful when running from a source checkout; a
+    `pip`-installed package should pass `archive_root` pointing at its own
+    directory of FCA release zips, or use `LocalDirectoryTransport` with
+    already-extracted releases instead.
+
+    Attributes
+    ----------
+    archive_root : pathlib.Path
+        The directory containing one ``<dirname>.zip`` per period. Defaults
+        to this repository's checked-in ``data/fca-call-report/`` archive.
+    dirname_for : Callable[[ReportingPeriod], str]
+        A function mapping a period to its zip's filename stem under
+        `archive_root` (e.g. ``"2026March"``). Defaults to the FCA download
+        zip's filename stem, matching FCA's own naming convention.
+
+    Examples
+    --------
+    >>> transport = PackagedArchiveTransport()
+    >>> transport.resolve(
+    ...     period=ReportingPeriod.from_period_end(value="2026-03-31")
+    ... )  # doctest: +SKIP
+    PosixPath('/tmp/call_report_fca_.../2026March')
+    """  # numpydoc ignore=PR01
+
+    archive_root: Path = field(default_factory=lambda: _PACKAGED_ARCHIVE_ROOT)
+    dirname_for: Callable[[ReportingPeriod], str] = field(default=_default_dirname)
+    _extracted: dict[ReportingPeriod, Path] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    _extract_root: tempfile.TemporaryDirectory[str] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+
+    def resolve(self, *, period: ReportingPeriod) -> Path:
+        """Return `period`'s extracted files, extracting its zip on first use.
+
+        Implements the `FCATransport` protocol for the packaged archive.
+
+        Parameters
+        ----------
+        period : ReportingPeriod
+            The period to resolve.
+
+        Returns
+        -------
+        pathlib.Path
+            The directory `period`'s zip was extracted into.
+
+        Raises
+        ------
+        DownloadError
+            If no zip exists at the expected location under `archive_root`.
+        """
+        cached = self._extracted.get(period)
+        if cached is not None:
+            return cached
+
+        stem = self.dirname_for(period)
+        archive_path = Path(self.archive_root) / f"{stem}.zip"
+        if not archive_path.is_file():
+            raise DownloadError(
+                f"No packaged FCA archive found for {period.label}; expected a zip "
+                f"at {archive_path}. Pass archive_root=... pointing at a directory "
+                f"of FCA release zips (e.g. {archive_path.name!r}), or supply "
+                f"transport=... for a different retrieval strategy."
+            )
+
+        if self._extract_root is None:
+            self._extract_root = tempfile.TemporaryDirectory(prefix="call_report_fca_")
+        target_dir = Path(self._extract_root.name) / stem
+        with zipfile.ZipFile(archive_path) as archive:
+            archive.extractall(target_dir)
+
+        self._extracted[period] = target_dir
+        return target_dir

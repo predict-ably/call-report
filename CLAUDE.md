@@ -164,6 +164,15 @@ sphinx-build -b html docs/source docs/_build/html
 
 - `src/call_report/` — the package (src layout).
 - `tests/` — pytest suite.
+- `data/` — real, source-published regulatory
+- archives checked into the repo,
+  one subfolder per source (e.g. `data/fca-call-report/`, so it stays
+  unambiguous once FFIEC/FDIC/NCUA equivalents are added). Not shipped in the
+  built wheel (`[tool.hatch.build.targets.wheel] packages` only includes
+  `src/call_report`); it exists so the repo itself ships ready-to-use
+  historical data (no live/Cloudflare-protected download needed) and so
+  `tests/fca/test_release_archive.py` can regression-test every real archived
+  release. Update it by dropping in each new quarter's zip as FCA publishes it.
 - `docs/` — Sphinx documentation.
 - `scripts/` — maintenance/release helpers.
 - `pyproject.toml` — build, dependencies, and all tool configuration.
@@ -177,7 +186,7 @@ sphinx-build -b html docs/source docs/_build/html
 - Aim for 100% test coverage (branch coverage included); the coverage gate is set to 100%. This is the starting goal for every change: cover the edge cases, error branches, and fallbacks, not just the happy path. Only fall back from 100% when a line is genuinely not meaningfully testable — and in that case exclude it explicitly and narrowly (e.g. `# pragma: no cover` on an `@overload`/`Protocol` stub's `...` body) rather than lowering the gate or leaving real code untested.
 - Keep runtime dependencies minimal and deliberate, and **ask before adding any new dependency** (runtime, optional, or dev). `narwhals` is the one hard runtime third-party dependency currently and the **only** third-party library that may be hard-imported at module scope anywhere in `src/` at this time; any updates must be approved.
 - Every third-party dependency other than `narwhals` must stay optional and must never be hard-imported at module scope in `src/` (test files may import them freely):
-  - **Dataframe backends** (`pandas`, `polars`, `pyarrow`) are reached only through `narwhals` (e.g. `nw.from_dict(data, backend=...)` and `frame.to_native()` in `src/call_report/_backend.py`), which imports the selected backend lazily. They therefore stay optional install extras and are only ever test/dev dependencies.
-  - **Any optional dependency narwhals does not front**  must be loaded lazily via the helpers in `src/call_report/_dependencies.py` — use `import_optional(...)` for an eager, checked import that raises a clear `pip install ...` error when the module is missing or older than a required `min_version`, and `_lazy_import`/`_LazyModule` for a deferred proxy. Reach for these instead of a bare `import`; the module follows polars' `_dependencies.py` pattern (https://github.com/pola-rs/polars/blob/main/py-polars/src/polars/_dependencies.py).
+  - **Dataframe backends** (`pandas`, `polars`, `pyarrow`) are reached only through `narwhals` (e.g. `nw.from_dict(data, backend=...)` and `frame.to_native()` in `src/call_report/core/_backend.py`), which imports the selected backend lazily. They therefore stay optional install extras and are only ever test/dev dependencies.
+  - **Any optional dependency narwhals does not front**  must be loaded lazily via the helpers in `src/call_report/core/_dependencies.py` — use `import_optional(...)` for an eager, checked import that raises a clear `pip install ...` error when the module is missing or older than a required `min_version`, and `_lazy_import`/`_LazyModule` for a deferred proxy. Reach for these instead of a bare `import`; the module follows polars' `_dependencies.py` pattern (https://github.com/pola-rs/polars/blob/main/py-polars/src/polars/_dependencies.py).
 - The goal is to support multiple Python dataframe libraries via a package-level configuration that lets users choose the dataframe backend; prefer `narwhals` for this wherever possible, and keep any manual multi-library support behind optional ("soft") dependencies required only when that backend is configured.
 - Match existing patterns in the FCA sub-module when extending to other sources.

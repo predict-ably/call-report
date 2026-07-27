@@ -13,7 +13,7 @@ from typing import Any
 
 import narwhals as nw
 
-from call_report._backend import finalize
+from call_report.core._backend import finalize
 from call_report.exceptions import DownloadError
 from call_report.fca._discovery import scan_release
 from call_report.fca.layout import parse_layout

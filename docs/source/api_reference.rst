@@ -21,32 +21,33 @@ whether they are returned eager or lazy.
    call_report.config.set_config
    call_report.config.config_context
 
-Call Report Reporting periods
-=============================
+Core
+====
 
-The source-agnostic quarter-end vocabulary shared by every regulatory source.
-
-.. autosummary::
-   :toctree: generated
-   :nosignatures:
-
-   call_report.types.ReportingPeriod
-   call_report.types.PeriodRange
-   call_report.types.Quarter
-   call_report.types.Source
-   call_report.types.FileKind
-
-Shared interface
-================
-
-The abstract base every source-specific entry point implements, and the
-exception hierarchy shared across sources.
+Shared, source-agnostic building blocks: the quarter-end reporting-period
+vocabulary, the cross-source enums, and the abstract base every
+source-specific entry point implements.
 
 .. autosummary::
    :toctree: generated
    :nosignatures:
 
-   call_report.base.BaseCallReport
+   call_report.core.ReportingPeriod
+   call_report.core.PeriodRange
+   call_report.core.Quarter
+   call_report.core.Source
+   call_report.core.FileType
+   call_report.core.BaseCallReport
+
+Exceptions
+==========
+
+The exception hierarchy shared across sources.
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
    call_report.exceptions.CallReportError
    call_report.exceptions.InvalidPeriodError
    call_report.exceptions.PeriodNotAvailableError
@@ -74,3 +75,4 @@ parsing an individual layout or data file.
    call_report.fca.institutions.read_institutions
    call_report.fca.transport.FCATransport
    call_report.fca.transport.LocalDirectoryTransport
+   call_report.fca.transport.PackagedArchiveTransport

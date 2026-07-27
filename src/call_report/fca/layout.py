@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 import narwhals as nw
 
-from call_report._backend import build_frame, finalize
+from call_report.core._backend import build_frame, finalize
 from call_report.exceptions import LayoutParseError
 
 LayoutScenario = Literal["single", "single_multiple", "single_multiple_single"]
