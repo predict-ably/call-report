@@ -18,13 +18,19 @@ pyarrow too would mostly re-test the same parsing path for little extra
 signal. Instead, a small, deterministically sampled subset of releases is
 also run under every configured backend, to catch backend-specific
 materialization issues (dtype inference, null handling, schema quirks)
-without tripling the full suite's runtime.
+without tripling the full suite's runtime. A separate, smaller sample of
+releases spanning the full history goes one step further and checks that
+all three backends parse the exact same values for every schedule, not
+just that they load without error.
 """
 
 from __future__ import annotations
 
+import math
 import random
+from typing import Any
 
+import narwhals as nw
 import pytest
 
 from call_report.config import config_context
@@ -90,6 +96,39 @@ def _stratified_sample(
 
 CROSS_BACKEND_SAMPLE_PERIODS = _stratified_sample(
     periods=ALL_KNOWN_PERIODS, size=_CROSS_BACKEND_SAMPLE_SIZE, seed=_CROSS_BACKEND_SEED
+)
+
+_EQUALITY_CHECK_SAMPLE_SIZE = 4
+
+
+def _evenly_spaced(
+    *, periods: tuple[ReportingPeriod, ...], size: int
+) -> tuple[ReportingPeriod, ...]:
+    """Return `size` periods evenly spaced across `periods`, including both ends.
+
+    Deterministic, unlike `_stratified_sample`: used where a handful of
+    periods just needs to span the full known release history, not
+    represent it statistically.
+
+    Parameters
+    ----------
+    periods : tuple[ReportingPeriod, ...]
+        The full, chronologically ordered population to sample from.
+    size : int
+        Number of periods to return.
+
+    Returns
+    -------
+    tuple[ReportingPeriod, ...]
+        The sampled periods, in chronological order.
+    """
+    last_index = len(periods) - 1
+    indices = {round(i * last_index / (size - 1)) for i in range(size)}
+    return tuple(periods[i] for i in sorted(indices))
+
+
+EQUALITY_CHECK_PERIODS = _evenly_spaced(
+    periods=ALL_KNOWN_PERIODS, size=_EQUALITY_CHECK_SAMPLE_SIZE
 )
 
 
@@ -180,6 +219,89 @@ def _assert_institutions_load(
     read_institutions(release_dir=manifest.release_dir)
 
 
+def _native_rows(native_frame: Any) -> list[dict[str, Any]]:
+    """Convert any backend's native frame into a backend-agnostic list of row dicts."""
+    return nw.from_native(native_frame).rows(named=True)
+
+
+def _is_missing(value: object) -> bool:
+    """Return True for a missing value, however the active backend represents it.
+
+    pandas represents a missing numeric value as NaN (a float); polars and
+    pyarrow use an actual None -- both count as "missing" here.
+    """
+    return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+def _load_schedule_rows(
+    *,
+    report: FCACallReport,
+    period: ReportingPeriod,
+    schedule_roots: tuple[str, ...],
+    backend: str,
+) -> dict[str, list[dict[str, Any]]]:
+    """Load every schedule in `schedule_roots` for `period`, under `backend`, as rows.
+
+    Parameters
+    ----------
+    report : FCACallReport
+        Already `fetch`-ed report to load schedules from.
+    period : ReportingPeriod
+        The release period to load schedules for.
+    schedule_roots : tuple[str, ...]
+        The schedule roots (excluding the institution roster) to load.
+    backend : str
+        The dataframe backend to configure while loading.
+
+    Returns
+    -------
+    dict[str, list[dict[str, Any]]]
+        Each schedule root's data, as a backend-agnostic list of row dicts.
+    """
+    manifest = report.releases_.get(period)
+    assert manifest is not None, f"{period.label} was not resolved by fetch()."
+
+    rows_by_root: dict[str, list[dict[str, Any]]] = {}
+    with config_context(dataframe_backend=backend):
+        for root in schedule_roots:
+            files = manifest.files[root]
+            layout = report.get_layout(schedule=root, period=period)
+            assert isinstance(layout, FCALayout)
+            frame = read_schedule_file(data_path=files.data_path, layout=layout)
+            rows_by_root[root] = _native_rows(frame)
+    return rows_by_root
+
+
+def _assert_rows_equal(
+    *, reference: list[dict[str, Any]], other: list[dict[str, Any]], label: str
+) -> None:
+    """Assert two backends' row-lists carry the same data for one schedule.
+
+    Parameters
+    ----------
+    reference : list[dict[str, Any]]
+        The pandas-backend rows to compare against.
+    other : list[dict[str, Any]]
+        Another backend's rows for the same schedule and period.
+    label : str
+        Identifies the backend/schedule combination in failure messages.
+    """
+    assert len(other) == len(reference), (
+        f"{label}: {len(other)} rows, expected {len(reference)}."
+    )
+    for index, (ref_row, other_row) in enumerate(zip(reference, other, strict=True)):
+        assert other_row.keys() == ref_row.keys(), (
+            f"{label} row {index}: column mismatch."
+        )
+        for key, ref_value in ref_row.items():
+            other_value = other_row[key]
+            if _is_missing(ref_value) and _is_missing(other_value):
+                continue
+            assert other_value == ref_value, (
+                f"{label} row {index} column {key!r}: {other_value!r} != {ref_value!r}"
+            )
+
+
 @pytest.mark.parametrize(
     "period", ALL_KNOWN_PERIODS, ids=[period.label for period in ALL_KNOWN_PERIODS]
 )
@@ -226,3 +348,46 @@ def test_release_institutions_load_across_backends(
     """A sampled release's institution roster loads cleanly under every backend."""
     with config_context(dataframe_backend=backend):
         _assert_institutions_load(report=archive_report, period=period)
+
+
+@pytest.mark.parametrize(
+    "period",
+    EQUALITY_CHECK_PERIODS,
+    ids=[period.label for period in EQUALITY_CHECK_PERIODS],
+)
+def test_release_schedules_match_across_backends(
+    archive_report: FCACallReport, period: ReportingPeriod
+) -> None:
+    """A release's schedule data is identical no matter which backend parsed it.
+
+    Loads every schedule for `period` three times -- once per backend --
+    through the same production `get_layout`/`read_schedule_file` path the
+    other tests in this module use, then asserts pandas, polars, and pyarrow
+    all parsed the exact same values (missing-value representation aside).
+    """
+    manifest = archive_report.releases_.get(period)
+    assert manifest is not None, f"{period.label} was not resolved by fetch()."
+    schedule_roots = tuple(
+        sorted(root for root in manifest.files if root != INSTITUTIONS_ROOT)
+    )
+    assert schedule_roots, (
+        f"{period.label} has no non-institution schedules to compare."
+    )
+
+    reference = _load_schedule_rows(
+        report=archive_report,
+        period=period,
+        schedule_roots=schedule_roots,
+        backend="pandas",
+    )
+    for backend in ("polars", "pyarrow"):
+        other = _load_schedule_rows(
+            report=archive_report,
+            period=period,
+            schedule_roots=schedule_roots,
+            backend=backend,
+        )
+        for root in schedule_roots:
+            _assert_rows_equal(
+                reference=reference[root], other=other[root], label=f"{backend}:{root}"
+            )
