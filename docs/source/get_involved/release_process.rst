@@ -1,0 +1,176 @@
+.. _release_process:
+
+================
+Release Process
+================
+
+This page walks through cutting a new ``call-report`` release, from bumping
+the version to confirming it is live on PyPI and in the docs.
+
+One-time setup (before the *first* release)
+=============================================
+
+These are account/repository settings, not something a workflow file can
+do -- confirm each is in place before following the steps below for the
+first time:
+
+- **TestPyPI trusted publisher.** On the `TestPyPI project settings
+  <https://test.pypi.org/manage/account/publishing/>`_, register a trusted
+  publisher for this repository (``predict-ably/call-report``), workflow
+  file ``publish-test.yml``, and environment name ``testpypi``.
+- **PyPI trusted publisher.** Same as above on `PyPI
+  <https://pypi.org/manage/account/publishing/>`_, but workflow file
+  ``publish.yml`` and environment name ``pypi``. PyPI supports registering
+  a trusted publisher for a project name that hasn't been published yet
+  ("pending" publisher), which is what you want the first time.
+- **GitHub environments.** Under repository Settings → Environments,
+  confirm ``testpypi`` and ``pypi`` exist (they're created automatically
+  the first time a workflow references them, but you may want to add
+  required reviewers to the ``pypi`` environment as an extra safety gate
+  before anything publishes to real PyPI).
+- **ReadTheDocs project.** There is no ReadTheDocs project connected for
+  ``call-report`` yet -- `import the repository
+  <https://readthedocs.org/dashboard/import/>`_ before the first release so
+  tagged versions have somewhere to build to (see
+  :ref:`release_process_docs` below).
+
+Both publish workflows authenticate via `OIDC Trusted Publishing
+<https://docs.pypi.org/trusted-publishers/>`_ -- there are no PyPI/TestPyPI
+API tokens to create or rotate.
+
+1. Bump the version
+=====================
+
+``__version__`` in ``src/call_report/__init__.py`` is the single source of
+truth for the package version -- ``hatchling`` reads it directly
+(``[tool.hatch.version] path = "src/call_report/__init__.py"`` in
+``pyproject.toml``), so nothing in ``pyproject.toml`` itself needs editing.
+
+Three other places need updating in the same commit:
+
+- **``tests/test_version.py``** (required -- CI fails otherwise):
+  ``EXPECTED_VERSION`` is a deliberate tripwire (see the comment at the top
+  of that file) that fails ``test_version_matches_expected`` if you forget
+  to update it.
+- **``docs/source/_static/switcher.json``**: add an entry for the new
+  version so it appears in the docs version dropdown (see
+  :ref:`release_process_docs` below). Doesn't affect the package build, but
+  easy to forget if it's not done alongside the version bump.
+- **``docs/source/changelog.rst``**: add a new section (newest first)
+  summarizing what changed, following the existing ``0.1.0`` entry's
+  format. Reference merged PRs/issues/contributors with the ``sphinx_issues``
+  roles (``:pr:``, ``:issue:``, ``:user:``) where relevant.
+
+.. code-block:: json
+
+   {
+       "name": "0.1.0",
+       "version": "v0.1.0",
+       "url": "https://call-report.readthedocs.io/en/v0.1.0/"
+   }
+
+Add the new entry *before* the existing ``"dev"`` entry so ``"dev"``
+(pointing at ``latest``) stays first/default in the dropdown.
+
+.. _release_process_docs:
+
+Why the docs need this
+------------------------
+
+``docs/source/conf.py`` builds the ``version_match`` the theme's version
+switcher uses to highlight the current version: it's ``"v" + __version__``
+for a tagged release (``"latest"`` for local/dev builds). If
+``switcher.json`` has no entry whose ``"version"`` equals that string, the
+switcher can't find itself in the dropdown. ReadTheDocs builds a new docs
+version automatically for every pushed tag once the project is imported
+(see the one-time setup above), so the switcher entry just needs its
+``url`` to match the RTD-generated URL for that tag
+(``https://call-report.readthedocs.io/en/v<version>/``).
+
+2. Run the local checks and merge
+====================================
+
+.. code-block:: bash
+
+   pytest --cov=call_report --cov-report=term-missing --cov-fail-under=100
+   ruff check .
+   ruff format .
+   mypy
+   pre-commit run --all-files
+
+Commit the version bump (``__init__.py``, ``test_version.py``,
+``switcher.json``, ``changelog.rst``) and land it on ``main`` through the normal
+:ref:`pull request workflow <how_to_contribute>`. Always tag from ``main``
+after CI (``test``, ``pre-commit``, ``security``) is green on that commit --
+the publish workflows only check that the tag matches ``__version__``, not
+that tests passed, so a red ``main`` will happily get published if you tag
+it.
+
+3. Publish to TestPyPI first
+===============================
+
+Always do a TestPyPI dry run before the real release -- it exercises the
+exact same build/publish path (packaging metadata, OIDC auth, the version
+check) against a throwaway index, so a packaging mistake surfaces before
+it's permanent on real PyPI.
+
+.. code-block:: bash
+
+   ./scripts/tag_release.sh --test
+
+This reads ``__version__``, tags the current commit ``v<version>-test``
+(e.g. ``v0.1.0-test``), and pushes the tag, which triggers
+``.github/workflows/publish-test.yml``. Watch the
+`publish-test workflow runs
+<https://github.com/predict-ably/call-report/actions/workflows/publish-test.yml>`_
+for it to go green, then verify the install works in a clean environment
+(TestPyPI doesn't mirror PyPI, so dependencies like ``narwhals`` need to
+resolve from real PyPI via ``--extra-index-url``):
+
+.. code-block:: bash
+
+   python -m venv /tmp/call-report-test-install
+   source /tmp/call-report-test-install/bin/activate
+   pip install --index-url https://test.pypi.org/simple/ \
+       --extra-index-url https://pypi.org/simple/ \
+       call-report==<version>
+   python -c "import call_report; print(call_report.__version__)"
+
+If anything looks wrong, delete the TestPyPI release/tag, fix the issue,
+and re-run this step -- nothing here is user-facing yet.
+
+4. Publish the real release
+==============================
+
+.. code-block:: bash
+
+   ./scripts/tag_release.sh
+
+This tags the current commit ``v<version>`` (no ``-test`` suffix) and
+pushes it, triggering ``.github/workflows/publish.yml``, which:
+
+1. Rebuilds the distribution and re-checks the tag against ``__version__``.
+2. Publishes to PyPI via OIDC.
+3. Creates a GitHub release for the tag (auto-generated notes from merged
+   PRs since the last release, with the built wheel/sdist attached).
+
+Watch the
+`publish workflow runs
+<https://github.com/predict-ably/call-report/actions/workflows/publish.yml>`_
+for all three jobs to go green.
+
+5. Verify the release
+========================
+
+- ``pip install call-report`` in a clean environment and confirm
+  ``call_report.__version__`` matches.
+- Check the `PyPI project page <https://pypi.org/project/call-report/>`_
+  renders the README correctly and lists the right metadata.
+- Check ReadTheDocs built the new tagged version and that the version
+  switcher dropdown includes and correctly highlights it.
+- Check the GitHub release notes are sensible; edit them by hand if the
+  auto-generated summary needs cleanup.
+- Once the package is genuinely installable from PyPI, update the
+  "not yet published to PyPI" language in ``README.md``'s Installation
+  section -- it was written for the pre-release state and should be
+  simplified to just the ``pip install call-report`` instructions.

@@ -22,6 +22,7 @@ later releases.
    get_started
    api_reference
    get_involved
+   changelog
 
 .. grid:: 1 2 2 2
     :gutter: 3
@@ -46,3 +47,10 @@ later releases.
         :link-type: doc
 
         Set up a development environment and contribute.
+
+    .. grid-item-card:: Changelog
+        :text-align: left
+        :link: changelog
+        :link-type: doc
+
+        What's new in each release.
