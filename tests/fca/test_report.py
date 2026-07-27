@@ -44,12 +44,14 @@ def _is_missing(value: object) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def test_init_stores_params_verbatim_and_does_no_work() -> None:
+def test_init_stores_params_verbatim_and_does_no_work(tmp_path: Path) -> None:
     """Constructing with an invalid quarter-end does not raise -- only fetch() does."""
-    report = FCACallReport(start="not-a-date", end=None)
+    transport = LocalDirectoryTransport(data_dir=tmp_path)
+    report = FCACallReport(start="not-a-date", end=None, transport=transport)
     assert report.start == "not-a-date"
     assert report.end is None
     assert report.schema_policy == "union"
+    assert report.transport is transport
 
 
 def test_constructor_is_keyword_only() -> None:
@@ -58,17 +60,25 @@ def test_constructor_is_keyword_only() -> None:
         FCACallReport("2024-03-31")  # type: ignore[call-arg]
 
 
-def test_repr_echoes_quarter_end_dates_passed() -> None:
+def test_repr_echoes_quarter_end_dates_passed(tmp_path: Path) -> None:
     """__repr__ shows the raw quarter-end date strings the user passed in."""
-    report = FCACallReport(start="2024-03-31", end="2025-12-31")
+    report = FCACallReport(
+        start="2024-03-31",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     text = repr(report)
     assert "2024-03-31" in text
     assert "2025-12-31" in text
 
 
-def test_get_params_and_set_params() -> None:
+def test_get_params_and_set_params(tmp_path: Path) -> None:
     """get_params/set_params follow the sklearn convention."""
-    report = FCACallReport(start="2024-03-31", end="2025-12-31")
+    report = FCACallReport(
+        start="2024-03-31",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     params = report.get_params()
     assert params["start"] == "2024-03-31"
     assert params["end"] == "2025-12-31"
@@ -79,9 +89,13 @@ def test_get_params_and_set_params() -> None:
     assert report.get_params()["schema_policy"] == "intersection"
 
 
-def test_set_params_rejects_unknown_key() -> None:
+def test_set_params_rejects_unknown_key(tmp_path: Path) -> None:
     """set_params raises for a parameter name the estimator doesn't accept."""
-    report = FCACallReport(start="2024-03-31", end="2025-12-31")
+    report = FCACallReport(
+        start="2024-03-31",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     with pytest.raises(ValueError, match="not_a_real_param"):
         report.set_params(not_a_real_param=True)
 
@@ -93,37 +107,50 @@ def test_set_params_rejects_unknown_key() -> None:
 
 def test_fetch_missing_end_raises_informative_error(tmp_path: Path) -> None:
     """Omitting end is ambiguous and must raise, not silently mean "one quarter"."""
-    report = FCACallReport(start="2026-03-31", data_dir=tmp_path)
+    report = FCACallReport(
+        start="2026-03-31", transport=LocalDirectoryTransport(data_dir=tmp_path)
+    )
     with pytest.raises(InvalidPeriodError, match="end"):
         report.fetch()
 
 
 def test_fetch_invalid_quarter_end_raises(tmp_path: Path) -> None:
     """fetch() validates start/end and raises InvalidPeriodError for a bad date."""
-    report = FCACallReport(start="2026-05-15", end="2026-06-30", data_dir=tmp_path)
+    report = FCACallReport(
+        start="2026-05-15",
+        end="2026-06-30",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     with pytest.raises(InvalidPeriodError):
         report.fetch()
 
 
 def test_fetch_out_of_catalog_bounds_raises(tmp_path: Path) -> None:
     """fetch() raises PeriodNotAvailableError for a range FCA has never published."""
-    report = FCACallReport(start="1999-12-31", end="1999-12-31", data_dir=tmp_path)
+    report = FCACallReport(
+        start="1999-12-31",
+        end="1999-12-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     with pytest.raises(PeriodNotAvailableError):
         report.fetch()
 
 
-def test_fetch_without_data_dir_or_transport_raises_download_error() -> None:
-    """With neither data_dir nor transport supplied, fetch() fails clearly."""
-    report = FCACallReport(start="2026-03-31", end="2026-03-31")
-    with pytest.raises(DownloadError, match=r"data_dir|transport"):
-        report.fetch()
+def test_constructor_requires_transport() -> None:
+    """Transport is a required keyword-only parameter with no implicit default."""
+    with pytest.raises(TypeError, match="transport"):
+        FCACallReport(start="2026-03-31", end="2026-03-31")  # type: ignore[call-arg]
 
 
 def test_fetch_returns_self_and_populates_fitted_state(
     data_dir: Path, release_2025q3: Path, release_2025q4: Path
 ) -> None:
     """fetch() returns self and sets periods_/releases_/schedules_/errors_."""
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     result = report.fetch()
     assert result is report
 
@@ -143,9 +170,13 @@ def test_fetch_records_missing_period_directory_without_failing_whole_request(
     tmp_path: Path, release_2025q3: Path, release_2025q4: Path
 ) -> None:
     """Skip period with no resolvable local directory."""
-    # data_dir has Sept & Dec 2025 on disk, but the requested range also
+    # tmp_path has Sept & Dec 2025 on disk, but the requested range also
     # includes June 2025, which was never built.
-    report = FCACallReport(start="2025-06-30", end="2025-12-31", data_dir=tmp_path)
+    report = FCACallReport(
+        start="2025-06-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     report.fetch()
 
     assert len(report.periods_) == 3
@@ -160,26 +191,13 @@ def test_fetch_records_missing_period_directory_without_failing_whole_request(
 
 def test_fetch_raises_download_error_when_every_period_fails(tmp_path: Path) -> None:
     """If not a single requested period can be resolved, fetch() raises."""
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=tmp_path)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     with pytest.raises(DownloadError, match="requested period"):
         report.fetch()
-
-
-def test_resolve_transport_prefers_explicit_transport_over_data_dir(
-    tmp_path: Path, release_2026q1: Path
-) -> None:
-    """An explicit transport= wins even when data_dir is also supplied."""
-    wrong_dir = tmp_path / "definitely-empty"
-    wrong_dir.mkdir()
-    custom_transport = LocalDirectoryTransport(data_dir=tmp_path)
-    report = FCACallReport(
-        start="2026-03-31",
-        end="2026-03-31",
-        data_dir=wrong_dir,
-        transport=custom_transport,
-    )
-    report.fetch()
-    assert len(report.releases_) == 1
 
 
 def test_fetch_ignores_unrecognized_root_name(
@@ -194,7 +212,11 @@ def test_fetch_ignores_unrecognized_root_name(
         month=3,
         rows=["6,10,0,3,2026,610000,1000000"],
     )
-    report = FCACallReport(start="2026-03-31", end="2026-03-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     report.fetch()
     assert all(name != "ZZZTEST" for name in {s.value for s in report.schedules_})
 
@@ -204,7 +226,11 @@ def test_available_periods_and_schedules_do_not_require_fetch(tmp_path: Path) ->
 
     No fetch() needed.
     """
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=tmp_path)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     periods = report.available_periods()
     assert periods[0] == ReportingPeriod.from_period_end(value="2000-03-31")
     assert periods[-1] == ReportingPeriod.from_period_end(value="2026-03-31")
@@ -218,7 +244,11 @@ def test_available_periods_and_schedules_do_not_require_fetch(tmp_path: Path) ->
 
 def test_load_auto_fetches_if_needed(data_dir: Path, release_2026q1: Path) -> None:
     """load() calls fetch() automatically when it hasn't run yet."""
-    report = FCACallReport(start="2026-03-31", end="2026-03-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     result = report.load(schedule="RC")
     rows = _rows(result)
     assert len(rows) == 1
@@ -229,7 +259,11 @@ def test_load_result_carries_period_and_uninum_columns(
     data_dir: Path, release_2025q3: Path, release_2025q4: Path
 ) -> None:
     """Every stacked frame carries a period column (the quarter-end date) and uninum."""
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     result = report.load(schedule="RC")
     rows = _rows(result)
     assert {"period", "UNINUM"} <= set(rows[0])
@@ -242,7 +276,10 @@ def test_load_schema_policy_union_outer_joins_columns(
 ) -> None:
     """Union (the default) keeps every column, nulling it out where absent."""
     report = FCACallReport(
-        start="2025-09-30", end="2025-12-31", schema_policy="union", data_dir=data_dir
+        start="2025-09-30",
+        end="2025-12-31",
+        schema_policy="union",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     rows = _rows(report.load(schedule="RC"))
     assert "TOTLIAB" in rows[0]
@@ -260,7 +297,7 @@ def test_load_schema_policy_intersection_drops_uncommon_columns(
         start="2025-09-30",
         end="2025-12-31",
         schema_policy="intersection",
-        data_dir=data_dir,
+        transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     rows = _rows(report.load(schedule="RC"))
     assert "TOTLIAB" not in rows[0]
@@ -272,7 +309,10 @@ def test_load_schema_policy_strict_raises_on_mismatch(
 ) -> None:
     """Strict refuses to silently reconcile differing schemas across periods."""
     report = FCACallReport(
-        start="2025-09-30", end="2025-12-31", schema_policy="strict", data_dir=data_dir
+        start="2025-09-30",
+        end="2025-12-31",
+        schema_policy="strict",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     with pytest.raises(LayoutParseError):
         report.load(schedule="RC")
@@ -282,7 +322,11 @@ def test_load_schedule_missing_in_some_periods_returns_partial_result(
     data_dir: Path, release_2025q3: Path, release_2025q4: Path
 ) -> None:
     """A schedule absent in some, but not all, periods yields a partial result."""
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     rows = _rows(report.load(schedule="RCR7"))
     q3 = ReportingPeriod.from_period_end(value="2025-09-30")
     q4 = ReportingPeriod.from_period_end(value="2025-12-31")
@@ -295,7 +339,11 @@ def test_load_schedule_not_found_when_absent_everywhere(
     data_dir: Path, release_2025q3: Path, release_2025q4: Path
 ) -> None:
     """A schedule present in zero requested periods raises ScheduleNotFoundError."""
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     with pytest.raises(ScheduleNotFoundError):
         report.load(schedule="RCF1")
 
@@ -338,7 +386,11 @@ def test_load_records_layout_parse_error_and_continues(tmp_path: Path) -> None:
         bad_dir, root="RC", year=2025, month=12, rows=["6,10,0,12,2025,610000,1000000"]
     )
 
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=tmp_path)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     rows = _rows(report.load(schedule="RC"))
     assert len(rows) == 1
     assert rows[0]["period"] == date(2025, 9, 30)
@@ -373,7 +425,11 @@ def test_load_all_skips_schedule_that_fails_in_every_period(tmp_path: Path) -> N
         directory, root="RC", year=2026, month=3, rows=["6,10,0,3,2026,610000,1000000"]
     )
 
-    report = FCACallReport(start="2026-03-31", end="2026-03-31", data_dir=tmp_path)
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     result = report.load_all()
     assert FCASchedule.RC not in result
     assert any(issue.schedule == FCASchedule.RC for issue in report.errors_)
@@ -383,9 +439,17 @@ def test_load_accepts_case_insensitive_schedule_string(
     data_dir: Path, release_2026q1: Path
 ) -> None:
     """load() accepts either the FCASchedule enum or a case-insensitive string."""
-    report = FCACallReport(start="2026-03-31", end="2026-03-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     by_string = _rows(report.load(schedule="rcb"))
-    report2 = FCACallReport(start="2026-03-31", end="2026-03-31", data_dir=data_dir)
+    report2 = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     by_enum = _rows(report2.load(schedule=FCASchedule.RCB))
     assert by_string == by_enum
 
@@ -394,14 +458,22 @@ def test_load_all_returns_every_discovered_schedule(
     data_dir: Path, release_2026q1: Path
 ) -> None:
     """load_all() returns a dict keyed by every schedule found in range."""
-    report = FCACallReport(start="2026-03-31", end="2026-03-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     result = report.load_all()
     assert set(result) == {FCASchedule.RC, FCASchedule.RCB, FCASchedule.RCR7}
 
 
 def test_load_institutions(data_dir: Path, release_2026q1: Path) -> None:
     """load_institutions() returns the institution roster with period/uninum."""
-    report = FCACallReport(start="2026-03-31", end="2026-03-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     rows = _rows(report.load_institutions())
     assert rows[0]["UNINUM"] == 610000
     assert rows[0]["SHORTNAME"] == "Café Ridge FCB"
@@ -434,7 +506,11 @@ def test_load_institutions_records_parse_error_and_continues(tmp_path: Path) -> 
         rows=["6,10,0,12,2025,610000,1000000"],
     )
 
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=tmp_path)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     rows = _rows(report.load_institutions())
     assert len(rows) == 1
     assert rows[0]["period"] == date(2025, 9, 30)
@@ -451,7 +527,11 @@ def test_load_institutions_raises_when_no_period_has_a_roster(tmp_path: Path) ->
         directory, root="RC", year=2026, month=3, rows=["6,10,0,3,2026,610000,1000000"]
     )
 
-    report = FCACallReport(start="2026-03-31", end="2026-03-31", data_dir=tmp_path)
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
     with pytest.raises(DownloadError, match="roster"):
         report.load_institutions()
 
@@ -465,7 +545,11 @@ def test_get_layout_with_period_returns_single_layout(
     data_dir: Path, release_2025q3: Path, release_2025q4: Path
 ) -> None:
     """Passing a specific period returns just that period's FCALayout."""
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     layout = report.get_layout(schedule="RC", period="2025-09-30")
     assert isinstance(layout, FCALayout)
     assert "TOTLIAB" not in layout.leading_columns
@@ -475,7 +559,11 @@ def test_get_layout_without_period_returns_dict_across_range(
     data_dir: Path, release_2025q3: Path, release_2025q4: Path
 ) -> None:
     """Omitting period returns a dict showing the layout for each period in range."""
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     layouts = report.get_layout(schedule="RC")
     assert isinstance(layouts, dict)
     q3 = ReportingPeriod.from_period_end(value="2025-09-30")
@@ -488,7 +576,11 @@ def test_get_layout_with_period_outside_fetched_range_raises(
     data_dir: Path, release_2025q3: Path, release_2025q4: Path
 ) -> None:
     """A period outside the instance's fetched range is rejected clearly."""
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     with pytest.raises(InvalidPeriodError, match="outside the fetched range"):
         report.get_layout(schedule="RC", period="2026-03-31")
 
@@ -497,7 +589,11 @@ def test_get_layout_with_period_missing_schedule_raises(
     data_dir: Path, release_2025q3: Path, release_2025q4: Path
 ) -> None:
     """A period in range but lacking the requested schedule is rejected clearly."""
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     with pytest.raises(ScheduleNotFoundError):
         report.get_layout(schedule="RCR7", period="2025-09-30")
 
@@ -506,14 +602,22 @@ def test_get_layout_without_period_schedule_not_found_anywhere_raises(
     data_dir: Path, release_2025q3: Path, release_2025q4: Path
 ) -> None:
     """A schedule absent from every period in range raises, even without period=."""
-    report = FCACallReport(start="2025-09-30", end="2025-12-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     with pytest.raises(ScheduleNotFoundError):
         report.get_layout(schedule="RCF1")
 
 
 def test_get_layout_is_keyword_only(data_dir: Path, release_2026q1: Path) -> None:
     """get_layout takes no positional arguments."""
-    report = FCACallReport(start="2026-03-31", end="2026-03-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     with pytest.raises(TypeError):
         report.get_layout("RC")  # type: ignore[call-arg]
 
@@ -525,7 +629,11 @@ def test_get_layout_is_keyword_only(data_dir: Path, release_2026q1: Path) -> Non
 
 def test_legacy_naming_resolves(data_dir: Path, release_2003q1: Path) -> None:
     """A legacy-era (pre-2015, no underscore) release directory resolves correctly."""
-    report = FCACallReport(start="2003-03-31", end="2003-03-31", data_dir=data_dir)
+    report = FCACallReport(
+        start="2003-03-31",
+        end="2003-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
     rows = _rows(report.load(schedule="RC"))
     assert rows[0]["UNINUM"] == 610000
     assert rows[0]["TOTASSETS"] == 500000
@@ -546,7 +654,11 @@ def test_load_honors_configured_dataframe_backend(
         "pyarrow": pa.Table,
     }[backend]
     with config_context(dataframe_backend=backend):
-        report = FCACallReport(start="2026-03-31", end="2026-03-31", data_dir=data_dir)
+        report = FCACallReport(
+            start="2026-03-31",
+            end="2026-03-31",
+            transport=LocalDirectoryTransport(data_dir=data_dir),
+        )
         result = report.load(schedule="RC")
     assert isinstance(result, expected_type)
 
@@ -558,6 +670,10 @@ def test_load_honors_lazy_config_for_polars(
     import polars as pl
 
     with config_context(dataframe_backend="polars", lazy=True):
-        report = FCACallReport(start="2026-03-31", end="2026-03-31", data_dir=data_dir)
+        report = FCACallReport(
+            start="2026-03-31",
+            end="2026-03-31",
+            transport=LocalDirectoryTransport(data_dir=data_dir),
+        )
         result = report.load(schedule="RC")
     assert isinstance(result, pl.LazyFrame)

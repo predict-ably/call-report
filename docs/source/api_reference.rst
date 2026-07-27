@@ -74,3 +74,4 @@ parsing an individual layout or data file.
    call_report.fca.institutions.read_institutions
    call_report.fca.transport.FCATransport
    call_report.fca.transport.LocalDirectoryTransport
+   call_report.fca.transport.PackagedArchiveTransport

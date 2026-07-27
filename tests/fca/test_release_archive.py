@@ -13,9 +13,6 @@ edge cases that synthetic fixtures can't reproduce.
 
 from __future__ import annotations
 
-import zipfile
-from pathlib import Path
-
 import pytest
 
 from call_report.exceptions import LayoutParseError, ScheduleNotFoundError
@@ -24,50 +21,36 @@ from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
 from call_report.fca.institutions import INSTITUTIONS_ROOT, read_institutions
 from call_report.fca.layout import FCALayout
 from call_report.fca.reader import read_schedule_file
+from call_report.fca.transport import PackagedArchiveTransport
 from call_report.types import PeriodRange, ReportingPeriod
 
-DATA_ROOT = Path(__file__).resolve().parents[2] / "data" / "fca-call-report"
 ALL_KNOWN_PERIODS = tuple(PeriodRange(start=EARLIEST_PERIOD, end=LATEST_KNOWN_PERIOD))
 
 
 @pytest.fixture(scope="session")
-def extracted_archive_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Extract every archived release zip into its own subdirectory, once per session.
-
-    Each zip is extracted under its own filename stem (e.g. ``"2026March"``),
-    matching the naming `LocalDirectoryTransport` expects of a manually
-    unzipped FCA download.
-
-    Returns
-    -------
-    pathlib.Path
-        The parent directory containing one extracted subdirectory per
-        archived release.
-    """
-    zip_paths = sorted(DATA_ROOT.glob("*.zip"))
-    if not zip_paths:
-        pytest.skip(f"No archived FCA release zips found under {DATA_ROOT}.")
-
-    extract_root = tmp_path_factory.mktemp("fca_archive")
-    for zip_path in zip_paths:
-        with zipfile.ZipFile(zip_path) as archive:
-            archive.extractall(extract_root / zip_path.stem)
-    return extract_root
-
-
-@pytest.fixture(scope="session")
-def archive_report(extracted_archive_dir: Path) -> FCACallReport:
+def archive_report() -> FCACallReport:
     """Build a fetched FCACallReport spanning FCA's entire known release history.
+
+    Uses `PackagedArchiveTransport` against this repository's own checked-in
+    ``data/fca-call-report/`` archive, so this test also serves as an
+    end-to-end regression test of that transport against every real release
+    it ships.
 
     Returns
     -------
     FCACallReport
         Already `fetch`-ed, so `releases_`/`schedules_` are populated.
     """
+    transport = PackagedArchiveTransport()
+    if not transport.archive_root.is_dir():
+        pytest.skip(
+            f"No archived FCA release zips found under {transport.archive_root}."
+        )
+
     report = FCACallReport(
         start=EARLIEST_PERIOD.period_end,
         end=LATEST_KNOWN_PERIOD.period_end,
-        data_dir=extracted_archive_dir,
+        transport=transport,
     )
     report.fetch()
     return report

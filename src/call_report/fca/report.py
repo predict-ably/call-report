@@ -24,7 +24,7 @@ from call_report.fca.enums import FCASchedule, coerce_fca_call_report_schedule
 from call_report.fca.institutions import INSTITUTIONS_ROOT, _read_institutions_frame
 from call_report.fca.layout import FCALayout, parse_layout
 from call_report.fca.reader import _read_schedule_frame
-from call_report.fca.transport import FCATransport, LocalDirectoryTransport
+from call_report.fca.transport import FCATransport
 from call_report.types import PeriodRange, ReportingPeriod
 
 SchemaPolicy = Literal["union", "intersection", "strict"]
@@ -96,18 +96,20 @@ class FCACallReport(BaseCallReport):
     schema_policy : {"union", "intersection", "strict"}, default "union"
         How to reconcile schema differences when stacking multiple
         periods' data together for one schedule.
-    data_dir : str or pathlib.Path, optional
-        A directory containing one already-extracted release subdirectory
-        per period. Used to build a default `LocalDirectoryTransport` when
-        `transport` is not supplied.
-    transport : FCATransport, optional
-        A custom transport for resolving each period's local files.
-        Overrides `data_dir` entirely when supplied.
+    transport : FCATransport
+        The transport used to resolve each period's local files, e.g. a
+        :class:`~call_report.fca.transport.LocalDirectoryTransport` pointed
+        at a directory of already-extracted releases, or a
+        :class:`~call_report.fca.transport.PackagedArchiveTransport` for
+        the historical releases shipped with this repository.
 
     Examples
     --------
+    >>> from call_report.fca.transport import LocalDirectoryTransport
     >>> report = FCACallReport(
-    ...     start="2024-03-31", end="2025-12-31", data_dir="fca_data"
+    ...     start="2024-03-31",
+    ...     end="2025-12-31",
+    ...     transport=LocalDirectoryTransport(data_dir="fca_data"),
     ... )
     >>> report.load(schedule="RCB")  # doctest: +SKIP
     """
@@ -118,13 +120,11 @@ class FCACallReport(BaseCallReport):
         start: str | date,
         end: str | date | None = None,
         schema_policy: SchemaPolicy = "union",
-        data_dir: str | Path | None = None,
-        transport: FCATransport | None = None,
+        transport: FCATransport,
     ) -> None:
         self.start = start
         self.end = end
         self.schema_policy = schema_policy
-        self.data_dir = data_dir
         self.transport = transport
 
     def fetch(self) -> Self:
@@ -151,8 +151,7 @@ class FCACallReport(BaseCallReport):
             If the requested range falls outside FCA's known-published
             bounds.
         DownloadError
-            If no transport is configured, or if every requested period
-            failed to resolve.
+            If every requested period failed to resolve.
         """
         if self.end is None:
             raise InvalidPeriodError(
@@ -167,13 +166,11 @@ class FCACallReport(BaseCallReport):
         construct_fca_download_url(period=periods[0])
         construct_fca_download_url(period=periods[-1])
 
-        transport = self._resolve_transport()
-
         releases: dict[ReportingPeriod, FCAReleaseManifest] = {}
         errors: list[FCAIssue] = []
         for period in periods:
             try:
-                release_dir = transport.resolve(period=period)
+                release_dir = self.transport.resolve(period=period)
             except DownloadError as error:
                 errors.append(FCAIssue(period=period, schedule=None, error=error))
                 continue
@@ -193,33 +190,6 @@ class FCACallReport(BaseCallReport):
         self.schedules_ = _build_schedule_presence_map(releases=releases)
         self.errors_: tuple[FCAIssue, ...] = tuple(errors)
         return self
-
-    def _resolve_transport(self) -> FCATransport:
-        """Return the transport this instance should use.
-
-        An explicit `transport` always wins over `data_dir` when both are
-        supplied.
-
-        Returns
-        -------
-        FCATransport
-            `transport` if supplied; otherwise a `LocalDirectoryTransport`
-            built from `data_dir`.
-
-        Raises
-        ------
-        DownloadError
-            If neither `transport` nor `data_dir` was supplied.
-        """
-        if self.transport is not None:
-            return self.transport
-        if self.data_dir is not None:
-            return LocalDirectoryTransport(data_dir=Path(self.data_dir))
-        raise DownloadError(
-            "No transport configured: pass data_dir=... pointing at a directory of "
-            "already-extracted FCA release folders, or transport=... for a custom "
-            "retrieval strategy. Network downloading is not yet implemented."
-        )
 
     def _ensure_fetched(self) -> None:
         """Call `fetch` if it has not already run.
