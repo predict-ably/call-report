@@ -21,7 +21,7 @@ class FCASchedule(StrEnum):
     --------
     >>> FCASchedule.RCB
     <FCASchedule.RCB: 'RCB'>
-    """
+    """  # numpydoc ignore=PR01
 
     RC = "RC"
     RC1 = "RC1"

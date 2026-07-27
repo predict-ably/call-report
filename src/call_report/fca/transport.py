@@ -23,7 +23,7 @@ class FCATransport(Protocol):
     Any object implementing `resolve` can be passed as an
     `FCACallReport`'s ``transport=`` argument; `LocalDirectoryTransport` is
     the only implementation shipped so far.
-    """
+    """  # numpydoc ignore=PR01
 
     def resolve(self, *, period: ReportingPeriod) -> Path:
         """Return a local directory containing a period's extracted files.
@@ -100,7 +100,7 @@ class LocalDirectoryTransport:
     ...     period=ReportingPeriod.from_period_end(value="2026-03-31")
     ... )  # doctest: +SKIP
     PosixPath('fca_data/2026March')
-    """
+    """  # numpydoc ignore=PR01
 
     data_dir: Path
     dirname_for: Callable[[ReportingPeriod], str] = field(default=_default_dirname)

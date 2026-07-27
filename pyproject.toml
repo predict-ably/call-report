@@ -47,6 +47,9 @@ docs = [
     "sphinx>=7",
     "pydata-sphinx-theme>=0.15",
     "numpydoc>=1.7",
+    "sphinx-copybutton",
+    "sphinx-design>=0.5",
+    "sphinx-issues",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -63,7 +63,7 @@ class ReportingPeriod:
     >>> period = ReportingPeriod.from_period_end(value="2026-03-31")
     >>> period.label
     '2026Q1'
-    """
+    """  # numpydoc ignore=PR01
 
     year: int
     quarter: Quarter

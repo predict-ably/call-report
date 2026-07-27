@@ -15,7 +15,7 @@ class Quarter(IntEnum):
     --------
     >>> Quarter.Q1 < Quarter.Q4
     True
-    """
+    """  # numpydoc ignore=PR01
 
     Q1 = 1
     Q2 = 2
@@ -89,7 +89,7 @@ class Source(StrEnum):
     --------
     >>> Source.FCA
     <Source.FCA: 'FCA'>
-    """
+    """  # numpydoc ignore=PR01
 
     FCA = "FCA"
     FFIEC = "FFIEC"
@@ -107,7 +107,7 @@ class FileKind(StrEnum):
     --------
     >>> FileKind.METADATA
     <FileKind.METADATA: 'METADATA'>
-    """
+    """  # numpydoc ignore=PR01
 
     METADATA = "METADATA"
     DATA = "DATA"

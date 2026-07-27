@@ -59,7 +59,7 @@ class FCALayout:
     trailing_columns : tuple[str, ...]
         Single-occurrence column names appearing after the multi-occurrence
         run. Only ever non-empty for ``"single_multiple_single"``.
-    """
+    """  # numpydoc ignore=PR01
 
     scenario: LayoutScenario
     variables: Any

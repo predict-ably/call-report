@@ -140,7 +140,7 @@ Docs (Sphinx, numpydoc, pydata theme):
 
 ```bash
 pip install -e ".[docs]"
-sphinx-build -b html docs docs/_build/html
+sphinx-build -b html docs/source docs/_build/html
 ```
 
 ## Conventions
