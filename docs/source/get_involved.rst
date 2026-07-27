@@ -20,6 +20,7 @@ Everyone participating is expected to follow our
    get_involved/contributing
    get_involved/code_style
    get_involved/documentation_style
+   get_involved/release_process
 
 .. grid:: 1 2 2 2
     :gutter: 3
@@ -51,6 +52,13 @@ Everyone participating is expected to follow our
         :link-type: doc
 
         Docstring conventions and how to build the docs.
+
+    .. grid-item-card:: Release Process
+        :text-align: left
+        :link: get_involved/release_process
+        :link-type: doc
+
+        Releasing a new version of the package.
 
 .. _code_of_conduct:
 
