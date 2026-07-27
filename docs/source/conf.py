@@ -23,7 +23,7 @@ else:
 
 org = "predict-ably"
 project = "call-report"
-copyright = f"{current_year}, {project} developers (BSD-3 License)"  # noqa: A001
+copyright = f"{current_year}, {project} developers (BSD-3 License)"
 author = f"{project} developers"
 
 release = __version__
