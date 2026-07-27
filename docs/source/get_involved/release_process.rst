@@ -7,32 +7,32 @@ Release Process
 This page walks through cutting a new ``call-report`` release, from bumping
 the version to confirming it is live on PyPI and in the docs.
 
-One-time setup (before the *first* release)
-=============================================
+One-time setup (already completed for this repo)
+===================================================
 
 These are account/repository settings, not something a workflow file can
-do -- confirm each is in place before following the steps below for the
-first time:
+do. They were configured before the first release; listed here for
+reference in case any of them ever need to be recreated (rotating a
+trusted publisher, re-importing the ReadTheDocs project, etc.):
 
 - **TestPyPI trusted publisher.** On the `TestPyPI project settings
-  <https://test.pypi.org/manage/account/publishing/>`_, register a trusted
-  publisher for this repository (``predict-ably/call-report``), workflow
-  file ``publish-test.yml``, and environment name ``testpypi``.
+  <https://test.pypi.org/manage/account/publishing/>`_, a trusted
+  publisher is registered for this repository (``predict-ably/call-report``),
+  workflow file ``publish-test.yml``, and environment name ``testpypi``.
 - **PyPI trusted publisher.** Same as above on `PyPI
   <https://pypi.org/manage/account/publishing/>`_, but workflow file
   ``publish.yml`` and environment name ``pypi``. PyPI supports registering
   a trusted publisher for a project name that hasn't been published yet
-  ("pending" publisher), which is what you want the first time.
+  ("pending" publisher), which is how this one was originally registered
+  before the first release.
 - **GitHub environments.** Under repository Settings → Environments,
-  confirm ``testpypi`` and ``pypi`` exist (they're created automatically
-  the first time a workflow references them, but you may want to add
-  required reviewers to the ``pypi`` environment as an extra safety gate
-  before anything publishes to real PyPI).
-- **ReadTheDocs project.** There is no ReadTheDocs project connected for
-  ``call-report`` yet -- `import the repository
-  <https://readthedocs.org/dashboard/import/>`_ before the first release so
-  tagged versions have somewhere to build to (see
-  :ref:`release_process_docs` below).
+  ``testpypi`` and ``pypi`` exist (they're created automatically the first
+  time a workflow references them; consider adding required reviewers to
+  the ``pypi`` environment as an extra safety gate before anything
+  publishes to real PyPI, if that isn't already in place).
+- **ReadTheDocs project.** The repository is imported on `ReadTheDocs
+  <https://readthedocs.org/dashboard/>`_, so tagged versions build
+  automatically (see :ref:`release_process_docs` below).
 
 Both publish workflows authenticate via `OIDC Trusted Publishing
 <https://docs.pypi.org/trusted-publishers/>`_ -- there are no PyPI/TestPyPI
@@ -170,7 +170,3 @@ for all three jobs to go green.
   switcher dropdown includes and correctly highlights it.
 - Check the GitHub release notes are sensible; edit them by hand if the
   auto-generated summary needs cleanup.
-- Once the package is genuinely installable from PyPI, update the
-  "not yet published to PyPI" language in ``README.md``'s Installation
-  section -- it was written for the pre-release state and should be
-  simplified to just the ``pip install call-report`` instructions.

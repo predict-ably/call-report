@@ -132,9 +132,8 @@ version_match = os.environ.get("READTHEDOCS_VERSION")
 
 # Only fetch the switcher from the live, hosted URL when actually building on
 # ReadTheDocs; every other build (local dev, CI checks pre-deployment) uses
-# the relative in-tree path so it never depends on a remote 404. There is no
-# ReadTheDocs project for call-report yet, so the remote URL would otherwise
-# 404 on every local `make html`.
+# the relative in-tree path so it never depends on a remote fetch that isn't
+# guaranteed to be reachable (or up to date) from an arbitrary build machine.
 if env_rtd == "True":
     json_url = "https://call-report.readthedocs.io/en/latest/_static/switcher.json"
 else:
