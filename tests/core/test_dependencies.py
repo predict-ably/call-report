@@ -1,4 +1,4 @@
-"""Tests for call_report._dependencies (lazy imports and optional deps)."""
+"""Tests for call_report.core._dependencies (lazy imports and optional deps)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from call_report._dependencies import (
+from call_report.core._dependencies import (
     ModuleUpgradeRequiredError,
     _lazy_import,
     _LazyModule,

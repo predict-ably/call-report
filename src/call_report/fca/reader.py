@@ -18,7 +18,7 @@ from typing import Any
 
 import narwhals as nw
 
-from call_report._backend import build_frame, finalize
+from call_report.core._backend import build_frame, finalize
 from call_report.exceptions import LayoutParseError
 from call_report.fca.layout import ENCODING, FCALayout
 

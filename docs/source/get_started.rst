@@ -34,8 +34,8 @@ work and populates trailing-underscore attributes (e.g. ``periods_``).
 
 Two pieces of shared vocabulary are used across every source:
 
-- :class:`~call_report.types.ReportingPeriod` and
-  :class:`~call_report.types.PeriodRange` -- the validated, calendar-quarter
+- :class:`~call_report.core.ReportingPeriod` and
+  :class:`~call_report.core.PeriodRange` -- the validated, calendar-quarter
   vocabulary every request and result is keyed by.
 - :func:`~call_report.config.get_config` / :func:`~call_report.config.set_config`
   -- package-level configuration controlling which dataframe library every

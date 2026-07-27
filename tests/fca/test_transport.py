@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from call_report.core import ReportingPeriod
 from call_report.exceptions import DownloadError
 from call_report.fca.transport import LocalDirectoryTransport, PackagedArchiveTransport
-from call_report.types import ReportingPeriod
 
 REPO_DATA_ROOT = Path(__file__).resolve().parents[2] / "data" / "fca-call-report"
 

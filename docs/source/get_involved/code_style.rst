@@ -74,7 +74,7 @@ Dependency management
   through narwhals, which imports the configured backend lazily; they stay
   optional install extras and are only ever test/dev dependencies.
 - Any other optional dependency must be loaded lazily via the helpers in
-  ``call_report._dependencies`` (``import_optional``, ``_lazy_import``,
+  ``call_report.core._dependencies`` (``import_optional``, ``_lazy_import``,
   ``_LazyModule``) rather than a bare ``import``, following the pattern
   used by `polars' _dependencies.py
   <https://github.com/pola-rs/polars/blob/main/py-polars/src/polars/_dependencies.py>`_.

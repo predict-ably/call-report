@@ -1,4 +1,4 @@
-"""Tests for the source-agnostic period vocabulary (call_report.types)."""
+"""Tests for the source-agnostic period vocabulary (call_report.core)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from datetime import date
 
 import pytest
 
+from call_report.core import PeriodRange, Quarter, ReportingPeriod
 from call_report.exceptions import InvalidPeriodError
-from call_report.types import PeriodRange, Quarter, ReportingPeriod
 
 VALID_QUARTER_ENDS = [
     ("2026-03-31", 2026, Quarter.Q1, 3),

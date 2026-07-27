@@ -9,8 +9,8 @@ from typing import Any, Literal, Self
 
 import narwhals as nw
 
-from call_report._backend import concat, finalize
-from call_report.base import BaseCallReport
+from call_report.core import BaseCallReport, PeriodRange, ReportingPeriod
+from call_report.core._backend import concat, finalize
 from call_report.exceptions import (
     CallReportError,
     DownloadError,
@@ -25,7 +25,6 @@ from call_report.fca.institutions import INSTITUTIONS_ROOT, _read_institutions_f
 from call_report.fca.layout import FCALayout, parse_layout
 from call_report.fca.reader import _read_schedule_frame
 from call_report.fca.transport import FCATransport
-from call_report.types import PeriodRange, ReportingPeriod
 
 SchemaPolicy = Literal["union", "intersection", "strict"]
 

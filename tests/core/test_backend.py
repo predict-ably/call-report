@@ -1,12 +1,12 @@
-"""Tests for the shared narwhals-backed frame helpers (call_report._backend)."""
+"""Tests for the shared narwhals-backed frame helpers (call_report.core._backend)."""
 
 from __future__ import annotations
 
 import narwhals as nw
 import pytest
 
-from call_report._backend import build_frame, concat, finalize
 from call_report.config import config_context
+from call_report.core._backend import build_frame, concat, finalize
 from call_report.exceptions import LayoutParseError
 
 

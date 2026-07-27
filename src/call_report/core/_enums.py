@@ -97,7 +97,7 @@ class Source(StrEnum):
     NCUA = "NCUA"
 
 
-class FileKind(StrEnum):
+class FileType(StrEnum):
     """The kind of file within a call report release.
 
     Used internally to classify each file discovered in a release directory
@@ -105,8 +105,8 @@ class FileKind(StrEnum):
 
     Examples
     --------
-    >>> FileKind.METADATA
-    <FileKind.METADATA: 'METADATA'>
+    >>> FileType.METADATA
+    <FileType.METADATA: 'METADATA'>
     """  # numpydoc ignore=PR01
 
     METADATA = "METADATA"

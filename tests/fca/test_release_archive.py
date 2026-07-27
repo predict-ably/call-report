@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+from call_report.core import PeriodRange, ReportingPeriod
 from call_report.exceptions import LayoutParseError, ScheduleNotFoundError
 from call_report.fca import FCACallReport
 from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
@@ -22,7 +23,6 @@ from call_report.fca.institutions import INSTITUTIONS_ROOT, read_institutions
 from call_report.fca.layout import FCALayout
 from call_report.fca.reader import read_schedule_file
 from call_report.fca.transport import PackagedArchiveTransport
-from call_report.types import PeriodRange, ReportingPeriod
 
 ALL_KNOWN_PERIODS = tuple(PeriodRange(start=EARLIEST_PERIOD, end=LATEST_KNOWN_PERIOD))
 

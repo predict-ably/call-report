@@ -65,8 +65,8 @@ master_doc = "index"
 
 # member-order orders the documentation in the order members are defined in
 # source. inherited-members is deliberately NOT enabled globally: several
-# public classes are StrEnum subclasses (call_report.types.Quarter, Source,
-# FileKind; call_report.fca.FCASchedule), and turning it on documents every
+# public classes are StrEnum subclasses (call_report.core.Quarter, Source,
+# FileType; call_report.fca.FCASchedule), and turning it on documents every
 # inherited str method (count, find, translate, ...) -- numpydoc then tries
 # to validate those built-in docstrings against the numpydoc convention and
 # fails outright (some have no retrievable source at all), crashing the

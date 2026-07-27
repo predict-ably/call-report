@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import overload
 
+from call_report.core._enums import Quarter
 from call_report.exceptions import InvalidPeriodError
-from call_report.types._enums import Quarter
 
 _QUARTER_BY_END_MONTH: dict[int, Quarter] = {
     quarter.last_month: quarter for quarter in Quarter

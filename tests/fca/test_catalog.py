@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
+from call_report.core import ReportingPeriod
 from call_report.exceptions import PeriodNotAvailableError
 from call_report.fca.catalog import (
     EARLIEST_PERIOD,
     LATEST_KNOWN_PERIOD,
     construct_fca_download_url,
 )
-from call_report.types import ReportingPeriod
 
 
 @pytest.mark.parametrize(

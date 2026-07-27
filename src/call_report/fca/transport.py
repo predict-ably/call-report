@@ -16,9 +16,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from call_report.core import ReportingPeriod
 from call_report.exceptions import DownloadError
 from call_report.fca.catalog import construct_fca_download_url
-from call_report.types import ReportingPeriod
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PACKAGED_ARCHIVE_ROOT = _REPO_ROOT / "data" / "fca-call-report"
