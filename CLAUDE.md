@@ -129,7 +129,7 @@ Common commands:
 
 ```bash
 pytest                      # run tests
-pytest --cov=call_report --cov-report=term-missing --cov-fail-under=90
+pytest --cov=call_report --cov-report=term-missing --cov-fail-under=100
 ruff check .                # lint
 ruff format .               # format
 mypy                        # type-check (config targets src and tests)
@@ -140,7 +140,7 @@ Docs (Sphinx, numpydoc, pydata theme):
 
 ```bash
 pip install -e ".[docs]"
-sphinx-build -b html docs docs/_build/html
+sphinx-build -b html docs/source docs/_build/html
 ```
 
 ## Conventions
@@ -153,7 +153,7 @@ sphinx-build -b html docs docs/_build/html
 - **Lint/format** via `ruff` (line length 88, double quotes). The lint rule set is broad
   (includes `E,W,F,I,UP,B,C4,SIM,TID,N,A,S,T20,PTH,RUF,D,Q`) — notably `PTH` (use
   `pathlib` over `os.path`), `S` (bandit security), and `T20` (no stray `print`).
-- **Tests** live in `tests/` and run under `pytest`; branch coverage must stay ≥ 90%.
+- **Tests** live in `tests/` and run under `pytest`; branch coverage must stay at 100%.
   Add tests alongside every new feature.
 - **First-party** import name is `call_report` (underscore); the distribution name is
   `call-report` (hyphen).
@@ -170,10 +170,14 @@ sphinx-build -b html docs docs/_build/html
 - `.pre-commit-config.yaml` — lint/format/type/docstring hooks.
 
 ## Working style
-
-- Prefer small, well-tested increments. You should plan your implementation, then develop basic tests that can be used to check your implementation as it is being created. Then add the implementation and add any advanced testing. Run `ruff`, `mypy`, and `pytest` before
-  considering a change done.
-- Keep runtime dependencies minimal and deliberate; the package currently has none. However, it is acknowledge that the package will depend on a library to fetch data from the web, like requests. It will also require support for Python dataframe libraries.
-- The goal is to support multiple Python dataframe libraries. We should have a package level configuration that lets users indicate the dataframe backend to use. Lets try to use narwhals to support this wherever possible. If we have to manually support multiple Python dataframe libraries, the goal is to make them "soft" dependencies (i.e., optional) and only required if configured to use that library.
-  Discuss before adding a hard runtime dependency.
+- Always run the package's pre-commit routine and tests on proposed code changes to ensure they pass. Run `ruff`, `mypy`, and `pytest` before considering any change done.
+- Fix the underlying issue rather than suppressing a check. Don't reach for `# noqa`, `# type: ignore`, or `# numpydoc ignore` to make a lint/type/docstring failure go away unless the check is genuinely wrong for that line — e.g. two hooks make contradictory demands on the same object (such as ruff's `D418` forbidding docstrings on `@typing.overload` stubs while numpydoc-validation requires one). In that narrow case, prefer the most targeted available suppression (a specific `# numpydoc ignore=<CODE>` over a blanket `# noqa`), and only for the exact object in conflict — not the surrounding code.
+- Use type hints everywhere, and make them precise and well-defined rather than reaching for `Any`. Prefer specific types, generics (`list[str]`, `Mapping[str, int]`), protocols, unions (`X | None`), and type variables that capture the real contract. Only use `Any` when it is genuinely the right choice for that context (e.g. bridging truly dynamic data), and prefer narrowing it as soon as the type is known. The package ships a `py.typed` marker, so its annotations are part of the public contract downstream users type-check against.
+- Prefer small, well-tested increments. You should plan your implementation, then develop basic tests that can be used to check your implementation as it is being created. Then add the implementation and add any advanced testing.
+- Aim for 100% test coverage (branch coverage included); the coverage gate is set to 100%. This is the starting goal for every change: cover the edge cases, error branches, and fallbacks, not just the happy path. Only fall back from 100% when a line is genuinely not meaningfully testable — and in that case exclude it explicitly and narrowly (e.g. `# pragma: no cover` on an `@overload`/`Protocol` stub's `...` body) rather than lowering the gate or leaving real code untested.
+- Keep runtime dependencies minimal and deliberate, and **ask before adding any new dependency** (runtime, optional, or dev). `narwhals` is the one hard runtime third-party dependency currently and the **only** third-party library that may be hard-imported at module scope anywhere in `src/` at this time; any updates must be approved.
+- Every third-party dependency other than `narwhals` must stay optional and must never be hard-imported at module scope in `src/` (test files may import them freely):
+  - **Dataframe backends** (`pandas`, `polars`, `pyarrow`) are reached only through `narwhals` (e.g. `nw.from_dict(data, backend=...)` and `frame.to_native()` in `src/call_report/_backend.py`), which imports the selected backend lazily. They therefore stay optional install extras and are only ever test/dev dependencies.
+  - **Any optional dependency narwhals does not front**  must be loaded lazily via the helpers in `src/call_report/_dependencies.py` — use `import_optional(...)` for an eager, checked import that raises a clear `pip install ...` error when the module is missing or older than a required `min_version`, and `_lazy_import`/`_LazyModule` for a deferred proxy. Reach for these instead of a bare `import`; the module follows polars' `_dependencies.py` pattern (https://github.com/pola-rs/polars/blob/main/py-polars/src/polars/_dependencies.py).
+- The goal is to support multiple Python dataframe libraries via a package-level configuration that lets users choose the dataframe backend; prefer `narwhals` for this wherever possible, and keep any manual multi-library support behind optional ("soft") dependencies required only when that backend is configured.
 - Match existing patterns in the FCA sub-module when extending to other sources.
