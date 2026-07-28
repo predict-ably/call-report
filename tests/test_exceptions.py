@@ -11,6 +11,7 @@ from call_report.exceptions import (
     LayoutParseError,
     PeriodNotAvailableError,
     ScheduleNotFoundError,
+    SchemaError,
 )
 
 
@@ -21,6 +22,7 @@ from call_report.exceptions import (
         PeriodNotAvailableError,
         ScheduleNotFoundError,
         LayoutParseError,
+        SchemaError,
         DownloadError,
     ],
 )

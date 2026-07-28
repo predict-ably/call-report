@@ -16,6 +16,7 @@ you run into trouble getting set up, please open a
    get_involved/developer_installation
    get_involved/contributing
    get_involved/code_style
+   get_involved/design_patterns
    get_involved/documentation_style
    get_involved/release_process
    get_involved/code_of_conduct
@@ -43,6 +44,13 @@ you run into trouble getting set up, please open a
         :link-type: doc
 
         Linting, typing, and testing conventions.
+
+    .. grid-item-card:: Design Patterns
+        :text-align: left
+        :link: get_involved/design_patterns
+        :link-type: doc
+
+        Architectural conventions to follow when adding new code.
 
     .. grid-item-card:: Documentation Style
         :text-align: left

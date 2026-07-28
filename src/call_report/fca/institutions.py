@@ -13,7 +13,7 @@ from typing import Any
 
 import narwhals as nw
 
-from call_report.core._backend import finalize
+from call_report.core._backend import DataFrameType, finalize_as
 from call_report.exceptions import DownloadError
 from call_report.fca._discovery import scan_release
 from call_report.fca.layout import parse_layout
@@ -23,7 +23,9 @@ INSTITUTIONS_ROOT = "INST"
 """str: The root name FCA uses for the institution roster file pair."""
 
 
-def read_institutions(*, release_dir: Path) -> Any:
+def read_institutions(
+    *, release_dir: Path, dataframe_type: DataFrameType | None = None
+) -> Any:
     """Parse a release's institution roster into a native dataframe.
 
     Locates and parses the ``D_INST[_<YEAR>].TXT`` / ``INST...TXT`` file
@@ -33,19 +35,33 @@ def read_institutions(*, release_dir: Path) -> Any:
     ----------
     release_dir : pathlib.Path
         Path to one quarter's extracted release files.
+    dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"}, optional
+        The dataframe type to convert the result to as a final step.
+        Leave this ``None`` (the default) to get back whatever backend
+        `call_report.config.get_config` currently has configured; set it
+        when the next step in your own code needs a specific type -- e.g.
+        this package is configured to use polars, but the code after this
+        call expects a pandas DataFrame. Converted via
+        `call_report.core._backend`'s narwhals-backed
+        `convert_dataframe_type`, which is zero-copy when the requested
+        type already matches.
 
     Returns
     -------
     Any
-        A native dataframe of the configured backend, one row per
-        institution.
+        A native dataframe of the configured backend (or of
+        `dataframe_type`, if supplied), one row per institution.
 
     Raises
     ------
     DownloadError
         If `release_dir` has no matched ``INST`` layout/data file pair.
     """
-    return finalize(frame=_read_institutions_frame(release_dir=release_dir))
+    return finalize_as(
+        frame=_read_institutions_frame(release_dir=release_dir),
+        dataframe_type=dataframe_type,
+    )
 
 
 def _read_institutions_frame(*, release_dir: Path) -> nw.DataFrame[Any]:

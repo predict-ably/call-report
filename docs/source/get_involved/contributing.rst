@@ -24,7 +24,9 @@ Making a change
 1. Create a branch for your change (see :ref:`dev_install`).
 2. Make your change in small, well-tested increments. Add or update tests
    alongside every change -- see :ref:`code_standards` for the project's
-   100% coverage expectation.
+   100% coverage expectation, and :ref:`design_patterns` for the
+   architectural conventions to follow (especially when adding a new
+   source module).
 3. Update any affected docstrings and, if you touched public API, update
    :ref:`api_ref` and this documentation site.
 4. Run the full local check suite (see :ref:`dev_install`) and make sure it

@@ -18,12 +18,14 @@ from typing import Any
 
 import narwhals as nw
 
-from call_report.core._backend import build_frame, finalize
+from call_report.core._backend import DataFrameType, build_frame, finalize_as
 from call_report.exceptions import LayoutParseError
 from call_report.fca.layout import ENCODING, FCALayout
 
 
-def read_schedule_file(*, data_path: Path, layout: FCALayout) -> Any:
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: DataFrameType | None = None
+) -> Any:
     """Parse a schedule's data file into a tidy native dataframe.
 
     The row shape depends on `layout`'s scenario: a ``"single"`` layout
@@ -38,18 +40,33 @@ def read_schedule_file(*, data_path: Path, layout: FCALayout) -> Any:
     layout : FCALayout
         The layout describing `data_path`'s columns, as returned by
         `call_report.fca.layout.parse_layout`.
+    dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"}, optional
+        The dataframe type to convert the result to as a final step.
+        Leave this ``None`` (the default) to get back whatever backend
+        `call_report.config.get_config` currently has configured; set it
+        when the next step in your own code needs a specific type -- e.g.
+        this package is configured to use polars, but the code after this
+        call expects a pandas DataFrame. Converted via
+        `call_report.core._backend`'s narwhals-backed
+        `convert_dataframe_type`, which is zero-copy when the requested
+        type already matches.
 
     Returns
     -------
     Any
-        A native dataframe of the configured backend.
+        A native dataframe of the configured backend, or of
+        `dataframe_type` if it was supplied.
 
     Raises
     ------
     LayoutParseError
         If a row's field count cannot be reconciled with `layout`.
     """
-    return finalize(frame=_read_schedule_frame(data_path=data_path, layout=layout))
+    return finalize_as(
+        frame=_read_schedule_frame(data_path=data_path, layout=layout),
+        dataframe_type=dataframe_type,
+    )
 
 
 def _read_schedule_frame(*, data_path: Path, layout: FCALayout) -> nw.DataFrame[Any]:

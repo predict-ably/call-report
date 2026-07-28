@@ -235,6 +235,37 @@ def test_read_schedule_file_is_keyword_only(tmp_path: Path) -> None:
         read_schedule_file(data_path, layout)  # type: ignore[call-arg]
 
 
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_read_schedule_file_honors_dataframe_type_override(
+    tmp_path: Path, dataframe_type: str
+) -> None:
+    """read_schedule_file() converts its result to `dataframe_type` as a final step."""
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
+
+    expected_type = {
+        "pandas": pd.DataFrame,
+        "pyarrow_table": pa.Table,
+        "polars_dataframe": pl.DataFrame,
+        "polars_lazyframe": pl.LazyFrame,
+    }[dataframe_type]
+    layout_path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    data_path = write_data(
+        tmp_path, root="RC", year=2026, month=3, rows=["6,10,0,3,2026,610000,1000000"]
+    )
+    layout = parse_layout(path=layout_path)
+    result = read_schedule_file(
+        data_path=data_path,
+        layout=layout,
+        dataframe_type=dataframe_type,  # type: ignore[arg-type]
+    )
+    assert isinstance(result, expected_type)
+
+
 def test_cast_non_numeric_value_falls_back_to_string(tmp_path: Path) -> None:
     """A Numeric-typed field holding a non-numeric value is kept as a string."""
     layout_path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
