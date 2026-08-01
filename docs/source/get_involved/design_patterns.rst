@@ -116,8 +116,8 @@ optional ``dataframe_type`` parameter and route through the relevant
 combinator above as its last step, rather than returning ``finalize(...)``
 directly.
 
-Immutable value objects ("wither" methods)
-=============================================
+Immutable value objects
+=======================
 
 Value-like objects (``ReportingPeriod``, ``PeriodRange``, and the schema
 vocabulary ``FieldAttributes``/``FieldSchema``/``FileMetadata``) are
@@ -133,5 +133,5 @@ a "changed" version returns a **new** instance:
 
 Follow the same shape for any new value object: validate invariants once,
 in ``__post_init__`` (dataclasses) or ``__init__`` (hand-written classes),
-and give it "wither" methods that return a new instance rather than
+and give it methods that return a new instance rather than
 exposing setters.
