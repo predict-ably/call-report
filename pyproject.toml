@@ -27,9 +27,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-pandas = ["pandas>=2.0"]
+# pandas-stubs/pyarrow-stubs are included here, not just in dev, because
+# call_report ships a py.typed marker and neither pandas nor pyarrow ships
+# its own (confirmed: no py.typed in either installed distribution) --
+# without the stub package, a downstream user's own mypy run resolves
+# call_report's pandas/pyarrow-typed return values as Any instead of
+# pd.DataFrame/pa.Table. polars ships py.typed itself, so it needs nothing
+# extra.
+pandas = ["pandas>=2.0", "pandas-stubs>=2.0"]
 polars = ["polars>=1.0"]
-pyarrow = ["pyarrow>=15.0"]
+pyarrow = ["pyarrow>=15.0", "pyarrow-stubs>=20.0"]
 dev = [
     "pytest>=8",
     "pytest-cov>=5",
