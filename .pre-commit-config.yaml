@@ -29,13 +29,23 @@ repos:
     hooks:
       - id: mypy
         files: ^src/
+        # Deliberately narrow, unlike this project's own dev/CI test envs:
+        # pre-commit.ci caps a hook environment at 250MiB, and pyarrow +
+        # polars's compiled runtime (polars-runtime-32) alone are >100MiB of
+        # wheels before unpacking -- pulling in the full dataframe stack
+        # here blew that budget (570MiB observed). pandas/pandas-stubs stay
+        # since they're small (pandas-stubs only pulls numpy, not pandas
+        # itself). pyarrow-stubs isn't a true stub-only package -- its own
+        # metadata requires real pyarrow -- so pa.Table/pl.DataFrame/
+        # pl.LazyFrame resolve to Any in *this hook only* (mirrors-mypy's
+        # default --ignore-missing-imports masks them without erroring);
+        # full precision for all four backends still applies wherever it
+        # matters -- local `mypy` runs against the dev extras, and this
+        # project's real test matrix in .github/workflows/test.yml.
         additional_dependencies:
           - narwhals>=1.0
           - pandas>=2.0
           - pandas-stubs>=2.0
-          - polars>=1.0
-          - pyarrow>=15.0
-          - pyarrow-stubs>=20.0
 
   - repo: https://github.com/numpy/numpydoc
     rev: v1.11.0rc0
