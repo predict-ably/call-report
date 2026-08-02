@@ -11,12 +11,13 @@ one period at a time.
 
 from __future__ import annotations
 
+import ast
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, overload
 
 import narwhals as nw
 
@@ -36,8 +37,110 @@ if TYPE_CHECKING:
     import polars as pl
     import pyarrow as pa
 
+    from call_report.core._backend import NativeDataFrame
+
 _FIELD_COLUMNS = ("field_name", "dtype", "definition", "period_start", "period_end")
 _FILE_COLUMNS = ("file_name", *_FIELD_COLUMNS)
+
+
+def _resolve_dtype_node(node: ast.expr) -> Any:
+    """Resolve one AST node from a narwhals dtype repr into a Python value.
+
+    Recursive helper for `_dtype_from_repr`. Handles exactly the node
+    shapes narwhals dtype reprs use: bare dtype names, literals, dict/
+    list/tuple literals for nested dtype arguments (e.g. `Struct`'s field
+    mapping, `Array`'s shape), and constructor calls. Every name is
+    resolved only against narwhals' own dtype classes, not the wider
+    `narwhals` namespace, so no other narwhals API is reachable regardless
+    of the input.
+
+    Parameters
+    ----------
+    node : ast.expr
+        One node from the parsed repr's expression tree.
+
+    Returns
+    -------
+    Any
+        The resolved value: a narwhals dtype class or instance, a literal
+        scalar, or a container of either.
+
+    Raises
+    ------
+    TypeError
+        If `node` is a name that is not a narwhals dtype class, or any
+        node kind not used by narwhals dtype reprs.
+    """
+    if isinstance(node, ast.Name):
+        candidate = getattr(nw, node.id, None)
+        if not (isinstance(candidate, type) and issubclass(candidate, nw.dtypes.DType)):
+            raise TypeError(f"{node.id!r} is not a narwhals dtype.")
+        return candidate
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Dict):
+        resolved_items: dict[Any, Any] = {}
+        for key, value in zip(node.keys, node.values, strict=True):
+            if key is None:
+                raise TypeError("dict unpacking is not a valid dtype repr.")
+            resolved_items[_resolve_dtype_node(key)] = _resolve_dtype_node(value)
+        return resolved_items
+    if isinstance(node, ast.List):
+        return [_resolve_dtype_node(element) for element in node.elts]
+    if isinstance(node, ast.Tuple):
+        return tuple(_resolve_dtype_node(element) for element in node.elts)
+    if isinstance(node, ast.Call):
+        func = _resolve_dtype_node(node.func)
+        args = [_resolve_dtype_node(arg) for arg in node.args]
+        kwargs = {
+            kw.arg: _resolve_dtype_node(kw.value)
+            for kw in node.keywords
+            if kw.arg is not None
+        }
+        return func(*args, **kwargs)
+    raise TypeError(f"unsupported dtype repr syntax: {ast.dump(node)}")
+
+
+def _dtype_from_repr(text: str) -> nw.dtypes.DType:
+    """Reconstruct a narwhals dtype instance from its repr, safely.
+
+    The inverse of ``repr(dtype)`` for any narwhals `DType` (e.g.
+    ``"Int64"``, ``"Datetime(time_unit='us', time_zone='UTC')"``, or a
+    deeply nested ``"Array(List(Struct({'a': Int64})), shape=(2,))"``).
+    Parses `text` as an AST rather than calling `eval`, so no arbitrary
+    code -- or even an arbitrary narwhals API call -- is reachable
+    regardless of what `text` contains.
+
+    Parameters
+    ----------
+    text : str
+        A narwhals dtype's `repr`, as stored by `FieldSchema.to_dataframe`.
+
+    Returns
+    -------
+    narwhals.dtypes.DType
+        The reconstructed dtype instance.
+
+    Raises
+    ------
+    SchemaError
+        If `text` is not a valid narwhals dtype repr.
+    """
+    try:
+        resolved = _resolve_dtype_node(ast.parse(text, mode="eval").body)
+        if isinstance(resolved, type):
+            resolved = resolved()
+    except (
+        SyntaxError,
+        TypeError,
+        AttributeError,
+        ValueError,
+        RecursionError,
+    ) as error:
+        raise SchemaError(f"{text!r} is not a valid narwhals dtype repr.") from error
+    if not isinstance(resolved, nw.dtypes.DType):
+        raise SchemaError(f"{text!r} is not a valid narwhals dtype repr.")
+    return resolved
 
 
 def _backend_context(backend: DataFrameBackend | None) -> AbstractContextManager[None]:
@@ -155,9 +258,13 @@ class FieldAttributes:
     ----------
     name : str
         The field's name, as it appears in the source's layout files.
-    dtype : str
-        The field's declared data type, in the source's own vocabulary
-        (e.g. FCA's ``"Numeric"`` or ``"Alphanum."``).
+    dtype : narwhals.dtypes.DType
+        The field's data type, as an instantiated narwhals dtype (e.g.
+        `narwhals.Int64()`, `narwhals.String()`). Translating a source's
+        own vocabulary (e.g. FCA's ``"Numeric"``/``"Alphanum."``) into a
+        narwhals dtype is that source's own responsibility -- this class
+        is shared across every source, so it only ever deals in narwhals'
+        vocabulary.
     definition : str
         The field's human-readable definition, taken from the source's
         layout file.
@@ -174,10 +281,11 @@ class FieldAttributes:
 
     Examples
     --------
+    >>> import narwhals as nw
     >>> from call_report.core import FieldAttributes, PeriodRange
     >>> uninum = FieldAttributes(
     ...     name="UNINUM",
-    ...     dtype="Numeric",
+    ...     dtype=nw.Int64(),
     ...     definition="System, District, and Association codes concatenated.",
     ...     periods=(PeriodRange(start="2000-03-31", end="2026-03-31"),),
     ... )
@@ -186,7 +294,7 @@ class FieldAttributes:
     """  # numpydoc ignore=PR01
 
     name: str
-    dtype: str
+    dtype: nw.dtypes.DType
     definition: str
     periods: tuple[PeriodRange, ...]
 
@@ -218,10 +326,11 @@ class FieldAttributes:
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, PeriodRange
         >>> field = FieldAttributes(
         ...     name="UNINUM",
-        ...     dtype="Numeric",
+        ...     dtype=nw.Int64(),
         ...     definition="",
         ...     periods=(PeriodRange(start="2000-03-31", end="2005-12-31"),),
         ... )
@@ -244,10 +353,11 @@ class FieldAttributes:
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, PeriodRange
         >>> field = FieldAttributes(
         ...     name="UNINUM",
-        ...     dtype="Numeric",
+        ...     dtype=nw.Int64(),
         ...     definition="",
         ...     periods=(PeriodRange(start="2000-03-31", end="2005-12-31"),),
         ... )
@@ -255,6 +365,233 @@ class FieldAttributes:
         '2005Q4'
         """
         return self.periods[-1][-1]
+
+
+class _ReadOnlySchema(nw.Schema):
+    """A narwhals Schema that rejects in-place mutation after construction.
+
+    Backs `FieldSchema.schema`: a plain `@property` only stops the
+    *attribute* from being reassigned, but `narwhals.Schema` is itself a
+    mutable `OrderedDict` subclass, so without this a caller could still
+    mutate the stored schema in place (e.g. ``field_schema.schema["X"] =
+    ...``). Every dict/`OrderedDict` mutation entry point is overridden to
+    raise, so the returned instance is genuinely read-only -- and since
+    that's enforced by the object's own class rather than by copying on
+    each access, `FieldSchema.schema` can return the same stored instance
+    every time.
+
+    Parameters
+    ----------
+    schema : Mapping[str, narwhals.dtypes.DType] or Iterable[tuple[str, \
+narwhals.dtypes.DType]], optional
+        The column name to dtype mapping to populate, as accepted by
+        `narwhals.Schema`.
+    """
+
+    def __init__(
+        self,
+        schema: Mapping[str, nw.dtypes.DType]
+        | Iterable[tuple[str, nw.dtypes.DType]]
+        | None = None,
+    ) -> None:
+        super().__init__(schema)
+        self._frozen = True
+
+    def __repr__(self) -> str:
+        """Return a repr matching plain `narwhals.Schema`'s own format.
+
+        `OrderedDict.__repr__` reflects the actual runtime class name, which
+        would otherwise print this private wrapper class's name instead of
+        looking like the `narwhals.Schema` it actually is.
+
+        Returns
+        -------
+        str
+            A string of the form ``Schema({'name': DType, ...})``.
+        """
+        return f"Schema({dict(self)!r})"
+
+    def __setitem__(self, key: str, value: nw.dtypes.DType) -> None:
+        """Raise, once frozen; populate normally during construction otherwise.
+
+        `OrderedDict.__init__` populates entries by calling this method, so
+        it cannot unconditionally raise -- `_frozen` is only set once
+        `__init__` finishes, distinguishing initial population from any
+        later mutation attempt.
+
+        Parameters
+        ----------
+        key : str
+            The column name.
+        value : narwhals.dtypes.DType
+            The dtype to associate with `key`.
+
+        Raises
+        ------
+        TypeError
+            If this schema has already finished construction.
+        """
+        if getattr(self, "_frozen", False):
+            raise TypeError("FieldSchema.schema is read-only.")
+        super().__setitem__(key, value)
+
+    def __delitem__(self, key: str) -> None:
+        """Raise; deleting a column would mutate a read-only schema.
+
+        Implements the ``del schema[key]`` statement.
+
+        Parameters
+        ----------
+        key : str
+            The column name that would have been removed.
+
+        Raises
+        ------
+        TypeError
+            Always.
+        """
+        raise TypeError("FieldSchema.schema is read-only.")
+
+    def clear(self) -> None:
+        """Raise; clearing would mutate a read-only schema.
+
+        Implements the ``dict.clear`` method.
+
+        Raises
+        ------
+        TypeError
+            Always.
+        """
+        raise TypeError("FieldSchema.schema is read-only.")
+
+    def pop(self, *args: Any, **kwargs: Any) -> Any:
+        """Raise; popping a column would mutate a read-only schema.
+
+        Implements the ``dict.pop`` method.
+
+        Parameters
+        ----------
+        *args : Any
+            Ignored.
+        **kwargs : Any
+            Ignored.
+
+        Returns
+        -------
+        Any
+            Never returns.
+
+        Raises
+        ------
+        TypeError
+            Always.
+        """
+        raise TypeError("FieldSchema.schema is read-only.")
+
+    def popitem(self, *args: Any, **kwargs: Any) -> Any:
+        """Raise; popping a column would mutate a read-only schema.
+
+        Implements the ``dict.popitem`` method.
+
+        Parameters
+        ----------
+        *args : Any
+            Ignored.
+        **kwargs : Any
+            Ignored.
+
+        Returns
+        -------
+        Any
+            Never returns.
+
+        Raises
+        ------
+        TypeError
+            Always.
+        """
+        raise TypeError("FieldSchema.schema is read-only.")
+
+    def setdefault(self, *args: Any, **kwargs: Any) -> Any:
+        """Raise; inserting a default would mutate a read-only schema.
+
+        Implements the ``dict.setdefault`` method.
+
+        Parameters
+        ----------
+        *args : Any
+            Ignored.
+        **kwargs : Any
+            Ignored.
+
+        Returns
+        -------
+        Any
+            Never returns.
+
+        Raises
+        ------
+        TypeError
+            Always.
+        """
+        raise TypeError("FieldSchema.schema is read-only.")
+
+    def update(self, *args: Any, **kwargs: Any) -> None:
+        """Raise; updating would mutate a read-only schema.
+
+        Implements the ``dict.update`` method.
+
+        Parameters
+        ----------
+        *args : Any
+            Ignored.
+        **kwargs : Any
+            Ignored.
+
+        Raises
+        ------
+        TypeError
+            Always.
+        """
+        raise TypeError("FieldSchema.schema is read-only.")
+
+    def move_to_end(self, *args: Any, **kwargs: Any) -> None:
+        """Raise; reordering would mutate a read-only schema.
+
+        Implements the ``OrderedDict.move_to_end`` method.
+
+        Parameters
+        ----------
+        *args : Any
+            Ignored.
+        **kwargs : Any
+            Ignored.
+
+        Raises
+        ------
+        TypeError
+            Always.
+        """
+        raise TypeError("FieldSchema.schema is read-only.")
+
+    # __or__ is inherited, not redefined here, which trips a known mypy
+    # false positive comparing it against __ior__: python/mypy#11941.
+    def __ior__(self, other: Any) -> NoReturn:  # type: ignore[misc]
+        """Raise; merging in place would mutate a read-only schema.
+
+        Implements the ``|=`` operator.
+
+        Parameters
+        ----------
+        other : Any
+            Ignored.
+
+        Raises
+        ------
+        TypeError
+            Always.
+        """
+        raise TypeError("FieldSchema.schema is read-only.")
 
 
 class FieldSchema(Mapping[str, FieldAttributes]):
@@ -276,10 +613,11 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
     Examples
     --------
+    >>> import narwhals as nw
     >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
     >>> uninum = FieldAttributes(
     ...     name="UNINUM",
-    ...     dtype="Numeric",
+    ...     dtype=nw.Int64(),
     ...     definition="",
     ...     periods=(PeriodRange(start="2000-03-31", end="2026-03-31"),),
     ... )
@@ -301,6 +639,7 @@ class FieldSchema(Mapping[str, FieldAttributes]):
             field.name: field for field in ordered
         }
         self._order: tuple[str, ...] = tuple(names)
+        self._schema = _ReadOnlySchema((field.name, field.dtype) for field in ordered)
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -315,15 +654,46 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> FieldSchema(fields=[field]).names
         ('UNINUM',)
         """
         return self._order
+
+    @property
+    def schema(self) -> nw.Schema:
+        """Return this schema's fields as a narwhals Schema.
+
+        Built once at construction from each field's `name` and `dtype`,
+        so `subset`, `add_fields`, `as_of`, and `from_dataframe` all get an
+        up to date narwhals Schema for free -- they construct their result
+        via `FieldSchema(fields=...)`, which runs this same construction
+        logic. Read-only: the returned object rejects in-place mutation
+        (e.g. item assignment), so it cannot be used to change this
+        schema's fields.
+
+        Returns
+        -------
+        narwhals.Schema
+            An ordered mapping of field name to narwhals dtype.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+        >>> field = FieldAttributes(
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ... )
+        >>> FieldSchema(fields=[field]).schema
+        Schema({'UNINUM': Int64})
+        """
+        return self._schema
 
     def subset(self, *, names: Iterable[str]) -> FieldSchema:
         """Return a new FieldSchema containing only the named fields.
@@ -348,13 +718,14 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> uninum = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> rssd = FieldAttributes(
-        ...     name="RSSD", dtype="Numeric", definition="", periods=(span,)
+        ...     name="RSSD", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> schema = FieldSchema(fields=[uninum, rssd])
         >>> schema.subset(names=["UNINUM"]).names
@@ -400,13 +771,14 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> uninum = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> rssd = FieldAttributes(
-        ...     name="RSSD", dtype="Numeric", definition="", periods=(span,)
+        ...     name="RSSD", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> FieldSchema(fields=[uninum]).add_fields(fields=rssd, index=0).names
         ('RSSD', 'UNINUM')
@@ -443,10 +815,11 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> FieldSchema(fields=[field]).as_of(period="2010-03-31").names
         ('UNINUM',)
@@ -472,7 +845,7 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         *,
         backend: DataFrameBackend | None = None,
         dataframe_type: None = None,
-    ) -> Any:  # numpydoc ignore=GL08
+    ) -> NativeDataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def to_dataframe(
@@ -511,7 +884,7 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         *,
         backend: DataFrameBackend | None = None,
         dataframe_type: DataFrameType | None = None,
-    ) -> Any:
+    ) -> NativeDataFrame:
         """Return this schema as a native dataframe, one row per field span.
 
         A field present across more than one span (i.e. dropped and later
@@ -538,17 +911,23 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
         Returns
         -------
-        Any
+        NativeDataFrame
             A native dataframe with columns ``field_name``, ``dtype``,
             ``definition``, ``period_start``, and ``period_end`` (the last
-            two as ISO ``YYYY-MM-DD`` strings).
+            two as ISO ``YYYY-MM-DD`` strings). ``dtype`` holds each
+            field's narwhals dtype as its `repr` (e.g. ``"Int64"``,
+            ``"Datetime(time_unit='us', time_zone='UTC')"``) -- a plain
+            string, so it round-trips through every backend, including
+            pyarrow, which cannot hold arbitrary Python objects as column
+            values.
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> frame = FieldSchema(fields=[field]).to_dataframe()
         >>> list(frame.columns)
@@ -558,7 +937,7 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         for field in self._ordered_fields:
             for span in field.periods:
                 columns["field_name"].append(field.name)
-                columns["dtype"].append(field.dtype)
+                columns["dtype"].append(repr(field.dtype))
                 columns["definition"].append(field.definition)
                 columns["period_start"].append(span[0].period_end.isoformat())
                 columns["period_end"].append(span[-1].period_end.isoformat())
@@ -585,17 +964,18 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> frame = FieldSchema(fields=[field]).to_dataframe()
         >>> FieldSchema.from_dataframe(data=frame).names
         ('UNINUM',)
         """
         order: list[str] = []
-        dtypes: dict[str, str] = {}
+        dtypes: dict[str, nw.dtypes.DType] = {}
         definitions: dict[str, str] = {}
         spans: dict[str, list[PeriodRange]] = {}
         for row in _rows(data):
@@ -603,7 +983,7 @@ class FieldSchema(Mapping[str, FieldAttributes]):
             if name not in spans:
                 order.append(name)
                 spans[name] = []
-                dtypes[name] = row["dtype"]
+                dtypes[name] = _dtype_from_repr(row["dtype"])
                 definitions[name] = row["definition"]
             spans[name].append(
                 PeriodRange(start=row["period_start"], end=row["period_end"])
@@ -642,10 +1022,11 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> FieldSchema(fields=[field])["UNINUM"] is field
         True
@@ -665,10 +1046,11 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> list(FieldSchema(fields=[field]))
         ['UNINUM']
@@ -687,10 +1069,11 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> len(FieldSchema(fields=[field]))
         1
@@ -709,10 +1092,11 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> FieldSchema(fields=[field])
         FieldSchema(names=('UNINUM',))
@@ -736,7 +1120,7 @@ class FileMetadata:
         One or more chronologically ordered, non-overlapping, non-adjacent
         spans describing when this file was published. More than one span
         means the file was retired and later reintroduced.
-    schema : FieldSchema
+    file_schema : FieldSchema
         The file's fields, keyed by name.
 
     Raises
@@ -747,6 +1131,7 @@ class FileMetadata:
 
     Examples
     --------
+    >>> import narwhals as nw
     >>> from call_report.core import (
     ...     FieldAttributes,
     ...     FieldSchema,
@@ -755,10 +1140,10 @@ class FileMetadata:
     ... )
     >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
     >>> uninum = FieldAttributes(
-    ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+    ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
     ... )
     >>> metadata = FileMetadata(
-    ...     name="RCB", periods=(span,), schema=FieldSchema(fields=[uninum])
+    ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[uninum])
     ... )
     >>> metadata.changed
     False
@@ -766,7 +1151,7 @@ class FileMetadata:
 
     name: str
     periods: tuple[PeriodRange, ...]
-    schema: FieldSchema
+    file_schema: FieldSchema
 
     def __post_init__(self) -> None:
         """Validate that `periods` forms well-ordered, non-overlapping spans.
@@ -798,7 +1183,7 @@ class FileMetadata:
         >>> from call_report.core import FieldSchema, FileMetadata, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> metadata = FileMetadata(
-        ...     name="RCB", periods=(span,), schema=FieldSchema(fields=[])
+        ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[])
         ... )
         >>> metadata.first_period.label
         '2000Q1'
@@ -821,7 +1206,7 @@ class FileMetadata:
         >>> from call_report.core import FieldSchema, FileMetadata, PeriodRange
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> metadata = FileMetadata(
-        ...     name="RCB", periods=(span,), schema=FieldSchema(fields=[])
+        ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[])
         ... )
         >>> metadata.last_period.label
         '2026Q1'
@@ -844,6 +1229,7 @@ class FileMetadata:
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import (
         ...     FieldAttributes,
         ...     FieldSchema,
@@ -853,13 +1239,13 @@ class FileMetadata:
         >>> full = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> partial = PeriodRange(start="2010-03-31", end="2026-03-31")
         >>> added_later = FieldAttributes(
-        ...     name="RSSD", dtype="Numeric", definition="", periods=(partial,)
+        ...     name="RSSD", dtype=nw.Int64(), definition="", periods=(partial,)
         ... )
         >>> schema = FieldSchema(fields=[added_later])
-        >>> FileMetadata(name="RCB", periods=(full,), schema=schema).changed
+        >>> FileMetadata(name="RCB", periods=(full,), file_schema=schema).changed
         True
         """
-        return any(field.periods != self.periods for field in self.schema.values())
+        return any(field.periods != self.periods for field in self.file_schema.values())
 
     def as_of(self, *, period: str | date | ReportingPeriod) -> FileMetadata:
         """Return a new FileMetadata snapshot as of `period`.
@@ -884,6 +1270,7 @@ class FileMetadata:
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import (
         ...     FieldAttributes,
         ...     FieldSchema,
@@ -892,12 +1279,12 @@ class FileMetadata:
         ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> metadata = FileMetadata(
-        ...     name="RCB", periods=(span,), schema=FieldSchema(fields=[field])
+        ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[field])
         ... )
-        >>> metadata.as_of(period="2010-03-31").schema.names
+        >>> metadata.as_of(period="2010-03-31").file_schema.names
         ('UNINUM',)
         """
         resolved = _coerce_period(period)
@@ -910,7 +1297,7 @@ class FileMetadata:
         return FileMetadata(
             name=self.name,
             periods=(PeriodRange(start=resolved, end=resolved),),
-            schema=self.schema.as_of(period=resolved),
+            file_schema=self.file_schema.as_of(period=resolved),
         )
 
     @overload
@@ -919,7 +1306,7 @@ class FileMetadata:
         *,
         backend: DataFrameBackend | None = None,
         dataframe_type: None = None,
-    ) -> Any:  # numpydoc ignore=GL08
+    ) -> NativeDataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def to_dataframe(
@@ -958,7 +1345,7 @@ class FileMetadata:
         *,
         backend: DataFrameBackend | None = None,
         dataframe_type: DataFrameType | None = None,
-    ) -> Any:
+    ) -> NativeDataFrame:
         """Return this file's metadata as a native dataframe.
 
         Built from `FieldSchema.to_dataframe`, with a ``file_name`` column
@@ -987,12 +1374,13 @@ class FileMetadata:
 
         Returns
         -------
-        Any
+        NativeDataFrame
             A native dataframe with columns ``file_name``, ``field_name``,
             ``dtype``, ``definition``, ``period_start``, and ``period_end``.
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import (
         ...     FieldAttributes,
         ...     FieldSchema,
@@ -1001,16 +1389,16 @@ class FileMetadata:
         ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> metadata = FileMetadata(
-        ...     name="RCB", periods=(span,), schema=FieldSchema(fields=[field])
+        ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[field])
         ... )
         >>> frame = metadata.to_dataframe()
         >>> list(frame.columns)
         ['file_name', 'field_name', 'dtype', 'definition', 'period_start', 'period_end']
         """
-        fields_frame = nw.from_native(self.schema.to_dataframe(backend=backend))
+        fields_frame = nw.from_native(self.file_schema.to_dataframe(backend=backend))
         if isinstance(fields_frame, nw.LazyFrame):
             fields_frame = fields_frame.collect()
         fields_frame = fields_frame.with_columns(
@@ -1056,6 +1444,7 @@ class FileMetadata:
 
         Examples
         --------
+        >>> import narwhals as nw
         >>> from call_report.core import (
         ...     FieldAttributes,
         ...     FieldSchema,
@@ -1064,10 +1453,10 @@ class FileMetadata:
         ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype="Numeric", definition="", periods=(span,)
+        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
         ... )
         >>> metadata = FileMetadata(
-        ...     name="RCB", periods=(span,), schema=FieldSchema(fields=[field])
+        ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[field])
         ... )
         >>> frame = metadata.to_dataframe()
         >>> FileMetadata.from_dataframe(data=frame).name
@@ -1098,5 +1487,5 @@ class FileMetadata:
         return cls(
             name=next(iter(file_names)),
             periods=periods,
-            schema=FieldSchema.from_dataframe(data=field_frame),
+            file_schema=FieldSchema.from_dataframe(data=field_frame),
         )
