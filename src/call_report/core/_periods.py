@@ -335,6 +335,12 @@ class PeriodRange(Sequence[ReportingPeriod]):
         -------
         int
             The count of periods, always at least 1.
+
+        Examples
+        --------
+        >>> period_range = PeriodRange(start="2025-09-30", end="2026-03-31")
+        >>> len(period_range)
+        3
         """
         return len(self._periods)
 
@@ -367,6 +373,14 @@ class PeriodRange(Sequence[ReportingPeriod]):
         ReportingPeriod or Sequence[ReportingPeriod]
             A single period for an int index; a `PeriodRange` for a
             contiguous slice; a plain tuple for any other slice.
+
+        Examples
+        --------
+        >>> period_range = PeriodRange(start="2025-09-30", end="2026-03-31")
+        >>> period_range[0]
+        ReportingPeriod(year=2025, quarter=<Quarter.Q3: 3>)
+        >>> period_range[1:]
+        PeriodRange(start='2025Q4', end='2026Q1')
         """
         if isinstance(index, slice):
             selected = self._periods[index]
@@ -385,6 +399,15 @@ class PeriodRange(Sequence[ReportingPeriod]):
         -------
         Iterator[ReportingPeriod]
             An iterator over the periods, earliest first.
+
+        Examples
+        --------
+        >>> period_range = PeriodRange(start="2025-09-30", end="2026-03-31")
+        >>> for period in period_range:
+        ...     period.label
+        '2025Q3'
+        '2025Q4'
+        '2026Q1'
         """
         return iter(self._periods)
 
@@ -402,6 +425,14 @@ class PeriodRange(Sequence[ReportingPeriod]):
         -------
         bool
             ``True`` if `item` is one of this range's periods.
+
+        Examples
+        --------
+        >>> period_range = PeriodRange(start="2025-09-30", end="2026-03-31")
+        >>> ReportingPeriod.from_period_end(value="2025-12-31") in period_range
+        True
+        >>> ReportingPeriod.from_period_end(value="2024-12-31") in period_range
+        False
         """
         return item in self._periods
 
@@ -422,6 +453,15 @@ class PeriodRange(Sequence[ReportingPeriod]):
         bool
             ``True`` if `other` is a `PeriodRange` covering exactly the same
             periods as this one.
+
+        Examples
+        --------
+        >>> a = PeriodRange(start="2025-09-30", end="2026-03-31")
+        >>> b = PeriodRange(start="2025-09-30", end="2026-03-31")
+        >>> a == b
+        True
+        >>> a == PeriodRange(start="2025-09-30", end="2025-12-31")
+        False
         """
         if not isinstance(other, PeriodRange):
             return NotImplemented
@@ -436,5 +476,10 @@ class PeriodRange(Sequence[ReportingPeriod]):
         -------
         str
             A string of the form ``PeriodRange(start='...', end='...')``.
+
+        Examples
+        --------
+        >>> PeriodRange(start="2025-09-30", end="2026-03-31")
+        PeriodRange(start='2025Q3', end='2026Q1')
         """
         return f"PeriodRange(start={self._start.label!r}, end={self._end.label!r})"

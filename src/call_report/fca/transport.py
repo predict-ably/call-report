@@ -103,11 +103,15 @@ class LocalDirectoryTransport:
 
     Examples
     --------
-    >>> transport = LocalDirectoryTransport(data_dir=Path("fca_data"))
-    >>> transport.resolve(
-    ...     period=ReportingPeriod.from_period_end(value="2026-03-31")
-    ... )  # doctest: +SKIP
-    PosixPath('fca_data/2026March')
+    >>> with tempfile.TemporaryDirectory() as tmp:
+    ...     data_dir = Path(tmp)
+    ...     (data_dir / "2026March").mkdir()
+    ...     transport = LocalDirectoryTransport(data_dir=data_dir)
+    ...     resolved = transport.resolve(
+    ...         period=ReportingPeriod.from_period_end(value="2026-03-31")
+    ...     )
+    ...     resolved.name
+    '2026March'
     """  # numpydoc ignore=PR01
 
     data_dir: Path
@@ -177,10 +181,11 @@ class PackagedArchiveTransport:
     Examples
     --------
     >>> transport = PackagedArchiveTransport()
-    >>> transport.resolve(
+    >>> resolved = transport.resolve(
     ...     period=ReportingPeriod.from_period_end(value="2026-03-31")
-    ... )  # doctest: +SKIP
-    PosixPath('/tmp/call_report_fca_.../2026March')
+    ... )
+    >>> resolved.name
+    '2026March'
     """  # numpydoc ignore=PR01
 
     archive_root: Path = field(default_factory=lambda: _PACKAGED_ARCHIVE_ROOT)

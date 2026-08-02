@@ -110,8 +110,14 @@ def parse_layout(*, path: Path) -> FCALayout:
 
     Examples
     --------
-    >>> layout = parse_layout(path=Path("D_RCB.TXT"))  # doctest: +SKIP
-    >>> layout.scenario  # doctest: +SKIP
+    >>> from call_report.core import ReportingPeriod
+    >>> from call_report.fca.transport import PackagedArchiveTransport
+    >>> transport = PackagedArchiveTransport()
+    >>> release_dir = transport.resolve(
+    ...     period=ReportingPeriod.from_period_end(value="2026-03-31")
+    ... )
+    >>> layout = parse_layout(path=release_dir / "D_RCB.TXT")
+    >>> layout.scenario
     'single_multiple'
     """
     raw_text = path.read_bytes().decode(ENCODING)
