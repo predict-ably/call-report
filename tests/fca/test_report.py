@@ -12,6 +12,7 @@ import pytest
 
 from call_report.config import config_context
 from call_report.core import ReportingPeriod
+from call_report.core._backend import DataFrameType
 from call_report.exceptions import (
     DownloadError,
     InvalidPeriodError,
@@ -684,7 +685,7 @@ def test_load_honors_lazy_config_for_polars(
     ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
 )
 def test_load_honors_dataframe_type_override(
-    data_dir: Path, release_2026q1: Path, dataframe_type: str
+    data_dir: Path, release_2026q1: Path, dataframe_type: DataFrameType
 ) -> None:
     """load() converts its result to `dataframe_type` as a final step."""
     import pandas as pd
@@ -702,10 +703,7 @@ def test_load_honors_dataframe_type_override(
         end="2026-03-31",
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
-    result = report.load(
-        schedule="RC",
-        dataframe_type=dataframe_type,  # type: ignore[arg-type]
-    )
+    result = report.load(schedule="RC", dataframe_type=dataframe_type)
     assert isinstance(result, expected_type)
 
 
@@ -730,7 +728,7 @@ def test_load_all_passes_dataframe_type_through_to_every_schedule(
     ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
 )
 def test_load_institutions_honors_dataframe_type_override(
-    data_dir: Path, release_2026q1: Path, dataframe_type: str
+    data_dir: Path, release_2026q1: Path, dataframe_type: DataFrameType
 ) -> None:
     """load_institutions() converts its result to `dataframe_type` as a final step."""
     import pandas as pd
@@ -748,7 +746,5 @@ def test_load_institutions_honors_dataframe_type_override(
         end="2026-03-31",
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
-    result = report.load_institutions(
-        dataframe_type=dataframe_type  # type: ignore[arg-type]
-    )
+    result = report.load_institutions(dataframe_type=dataframe_type)
     assert isinstance(result, expected_type)

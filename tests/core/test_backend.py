@@ -201,7 +201,7 @@ def test_convert_dataframe_type_rejects_unknown_value() -> None:
     with config_context(dataframe_backend="pandas"):
         native = finalize(frame=build_frame(data={"UNINUM": [1]}))
     with pytest.raises(ValueError, match="dataframe_type must be one of"):
-        convert_dataframe_type(data=native, dataframe_type="bogus")  # type: ignore[arg-type]
+        convert_dataframe_type(data=native, dataframe_type="bogus")  # type: ignore[call-overload]
 
 
 def test_convert_dataframe_type_is_keyword_only() -> None:
@@ -209,4 +209,4 @@ def test_convert_dataframe_type_is_keyword_only() -> None:
     with config_context(dataframe_backend="pandas"):
         native = finalize(frame=build_frame(data={"UNINUM": [1]}))
     with pytest.raises(TypeError):
-        convert_dataframe_type(native, None)  # type: ignore[call-arg]
+        convert_dataframe_type(native, None)  # type: ignore[call-overload]

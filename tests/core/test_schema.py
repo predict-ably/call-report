@@ -9,7 +9,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
-from call_report.config import config_context
+from call_report.config import DataFrameBackend, config_context
 from call_report.core import (
     FieldAttributes,
     FieldSchema,
@@ -17,6 +17,7 @@ from call_report.core import (
     PeriodRange,
     ReportingPeriod,
 )
+from call_report.core._backend import DataFrameType
 from call_report.exceptions import PeriodNotAvailableError, SchemaError
 
 FULL_SPAN = PeriodRange(start="2000-03-31", end="2026-03-31")
@@ -362,14 +363,11 @@ _DATAFRAME_TYPE_NATIVE_TYPES: dict[str, type] = {
     [None, "pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
 )
 def test_field_schema_to_dataframe_backend_and_dataframe_type_matrix(
-    backend: str, dataframe_type: str | None
+    backend: DataFrameBackend, dataframe_type: DataFrameType | None
 ) -> None:
     """Every (backend, dataframe_type) combination returns the right output."""
     schema = FieldSchema(fields=[_field("UNINUM")])
-    frame = schema.to_dataframe(
-        backend=backend,  # type: ignore[arg-type]
-        dataframe_type=dataframe_type,  # type: ignore[arg-type]
-    )
+    frame = schema.to_dataframe(backend=backend, dataframe_type=dataframe_type)
     expected_type = (
         _BACKEND_NATIVE_TYPES[backend]
         if dataframe_type is None
@@ -467,16 +465,13 @@ def test_file_metadata_dataframe_round_trip_when_schema_empty() -> None:
     [None, "pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
 )
 def test_file_metadata_to_dataframe_backend_and_dataframe_type_matrix(
-    backend: str, dataframe_type: str | None
+    backend: DataFrameBackend, dataframe_type: DataFrameType | None
 ) -> None:
     """Every (backend, dataframe_type) combination returns the right output."""
     metadata = FileMetadata(
         name="RCB", periods=(FULL_SPAN,), schema=FieldSchema(fields=[_field("UNINUM")])
     )
-    frame = metadata.to_dataframe(
-        backend=backend,  # type: ignore[arg-type]
-        dataframe_type=dataframe_type,  # type: ignore[arg-type]
-    )
+    frame = metadata.to_dataframe(backend=backend, dataframe_type=dataframe_type)
     expected_type = (
         _BACKEND_NATIVE_TYPES[backend]
         if dataframe_type is None

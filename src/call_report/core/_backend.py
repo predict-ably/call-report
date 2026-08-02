@@ -8,12 +8,26 @@ configured via :mod:`call_report.config`.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar, overload
 
 import narwhals as nw
 
 from call_report.config import get_config
 from call_report.exceptions import LayoutParseError
+
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
+
+    NativeDataFrame: TypeAlias = pd.DataFrame | pa.Table | pl.DataFrame | pl.LazyFrame
+    """The closed set of native dataframe types this package converts between.
+
+    Type-checking only -- never imported at runtime, so referencing it here
+    does not make pandas/polars/pyarrow hard dependencies.
+    """
+
+DataFrameT = TypeVar("DataFrameT", bound="NativeDataFrame")
 
 SchemaPolicy = Literal["union", "intersection", "strict"]
 DataFrameType = Literal[
@@ -128,7 +142,7 @@ def concat(
     )
 
 
-def _dataframe_type_of(data: Any) -> DataFrameType:
+def _dataframe_type_of(data: NativeDataFrame) -> DataFrameType:
     """Identify which DataFrameType a native dataframe already is.
 
     Used by :func:`convert_dataframe_type` to short-circuit when `data`
@@ -136,7 +150,7 @@ def _dataframe_type_of(data: Any) -> DataFrameType:
 
     Parameters
     ----------
-    data : Any
+    data : NativeDataFrame
         A native dataframe of any backend narwhals supports.
 
     Returns
@@ -157,7 +171,34 @@ def _dataframe_type_of(data: Any) -> DataFrameType:
     )
 
 
-def convert_dataframe_type(*, data: Any, dataframe_type: DataFrameType | None) -> Any:
+@overload
+def convert_dataframe_type(
+    *, data: DataFrameT, dataframe_type: None
+) -> DataFrameT:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def convert_dataframe_type(
+    *, data: NativeDataFrame, dataframe_type: Literal["pandas"]
+) -> pd.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def convert_dataframe_type(
+    *, data: NativeDataFrame, dataframe_type: Literal["pyarrow_table"]
+) -> pa.Table:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def convert_dataframe_type(
+    *, data: NativeDataFrame, dataframe_type: Literal["polars_dataframe"]
+) -> pl.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def convert_dataframe_type(
+    *, data: NativeDataFrame, dataframe_type: Literal["polars_lazyframe"]
+) -> pl.LazyFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+def convert_dataframe_type(
+    *, data: NativeDataFrame, dataframe_type: DataFrameType | None
+) -> Any:
     """Convert a native dataframe to a specific DataFrameType, if requested.
 
     This is the single point where every public, dataframe-returning method
@@ -169,7 +210,7 @@ def convert_dataframe_type(*, data: Any, dataframe_type: DataFrameType | None) -
 
     Parameters
     ----------
-    data : Any
+    data : NativeDataFrame
         A native dataframe of any backend narwhals supports, built with
         whichever backend the caller used.
     dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
@@ -210,6 +251,31 @@ def convert_dataframe_type(*, data: Any, dataframe_type: DataFrameType | None) -
     return frame.to_polars().lazy()
 
 
+@overload
+def finalize_as(
+    *, frame: nw.DataFrame[Any], dataframe_type: None
+) -> Any:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def finalize_as(
+    *, frame: nw.DataFrame[Any], dataframe_type: Literal["pandas"]
+) -> pd.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def finalize_as(
+    *, frame: nw.DataFrame[Any], dataframe_type: Literal["pyarrow_table"]
+) -> pa.Table:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def finalize_as(
+    *, frame: nw.DataFrame[Any], dataframe_type: Literal["polars_dataframe"]
+) -> pl.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def finalize_as(
+    *, frame: nw.DataFrame[Any], dataframe_type: Literal["polars_lazyframe"]
+) -> pl.LazyFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
 def finalize_as(
     *, frame: nw.DataFrame[Any], dataframe_type: DataFrameType | None
 ) -> Any:

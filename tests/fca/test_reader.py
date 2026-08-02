@@ -16,6 +16,7 @@ from typing import Any
 import narwhals as nw
 import pytest
 
+from call_report.core._backend import DataFrameType
 from call_report.exceptions import LayoutParseError
 from call_report.fca.layout import parse_layout
 from call_report.fca.reader import read_schedule_file
@@ -232,7 +233,7 @@ def test_read_schedule_file_is_keyword_only(tmp_path: Path) -> None:
     )
     layout = parse_layout(path=layout_path)
     with pytest.raises(TypeError):
-        read_schedule_file(data_path, layout)  # type: ignore[call-arg]
+        read_schedule_file(data_path, layout)  # type: ignore[call-overload]
 
 
 @pytest.mark.parametrize(
@@ -240,7 +241,7 @@ def test_read_schedule_file_is_keyword_only(tmp_path: Path) -> None:
     ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
 )
 def test_read_schedule_file_honors_dataframe_type_override(
-    tmp_path: Path, dataframe_type: str
+    tmp_path: Path, dataframe_type: DataFrameType
 ) -> None:
     """read_schedule_file() converts its result to `dataframe_type` as a final step."""
     import pandas as pd
@@ -261,7 +262,7 @@ def test_read_schedule_file_honors_dataframe_type_override(
     result = read_schedule_file(
         data_path=data_path,
         layout=layout,
-        dataframe_type=dataframe_type,  # type: ignore[arg-type]
+        dataframe_type=dataframe_type,
     )
     assert isinstance(result, expected_type)
 

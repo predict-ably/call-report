@@ -10,10 +10,15 @@ from __future__ import annotations
 
 import inspect
 from abc import ABC, abstractmethod
-from typing import Any, Self, final
+from typing import TYPE_CHECKING, Any, Literal, Self, final, overload
 
 from call_report.core._backend import DataFrameType, convert_dataframe_type
 from call_report.core._periods import ReportingPeriod
+
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
 
 _REPR_LINE_LENGTH = 88  # matches this project's configured ruff line-length
 _REPR_INDENT = " " * 4
@@ -97,6 +102,31 @@ class BaseCallReport(ABC):
             A native dataframe of the configured backend.
         """
 
+    @overload
+    def load(
+        self, *, schedule: Any, dataframe_type: None = None
+    ) -> Any:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load(
+        self, *, schedule: Any, dataframe_type: Literal["pandas"]
+    ) -> pd.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load(
+        self, *, schedule: Any, dataframe_type: Literal["pyarrow_table"]
+    ) -> pa.Table:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load(
+        self, *, schedule: Any, dataframe_type: Literal["polars_dataframe"]
+    ) -> pl.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load(
+        self, *, schedule: Any, dataframe_type: Literal["polars_lazyframe"]
+    ) -> pl.LazyFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
     @final
     def load(
         self, *, schedule: Any, dataframe_type: DataFrameType | None = None
@@ -146,6 +176,31 @@ class BaseCallReport(ABC):
             A mapping from schedule to its stacked native dataframe.
         """
 
+    @overload
+    def load_all(
+        self, *, dataframe_type: None = None
+    ) -> dict[Any, Any]:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_all(
+        self, *, dataframe_type: Literal["pandas"]
+    ) -> dict[Any, pd.DataFrame]:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_all(
+        self, *, dataframe_type: Literal["pyarrow_table"]
+    ) -> dict[Any, pa.Table]:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_all(
+        self, *, dataframe_type: Literal["polars_dataframe"]
+    ) -> dict[Any, pl.DataFrame]:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_all(
+        self, *, dataframe_type: Literal["polars_lazyframe"]
+    ) -> dict[Any, pl.LazyFrame]:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
     @final
     def load_all(
         self, *, dataframe_type: DataFrameType | None = None
@@ -193,6 +248,31 @@ class BaseCallReport(ABC):
             A native dataframe of the configured backend.
         """
 
+    @overload
+    def load_institutions(
+        self, *, dataframe_type: None = None
+    ) -> Any:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_institutions(
+        self, *, dataframe_type: Literal["pandas"]
+    ) -> pd.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_institutions(
+        self, *, dataframe_type: Literal["pyarrow_table"]
+    ) -> pa.Table:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_institutions(
+        self, *, dataframe_type: Literal["polars_dataframe"]
+    ) -> pl.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_institutions(
+        self, *, dataframe_type: Literal["polars_lazyframe"]
+    ) -> pl.LazyFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
     @final
     def load_institutions(self, *, dataframe_type: DataFrameType | None = None) -> Any:
         """Load the institution roster, stacked across every requested period.

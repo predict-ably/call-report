@@ -16,7 +16,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import narwhals as nw
 
@@ -30,6 +30,11 @@ from call_report.core._backend import (
 )
 from call_report.core._periods import PeriodRange, ReportingPeriod
 from call_report.exceptions import PeriodNotAvailableError, SchemaError
+
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
 
 _FIELD_COLUMNS = ("field_name", "dtype", "definition", "period_start", "period_end")
 _FILE_COLUMNS = ("file_name", *_FIELD_COLUMNS)
@@ -461,6 +466,46 @@ class FieldSchema(Mapping[str, FieldAttributes]):
             )
         )
 
+    @overload
+    def to_dataframe(
+        self,
+        *,
+        backend: DataFrameBackend | None = None,
+        dataframe_type: None = None,
+    ) -> Any:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_dataframe(
+        self,
+        *,
+        backend: DataFrameBackend | None = None,
+        dataframe_type: Literal["pandas"],
+    ) -> pd.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_dataframe(
+        self,
+        *,
+        backend: DataFrameBackend | None = None,
+        dataframe_type: Literal["pyarrow_table"],
+    ) -> pa.Table:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_dataframe(
+        self,
+        *,
+        backend: DataFrameBackend | None = None,
+        dataframe_type: Literal["polars_dataframe"],
+    ) -> pl.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_dataframe(
+        self,
+        *,
+        backend: DataFrameBackend | None = None,
+        dataframe_type: Literal["polars_lazyframe"],
+    ) -> pl.LazyFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
     def to_dataframe(
         self,
         *,
@@ -868,6 +913,46 @@ class FileMetadata:
             schema=self.schema.as_of(period=resolved),
         )
 
+    @overload
+    def to_dataframe(
+        self,
+        *,
+        backend: DataFrameBackend | None = None,
+        dataframe_type: None = None,
+    ) -> Any:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_dataframe(
+        self,
+        *,
+        backend: DataFrameBackend | None = None,
+        dataframe_type: Literal["pandas"],
+    ) -> pd.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_dataframe(
+        self,
+        *,
+        backend: DataFrameBackend | None = None,
+        dataframe_type: Literal["pyarrow_table"],
+    ) -> pa.Table:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_dataframe(
+        self,
+        *,
+        backend: DataFrameBackend | None = None,
+        dataframe_type: Literal["polars_dataframe"],
+    ) -> pl.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_dataframe(
+        self,
+        *,
+        backend: DataFrameBackend | None = None,
+        dataframe_type: Literal["polars_lazyframe"],
+    ) -> pl.LazyFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
     def to_dataframe(
         self,
         *,

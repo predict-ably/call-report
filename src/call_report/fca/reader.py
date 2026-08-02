@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import narwhals as nw
 
@@ -22,7 +22,37 @@ from call_report.core._backend import DataFrameType, build_frame, finalize_as
 from call_report.exceptions import LayoutParseError
 from call_report.fca.layout import ENCODING, FCALayout
 
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
 
+
+@overload
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: None = None
+) -> Any:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: Literal["pandas"]
+) -> pd.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: Literal["pyarrow_table"]
+) -> pa.Table:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: Literal["polars_dataframe"]
+) -> pl.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: Literal["polars_lazyframe"]
+) -> pl.LazyFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
 def read_schedule_file(
     *, data_path: Path, layout: FCALayout, dataframe_type: DataFrameType | None = None
 ) -> Any:

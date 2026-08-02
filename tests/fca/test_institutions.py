@@ -7,6 +7,7 @@ from pathlib import Path
 import narwhals as nw
 import pytest
 
+from call_report.core._backend import DataFrameType
 from call_report.exceptions import DownloadError
 from call_report.fca.institutions import read_institutions
 from tests.conftest import write_data, write_layout
@@ -63,7 +64,7 @@ def test_read_institutions_is_keyword_only(tmp_path: Path) -> None:
         rows=['6,10,0,3,2026,610000,"X","TX"'],
     )
     with pytest.raises(TypeError):
-        read_institutions(tmp_path)  # type: ignore[call-arg]
+        read_institutions(tmp_path)  # type: ignore[call-overload]
 
 
 @pytest.mark.parametrize(
@@ -71,7 +72,7 @@ def test_read_institutions_is_keyword_only(tmp_path: Path) -> None:
     ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
 )
 def test_read_institutions_honors_dataframe_type_override(
-    tmp_path: Path, dataframe_type: str
+    tmp_path: Path, dataframe_type: DataFrameType
 ) -> None:
     """read_institutions() converts its result to `dataframe_type` as a final step."""
     import pandas as pd
@@ -92,10 +93,7 @@ def test_read_institutions_honors_dataframe_type_override(
         month=3,
         rows=['6,10,0,3,2026,610000,"X","TX"'],
     )
-    result = read_institutions(
-        release_dir=tmp_path,
-        dataframe_type=dataframe_type,  # type: ignore[arg-type]
-    )
+    result = read_institutions(release_dir=tmp_path, dataframe_type=dataframe_type)
     assert isinstance(result, expected_type)
 
 

@@ -9,7 +9,7 @@ it's parsed the same way as any other ``"single"``-scenario schedule.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import narwhals as nw
 
@@ -19,10 +19,40 @@ from call_report.fca._discovery import scan_release
 from call_report.fca.layout import parse_layout
 from call_report.fca.reader import _read_schedule_frame
 
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
+
 INSTITUTIONS_ROOT = "INST"
 """str: The root name FCA uses for the institution roster file pair."""
 
 
+@overload
+def read_institutions(
+    *, release_dir: Path, dataframe_type: None = None
+) -> Any:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_institutions(
+    *, release_dir: Path, dataframe_type: Literal["pandas"]
+) -> pd.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_institutions(
+    *, release_dir: Path, dataframe_type: Literal["pyarrow_table"]
+) -> pa.Table:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_institutions(
+    *, release_dir: Path, dataframe_type: Literal["polars_dataframe"]
+) -> pl.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_institutions(
+    *, release_dir: Path, dataframe_type: Literal["polars_lazyframe"]
+) -> pl.LazyFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
 def read_institutions(
     *, release_dir: Path, dataframe_type: DataFrameType | None = None
 ) -> Any:
