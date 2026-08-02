@@ -142,6 +142,8 @@ mypy                        # type-check (config targets src and tests)
 pre-commit run --all-files  # run the full hook suite
 ```
 
+Both `pytest` commands above also execute every doctest in `src/call_report/**` docstrings (`[tool.pytest.ini_options]` adds `src/call_report` to `testpaths` with `--doctest-modules`). A docstring's `Examples` section is therefore live test code, not illustrative prose: it must actually run and match its shown output. Public classes, functions, and methods need a genuinely working example -- construct real objects and show real (ideally meaningful, not merely illustrative) output rather than a placeholder. Dunder methods (`__repr__`, `__len__`, etc.) don't need their own Examples section -- their behavior is usually already covered by the class's own example or another method's. Prefer `# doctest: +ELLIPSIS` over `# doctest: +SKIP` for output that's correct but inherently variable (a temp path, a memory address); reserve `+SKIP` for examples that truly cannot run in a sandboxed test (e.g. real network access).
+
 Docs (Sphinx, numpydoc, pydata theme):
 
 ```bash

@@ -57,4 +57,7 @@ request:
    mypy
    pre-commit run --all-files
 
+``pytest`` here also runs every doctest in ``src/call_report/**``
+docstrings, not just the tests under ``tests/``.
+
 See :ref:`code_standards` for what each of these checks enforces.

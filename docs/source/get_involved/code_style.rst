@@ -53,6 +53,9 @@ Testing and coverage
 =====================
 
 - Tests live in ``tests/`` and run under ``pytest``.
+- ``pytest`` also runs every doctest in ``src/call_report/**`` docstrings
+  (via ``--doctest-modules``); see :ref:`developer_guide_documentation` for
+  what that means for writing an ``Examples`` section.
 - The coverage gate is set to **100%** (branch coverage included). This is
   the starting goal for every change: cover edge cases and error branches,
   not just the happy path. Add tests alongside every new feature rather

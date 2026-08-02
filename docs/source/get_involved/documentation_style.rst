@@ -14,7 +14,17 @@ Docstring conventions
 
 - Public classes, functions, and methods need a complete docstring: a
   one-line summary, ``Parameters``, ``Returns`` (or ``Yields``), ``Raises``
-  where applicable, and an ``Examples`` section.
+  where applicable, and an ``Examples`` section. Dunder methods (e.g.
+  ``__repr__``, ``__len__``) don't need their own ``Examples`` section --
+  their behavior is usually already covered by the class's own example or
+  another method's.
+- ``Examples`` sections are executed as doctests via ``pytest
+  --doctest-modules`` (see :ref:`code_standards`), not just illustrative
+  prose -- construct real objects and show real output that actually
+  passes. Prefer ``# doctest: +ELLIPSIS`` over ``# doctest: +SKIP`` for
+  output that's correct but inherently variable (a temp path, a memory
+  address); reserve ``+SKIP`` for examples that truly cannot run in a
+  sandboxed test.
 - Test functions (matched by ``^test_``/``\.test_``) and ``__init__.py``
   modules are excluded from validation, since their purpose is already
   clear from their name and module docstring.
