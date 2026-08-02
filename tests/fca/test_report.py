@@ -12,6 +12,7 @@ import pytest
 
 from call_report.config import config_context
 from call_report.core import ReportingPeriod
+from call_report.core._backend import DataFrameType
 from call_report.exceptions import (
     DownloadError,
     InvalidPeriodError,
@@ -677,3 +678,73 @@ def test_load_honors_lazy_config_for_polars(
         )
         result = report.load(schedule="RC")
     assert isinstance(result, pl.LazyFrame)
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_load_honors_dataframe_type_override(
+    data_dir: Path, release_2026q1: Path, dataframe_type: DataFrameType
+) -> None:
+    """load() converts its result to `dataframe_type` as a final step."""
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
+
+    expected_type = {
+        "pandas": pd.DataFrame,
+        "pyarrow_table": pa.Table,
+        "polars_dataframe": pl.DataFrame,
+        "polars_lazyframe": pl.LazyFrame,
+    }[dataframe_type]
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    result = report.load(schedule="RC", dataframe_type=dataframe_type)
+    assert isinstance(result, expected_type)
+
+
+def test_load_all_passes_dataframe_type_through_to_every_schedule(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """load_all() applies `dataframe_type` to every schedule in the result."""
+    import pyarrow as pa
+
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    result = report.load_all(dataframe_type="pyarrow_table")
+    assert result
+    assert all(isinstance(frame, pa.Table) for frame in result.values())
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_load_institutions_honors_dataframe_type_override(
+    data_dir: Path, release_2026q1: Path, dataframe_type: DataFrameType
+) -> None:
+    """load_institutions() converts its result to `dataframe_type` as a final step."""
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
+
+    expected_type = {
+        "pandas": pd.DataFrame,
+        "pyarrow_table": pa.Table,
+        "polars_dataframe": pl.DataFrame,
+        "polars_lazyframe": pl.LazyFrame,
+    }[dataframe_type]
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    result = report.load_institutions(dataframe_type=dataframe_type)
+    assert isinstance(result, expected_type)

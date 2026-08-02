@@ -14,16 +14,50 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import narwhals as nw
 
-from call_report.core._backend import build_frame, finalize
+from call_report.core._backend import DataFrameType, build_frame, finalize_as
 from call_report.exceptions import LayoutParseError
 from call_report.fca.layout import ENCODING, FCALayout
 
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
 
-def read_schedule_file(*, data_path: Path, layout: FCALayout) -> Any:
+    from call_report.core._backend import NativeDataFrame
+
+
+@overload
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: None = None
+) -> NativeDataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: Literal["pandas"]
+) -> pd.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: Literal["pyarrow_table"]
+) -> pa.Table:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: Literal["polars_dataframe"]
+) -> pl.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: Literal["polars_lazyframe"]
+) -> pl.LazyFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+def read_schedule_file(
+    *, data_path: Path, layout: FCALayout, dataframe_type: DataFrameType | None = None
+) -> NativeDataFrame:
     """Parse a schedule's data file into a tidy native dataframe.
 
     The row shape depends on `layout`'s scenario: a ``"single"`` layout
@@ -38,18 +72,33 @@ def read_schedule_file(*, data_path: Path, layout: FCALayout) -> Any:
     layout : FCALayout
         The layout describing `data_path`'s columns, as returned by
         `call_report.fca.layout.parse_layout`.
+    dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"}, optional
+        The dataframe type to convert the result to as a final step.
+        Leave this ``None`` (the default) to get back whatever backend
+        `call_report.config.get_config` currently has configured; set it
+        when the next step in your own code needs a specific type -- e.g.
+        this package is configured to use polars, but the code after this
+        call expects a pandas DataFrame. Converted via
+        `call_report.core._backend`'s narwhals-backed
+        `convert_dataframe_type`, which is zero-copy when the requested
+        type already matches.
 
     Returns
     -------
-    Any
-        A native dataframe of the configured backend.
+    NativeDataFrame
+        A native dataframe of the configured backend, or of
+        `dataframe_type` if it was supplied.
 
     Raises
     ------
     LayoutParseError
         If a row's field count cannot be reconciled with `layout`.
     """
-    return finalize(frame=_read_schedule_frame(data_path=data_path, layout=layout))
+    return finalize_as(
+        frame=_read_schedule_frame(data_path=data_path, layout=layout),
+        dataframe_type=dataframe_type,
+    )
 
 
 def _read_schedule_frame(*, data_path: Path, layout: FCALayout) -> nw.DataFrame[Any]:

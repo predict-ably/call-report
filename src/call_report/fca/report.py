@@ -33,8 +33,8 @@ SchemaPolicy = Literal["union", "intersection", "strict"]
 class FCAReleaseManifest:
     """The resolved files for one period, discovered during `fetch`.
 
-    Internal bookkeeping consulted by `load`, `load_all`,
-    `load_institutions`, and `get_layout` to find each schedule's files.
+    Internal bookkeeping consulted by `_load`, `_load_all`,
+    `_load_institutions`, and `get_layout` to find each schedule's files.
 
     Attributes
     ----------
@@ -208,7 +208,7 @@ class FCACallReport(BaseCallReport):
     ) -> None:
         """Append one issue to `errors_`.
 
-        Used by `load`, `load_all`, and `load_institutions` to record a
+        Used by `_load`, `_load_all`, and `_load_institutions` to record a
         parse-stage failure without aborting the whole call.
 
         Parameters
@@ -225,8 +225,12 @@ class FCACallReport(BaseCallReport):
             FCAIssue(period=period, schedule=schedule, error=error),
         )
 
-    def load(self, *, schedule: FCASchedule | str) -> Any:
+    def _load(self, *, schedule: FCASchedule | str) -> Any:
         """Load one schedule, stacked across every period that has it.
+
+        The `BaseCallReport._load` implementation backing the public,
+        `dataframe_type`-handling `load`; does not apply any conversion
+        itself.
 
         A period+schedule combination that fails to parse is skipped and
         recorded in `errors_` rather than aborting the whole call.
@@ -272,10 +276,14 @@ class FCACallReport(BaseCallReport):
             )
         return finalize(frame=concat(frames=frames, how=self.schema_policy))
 
-    def load_all(self) -> dict[FCASchedule, Any]:
+    def _load_all(self) -> dict[FCASchedule, Any]:
         """Load every schedule discovered across the requested periods.
 
-        A schedule that fails to load entirely (see `load`) is omitted
+        The `BaseCallReport._load_all` implementation backing the public,
+        `dataframe_type`-handling `load_all`; does not apply any
+        conversion itself.
+
+        A schedule that fails to load entirely (see `_load`) is omitted
         from the result rather than aborting the whole call; `errors_`
         still records why.
 
@@ -288,13 +296,17 @@ class FCACallReport(BaseCallReport):
         result: dict[FCASchedule, Any] = {}
         for schedule in self.schedules_:
             try:
-                result[schedule] = self.load(schedule=schedule)
+                result[schedule] = self._load(schedule=schedule)
             except ScheduleNotFoundError:
                 continue
         return result
 
-    def load_institutions(self) -> Any:
+    def _load_institutions(self) -> Any:
         """Load the institution roster, stacked across every requested period.
+
+        The `BaseCallReport._load_institutions` implementation backing the
+        public, `dataframe_type`-handling `load_institutions`; does not
+        apply any conversion itself.
 
         A period whose roster fails to parse is skipped and recorded in
         `errors_` rather than aborting the whole call.
@@ -473,8 +485,8 @@ def _with_period_column(
 ) -> nw.DataFrame[Any]:
     """Attach a ``period`` column holding a period's quarter-end date.
 
-    Used by `load`, `load_all`, and `load_institutions` so every stacked
-    frame can be traced back to which period each row came from.
+    Used by `_load` and `_load_institutions` so every stacked frame can be
+    traced back to which period each row came from.
 
     Parameters
     ----------

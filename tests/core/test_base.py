@@ -26,14 +26,20 @@ class _StubCallReport(BaseCallReport):
     def fetch(self) -> Self:
         return self
 
-    def load(self, *, schedule: Any) -> Any:
-        return None
+    def _load(self, *, schedule: Any) -> Any:
+        import pandas as pd
 
-    def load_all(self) -> dict[Any, Any]:
-        return {}
+        return pd.DataFrame({"schedule": [schedule]})
 
-    def load_institutions(self) -> Any:
-        return None
+    def _load_all(self) -> dict[Any, Any]:
+        import pandas as pd
+
+        return {"RC": pd.DataFrame({"schedule": ["RC"]})}
+
+    def _load_institutions(self) -> Any:
+        import pandas as pd
+
+        return pd.DataFrame({"UNINUM": [1]})
 
     def get_layout(self, *, schedule: Any, period: Any = None) -> Any:
         return None
@@ -80,3 +86,63 @@ def test_get_params_is_keyword_only() -> None:
     stub = _StubCallReport(start="2024-03-31")
     with pytest.raises(TypeError):
         stub.get_params(True)  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# load() / load_all() / load_institutions() -- the @final template methods
+# ---------------------------------------------------------------------------
+
+
+def test_load_delegates_to_load_and_defaults_to_no_conversion() -> None:
+    """load() calls the subclass's _load and returns it unchanged by default."""
+    import pandas as pd
+
+    stub = _StubCallReport(start="2024-03-31")
+    result = stub.load(schedule="RC")
+    assert isinstance(result, pd.DataFrame)
+    assert result["schedule"].tolist() == ["RC"]
+
+
+def test_load_applies_dataframe_type_conversion() -> None:
+    """load() converts _load's result to dataframe_type as its one final step."""
+    import pyarrow as pa
+
+    stub = _StubCallReport(start="2024-03-31")
+    result = stub.load(schedule="RC", dataframe_type="pyarrow_table")
+    assert isinstance(result, pa.Table)
+
+
+def test_load_institutions_delegates_and_defaults_to_no_conversion() -> None:
+    """load_institutions() calls _load_institutions unchanged by default."""
+    import pandas as pd
+
+    stub = _StubCallReport(start="2024-03-31")
+    result = stub.load_institutions()
+    assert isinstance(result, pd.DataFrame)
+
+
+def test_load_institutions_applies_dataframe_type_conversion() -> None:
+    """load_institutions() converts the result to dataframe_type."""
+    import pyarrow as pa
+
+    stub = _StubCallReport(start="2024-03-31")
+    result = stub.load_institutions(dataframe_type="pyarrow_table")
+    assert isinstance(result, pa.Table)
+
+
+def test_load_all_delegates_to_load_all_and_defaults_to_no_conversion() -> None:
+    """load_all() calls the subclass's _load_all and returns it unchanged."""
+    import pandas as pd
+
+    stub = _StubCallReport(start="2024-03-31")
+    result = stub.load_all()
+    assert isinstance(result["RC"], pd.DataFrame)
+
+
+def test_load_all_applies_dataframe_type_conversion_to_every_value() -> None:
+    """load_all() converts every value in the dict to dataframe_type."""
+    import pyarrow as pa
+
+    stub = _StubCallReport(start="2024-03-31")
+    result = stub.load_all(dataframe_type="pyarrow_table")
+    assert isinstance(result["RC"], pa.Table)

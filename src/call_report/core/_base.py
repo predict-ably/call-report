@@ -10,9 +10,17 @@ from __future__ import annotations
 
 import inspect
 from abc import ABC, abstractmethod
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Literal, Self, final, overload
 
+from call_report.core._backend import DataFrameType, convert_dataframe_type
 from call_report.core._periods import ReportingPeriod
+
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
+
+    from call_report.core._backend import NativeDataFrame
 
 _REPR_LINE_LENGTH = 88  # matches this project's configured ruff line-length
 _REPR_INDENT = " " * 4
@@ -75,10 +83,14 @@ class BaseCallReport(ABC):
         """
 
     @abstractmethod
-    def load(self, *, schedule: Any) -> Any:
+    def _load(self, *, schedule: Any) -> NativeDataFrame:
         """Load a single schedule, stacked across every requested period.
 
-        Calls `fetch` automatically first if it has not already run.
+        The internal counterpart of `load`, which every concrete source
+        implements instead of `load` itself: return an already-finalized
+        native dataframe of the configured backend, without applying any
+        `dataframe_type` conversion -- `load` does that centrally, once,
+        after calling this method.
 
         Parameters
         ----------
@@ -88,35 +100,211 @@ class BaseCallReport(ABC):
 
         Returns
         -------
-        Any
+        NativeDataFrame
             A native dataframe of the configured backend.
         """
 
-    @abstractmethod
-    def load_all(self) -> dict[Any, Any]:
-        """Load every schedule discovered across the requested periods.
+    @overload
+    def load(
+        self, *, schedule: Any, dataframe_type: None = None
+    ) -> NativeDataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load(
+        self, *, schedule: Any, dataframe_type: Literal["pandas"]
+    ) -> pd.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load(
+        self, *, schedule: Any, dataframe_type: Literal["pyarrow_table"]
+    ) -> pa.Table:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load(
+        self, *, schedule: Any, dataframe_type: Literal["polars_dataframe"]
+    ) -> pl.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load(
+        self, *, schedule: Any, dataframe_type: Literal["polars_lazyframe"]
+    ) -> pl.LazyFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @final
+    def load(
+        self, *, schedule: Any, dataframe_type: DataFrameType | None = None
+    ) -> NativeDataFrame:
+        """Load a single schedule, stacked across every requested period.
 
-        Equivalent to calling `load` once per schedule returned by
-        `available_schedules` that is actually present in range.
+        Concrete sources implement `_load` rather than this method; `load`
+        itself cannot be overridden, so every source applies `dataframe_type`
+        the same way, in one place.
+
+        Parameters
+        ----------
+        schedule : Any
+            The schedule to load, in whatever form the concrete source
+            accepts (typically an enum member or a case-insensitive name).
+        dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"}, optional
+            The dataframe type to convert the result to as a final step.
+            Leave this ``None`` (the default) to get back whatever backend
+            `call_report.config.get_config` currently has configured; set
+            it when the next step in your own code needs a specific type.
 
         Returns
         -------
-        dict[Any, Any]
+        NativeDataFrame
+            A native dataframe of the configured backend, or of
+            `dataframe_type` if it was supplied.
+        """
+        return convert_dataframe_type(
+            data=self._load(schedule=schedule), dataframe_type=dataframe_type
+        )
+
+    @abstractmethod
+    def _load_all(self) -> dict[Any, NativeDataFrame]:
+        """Load every schedule discovered across the requested periods.
+
+        The internal counterpart of `load_all`, which every concrete
+        source implements instead of `load_all` itself: return a mapping
+        from schedule to an already-finalized native dataframe (typically
+        built by calling `_load` per schedule), without applying any
+        `dataframe_type` conversion -- `load_all` does that centrally,
+        once per value, after calling this method.
+
+        Returns
+        -------
+        dict[Any, NativeDataFrame]
             A mapping from schedule to its stacked native dataframe.
         """
 
-    @abstractmethod
-    def load_institutions(self) -> Any:
-        """Load the institution roster, stacked across every requested period.
+    @overload
+    def load_all(
+        self, *, dataframe_type: None = None
+    ) -> dict[Any, NativeDataFrame]:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_all(
+        self, *, dataframe_type: Literal["pandas"]
+    ) -> dict[Any, pd.DataFrame]:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_all(
+        self, *, dataframe_type: Literal["pyarrow_table"]
+    ) -> dict[Any, pa.Table]:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_all(
+        self, *, dataframe_type: Literal["polars_dataframe"]
+    ) -> dict[Any, pl.DataFrame]:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_all(
+        self, *, dataframe_type: Literal["polars_lazyframe"]
+    ) -> dict[Any, pl.LazyFrame]:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @final
+    def load_all(
+        self, *, dataframe_type: DataFrameType | None = None
+    ) -> dict[Any, Any]:
+        """Load every schedule discovered across the requested periods.
 
-        The roster is handled separately from `load` since it describes
-        institutions themselves rather than a financial schedule.
+        Equivalent to calling `load` once per schedule returned by
+        `available_schedules` that is actually present in range. Concrete
+        sources implement `_load_all` rather than this method; `load_all`
+        itself cannot be overridden, so every source applies
+        `dataframe_type` the same way, in one place.
+
+        Parameters
+        ----------
+        dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"}, optional
+            The dataframe type to convert every result to. Leave this
+            ``None`` (the default) to get back whatever backend
+            `call_report.config.get_config` currently has configured.
 
         Returns
         -------
-        Any
+        dict[Any, NativeDataFrame]
+            A mapping from schedule to its stacked native dataframe.
+        """
+        return {
+            schedule: convert_dataframe_type(data=frame, dataframe_type=dataframe_type)
+            for schedule, frame in self._load_all().items()
+        }
+
+    @abstractmethod
+    def _load_institutions(self) -> NativeDataFrame:
+        """Load the institution roster, stacked across every requested period.
+
+        The internal counterpart of `load_institutions`, which every
+        concrete source implements instead of `load_institutions` itself:
+        return an already-finalized native dataframe of the configured
+        backend, without applying any `dataframe_type` conversion --
+        `load_institutions` does that centrally, once, after calling this
+        method.
+
+        Returns
+        -------
+        NativeDataFrame
             A native dataframe of the configured backend.
         """
+
+    @overload
+    def load_institutions(
+        self, *, dataframe_type: None = None
+    ) -> NativeDataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_institutions(
+        self, *, dataframe_type: Literal["pandas"]
+    ) -> pd.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_institutions(
+        self, *, dataframe_type: Literal["pyarrow_table"]
+    ) -> pa.Table:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_institutions(
+        self, *, dataframe_type: Literal["polars_dataframe"]
+    ) -> pl.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def load_institutions(
+        self, *, dataframe_type: Literal["polars_lazyframe"]
+    ) -> pl.LazyFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @final
+    def load_institutions(
+        self, *, dataframe_type: DataFrameType | None = None
+    ) -> NativeDataFrame:
+        """Load the institution roster, stacked across every requested period.
+
+        The roster is handled separately from `load` since it describes
+        institutions themselves rather than a financial schedule. Concrete
+        sources implement `_load_institutions` rather than this method;
+        `load_institutions` itself cannot be overridden, so every source
+        applies `dataframe_type` the same way, in one place.
+
+        Parameters
+        ----------
+        dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"}, optional
+            The dataframe type to convert the result to as a final step.
+            Leave this ``None`` (the default) to get back whatever backend
+            `call_report.config.get_config` currently has configured; set
+            it when the next step in your own code needs a specific type.
+
+        Returns
+        -------
+        NativeDataFrame
+            A native dataframe of the configured backend, or of
+            `dataframe_type` if it was supplied.
+        """
+        return convert_dataframe_type(
+            data=self._load_institutions(), dataframe_type=dataframe_type
+        )
 
     @abstractmethod
     def get_layout(self, *, schedule: Any, period: Any = None) -> Any:

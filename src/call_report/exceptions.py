@@ -52,6 +52,15 @@ class LayoutParseError(CallReportError):
     """
 
 
+class SchemaError(CallReportError):
+    """A schema or field-metadata object was constructed or modified invalidly.
+
+    Raised for malformed period spans (empty, overlapping, out of order, or
+    adjacent spans that should have been merged), duplicate field names, or
+    an out-of-range field-insertion index.
+    """
+
+
 class DownloadError(CallReportError):
     """A release's files could not be resolved or retrieved.
 
