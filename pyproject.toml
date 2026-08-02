@@ -104,7 +104,16 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-python_version = "3.11"
+# Kept at the lowest version this project's mypy config needs to parse
+# third-party stubs cleanly, not at the lowest version it actually runs on
+# (that's requires-python/the .github/workflows/test.yml matrix, which
+# covers 3.11-3.14 with real interpreters and is the authoritative
+# compatibility gate). numpy's bundled __init__.pyi started using PEP 695
+# `type` statements (3.12+ only) in every release still installable on
+# newer Pythons; mypy refuses to *parse* that syntax below 3.12 even in
+# stubs it's merely reading through, with no per-module override able to
+# rescue a parse-stage failure. 3.11 itself is unaffected either way.
+python_version = "3.12"
 files = ["src", "tests"]
 warn_unused_ignores = true
 warn_redundant_casts = true
