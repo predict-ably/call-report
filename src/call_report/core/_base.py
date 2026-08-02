@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     import polars as pl
     import pyarrow as pa
 
+    from call_report.core._backend import NativeDataFrame
+
 _REPR_LINE_LENGTH = 88  # matches this project's configured ruff line-length
 _REPR_INDENT = " " * 4
 
@@ -81,7 +83,7 @@ class BaseCallReport(ABC):
         """
 
     @abstractmethod
-    def _load(self, *, schedule: Any) -> Any:
+    def _load(self, *, schedule: Any) -> NativeDataFrame:
         """Load a single schedule, stacked across every requested period.
 
         The internal counterpart of `load`, which every concrete source
@@ -98,14 +100,14 @@ class BaseCallReport(ABC):
 
         Returns
         -------
-        Any
+        NativeDataFrame
             A native dataframe of the configured backend.
         """
 
     @overload
     def load(
         self, *, schedule: Any, dataframe_type: None = None
-    ) -> Any:  # numpydoc ignore=GL08
+    ) -> NativeDataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load(
@@ -130,7 +132,7 @@ class BaseCallReport(ABC):
     @final
     def load(
         self, *, schedule: Any, dataframe_type: DataFrameType | None = None
-    ) -> Any:
+    ) -> NativeDataFrame:
         """Load a single schedule, stacked across every requested period.
 
         Concrete sources implement `_load` rather than this method; `load`
@@ -151,7 +153,7 @@ class BaseCallReport(ABC):
 
         Returns
         -------
-        Any
+        NativeDataFrame
             A native dataframe of the configured backend, or of
             `dataframe_type` if it was supplied.
         """
@@ -160,7 +162,7 @@ class BaseCallReport(ABC):
         )
 
     @abstractmethod
-    def _load_all(self) -> dict[Any, Any]:
+    def _load_all(self) -> dict[Any, NativeDataFrame]:
         """Load every schedule discovered across the requested periods.
 
         The internal counterpart of `load_all`, which every concrete
@@ -172,14 +174,14 @@ class BaseCallReport(ABC):
 
         Returns
         -------
-        dict[Any, Any]
+        dict[Any, NativeDataFrame]
             A mapping from schedule to its stacked native dataframe.
         """
 
     @overload
     def load_all(
         self, *, dataframe_type: None = None
-    ) -> dict[Any, Any]:  # numpydoc ignore=GL08
+    ) -> dict[Any, NativeDataFrame]:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load_all(
@@ -223,7 +225,7 @@ class BaseCallReport(ABC):
 
         Returns
         -------
-        dict[Any, Any]
+        dict[Any, NativeDataFrame]
             A mapping from schedule to its stacked native dataframe.
         """
         return {
@@ -232,7 +234,7 @@ class BaseCallReport(ABC):
         }
 
     @abstractmethod
-    def _load_institutions(self) -> Any:
+    def _load_institutions(self) -> NativeDataFrame:
         """Load the institution roster, stacked across every requested period.
 
         The internal counterpart of `load_institutions`, which every
@@ -244,14 +246,14 @@ class BaseCallReport(ABC):
 
         Returns
         -------
-        Any
+        NativeDataFrame
             A native dataframe of the configured backend.
         """
 
     @overload
     def load_institutions(
         self, *, dataframe_type: None = None
-    ) -> Any:  # numpydoc ignore=GL08
+    ) -> NativeDataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load_institutions(
@@ -274,7 +276,9 @@ class BaseCallReport(ABC):
     ) -> pl.LazyFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @final
-    def load_institutions(self, *, dataframe_type: DataFrameType | None = None) -> Any:
+    def load_institutions(
+        self, *, dataframe_type: DataFrameType | None = None
+    ) -> NativeDataFrame:
         """Load the institution roster, stacked across every requested period.
 
         The roster is handled separately from `load` since it describes
@@ -294,7 +298,7 @@ class BaseCallReport(ABC):
 
         Returns
         -------
-        Any
+        NativeDataFrame
             A native dataframe of the configured backend, or of
             `dataframe_type` if it was supplied.
         """

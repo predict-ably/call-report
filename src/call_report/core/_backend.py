@@ -61,7 +61,7 @@ def build_frame(*, data: dict[str, list[Any]]) -> nw.DataFrame[Any]:
     return nw.from_dict(data, backend=backend)
 
 
-def finalize(*, frame: nw.DataFrame[Any]) -> Any:
+def finalize(*, frame: nw.DataFrame[Any]) -> NativeDataFrame:
     """Apply the configured laziness and unwrap to a native frame.
 
     This is the single point where every public, frame-returning function
@@ -75,7 +75,7 @@ def finalize(*, frame: nw.DataFrame[Any]) -> Any:
 
     Returns
     -------
-    Any
+    NativeDataFrame
         A native frame of the configured backend -- eager, or lazy if
         ``lazy=True`` is configured (e.g. a ``polars.LazyFrame``).
     """
@@ -198,7 +198,7 @@ def convert_dataframe_type(
     ...  # pragma: no cover
 def convert_dataframe_type(
     *, data: NativeDataFrame, dataframe_type: DataFrameType | None
-) -> Any:
+) -> NativeDataFrame:
     """Convert a native dataframe to a specific DataFrameType, if requested.
 
     This is the single point where every public, dataframe-returning method
@@ -220,7 +220,7 @@ def convert_dataframe_type(
 
     Returns
     -------
-    Any
+    NativeDataFrame
         `data` converted to `dataframe_type`, or `data` itself if
         `dataframe_type` is ``None`` or already matches.
 
@@ -254,7 +254,7 @@ def convert_dataframe_type(
 @overload
 def finalize_as(
     *, frame: nw.DataFrame[Any], dataframe_type: None
-) -> Any:  # numpydoc ignore=GL08
+) -> NativeDataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
@@ -278,7 +278,7 @@ def finalize_as(
     ...  # pragma: no cover
 def finalize_as(
     *, frame: nw.DataFrame[Any], dataframe_type: DataFrameType | None
-) -> Any:
+) -> NativeDataFrame:
     """Finalize a frame and convert it to a DataFrameType, in one step.
 
     Combines :func:`finalize` and :func:`convert_dataframe_type`, the pair
@@ -297,7 +297,7 @@ def finalize_as(
 
     Returns
     -------
-    Any
+    NativeDataFrame
         The finalized, and if requested converted, native dataframe.
     """
     return convert_dataframe_type(

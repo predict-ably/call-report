@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     import polars as pl
     import pyarrow as pa
 
+    from call_report.core._backend import NativeDataFrame
+
 INSTITUTIONS_ROOT = "INST"
 """str: The root name FCA uses for the institution roster file pair."""
 
@@ -31,7 +33,7 @@ INSTITUTIONS_ROOT = "INST"
 @overload
 def read_institutions(
     *, release_dir: Path, dataframe_type: None = None
-) -> Any:  # numpydoc ignore=GL08
+) -> NativeDataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def read_institutions(
@@ -55,7 +57,7 @@ def read_institutions(
     ...  # pragma: no cover
 def read_institutions(
     *, release_dir: Path, dataframe_type: DataFrameType | None = None
-) -> Any:
+) -> NativeDataFrame:
     """Parse a release's institution roster into a native dataframe.
 
     Locates and parses the ``D_INST[_<YEAR>].TXT`` / ``INST...TXT`` file
@@ -79,7 +81,7 @@ def read_institutions(
 
     Returns
     -------
-    Any
+    NativeDataFrame
         A native dataframe of the configured backend (or of
         `dataframe_type`, if supplied), one row per institution.
 

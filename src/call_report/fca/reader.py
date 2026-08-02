@@ -27,11 +27,13 @@ if TYPE_CHECKING:
     import polars as pl
     import pyarrow as pa
 
+    from call_report.core._backend import NativeDataFrame
+
 
 @overload
 def read_schedule_file(
     *, data_path: Path, layout: FCALayout, dataframe_type: None = None
-) -> Any:  # numpydoc ignore=GL08
+) -> NativeDataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def read_schedule_file(
@@ -55,7 +57,7 @@ def read_schedule_file(
     ...  # pragma: no cover
 def read_schedule_file(
     *, data_path: Path, layout: FCALayout, dataframe_type: DataFrameType | None = None
-) -> Any:
+) -> NativeDataFrame:
     """Parse a schedule's data file into a tidy native dataframe.
 
     The row shape depends on `layout`'s scenario: a ``"single"`` layout
@@ -84,7 +86,7 @@ def read_schedule_file(
 
     Returns
     -------
-    Any
+    NativeDataFrame
         A native dataframe of the configured backend, or of
         `dataframe_type` if it was supplied.
 
