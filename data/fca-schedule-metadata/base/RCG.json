@@ -1,0 +1,365 @@
+{
+  "name": "RCG",
+  "periods": [
+    {
+      "start": "2000-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVACRLNS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrual loans, sales contracts, notes, and leases",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVAIRLNS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued interest receivable (loans)",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVMKTINV": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Securities",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Marketable investments",
+          "period_start": "2004-03-31",
+          "period_end": "2004-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Securities",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Marketable investments",
+          "period_start": "2006-03-31",
+          "period_end": "2008-06-30"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Securities",
+          "period_start": "2008-09-30",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "AVGOEARNASSETS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other Interest-Earning Assets",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVEARNAS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Interest-Earning Assets",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVNONACB": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Nonaccrual loans - Cash basis",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVNONACO": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Nonaccrual loans - Other",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVGFR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Formally Restructured Loans",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "AVDLNASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Direct loans to associations",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "AVNTRECOFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Notes receivable from other FCS institutions",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "AVAQPROP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other property owned",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVRSKAS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Risk-adjusted assets",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "AVASSET": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Assets",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVSYSNTBDS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Systemwide notes and bonds",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVNTPAYOFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Notes payable to other FCS institutions",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVGOBEARLIABS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other Interest-Bearing Liabilities",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVBEARLI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Interest-Bearing Liabilities",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVGLIABS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Liabilities",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVDIRLNBK": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Notes payable/direct loan to district bank",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "AVPRMCAP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Permanent capital",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "AVNWRTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total net worth",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVCORSUR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Core surplus",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "AVTOTSUR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total surplus",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "AvLoanLeaseHeld": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans and leases held for sale",
+          "period_start": "2013-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyInvDebtSecurities": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investments: Debt securities",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyInvEquityFCSI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investments: Equity investments in System institutions and Farmer Mac",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyInvEquityNonFCSI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investments: Equity investments in non-System institutions",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

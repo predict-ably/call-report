@@ -1,0 +1,321 @@
+{
+  "name": "RCR7",
+  "periods": [
+    {
+      "start": "2017-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RegCapCode": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Regulatory Capital Code for risk-weighted assets: 100 Cash and cash balances due from depository institutions or Federal Reserve 210 Federal funds sold 220 Securities purchased under agreement to resell 310 Securities Held-to-Maturity 320 Securities Available-for-Sale 410 On-balance sheet securitization exposures Held-to-Maturity 420 On-balance sheet securitization Available-for-Sale 430 On-balance sheet securitization All other 510 Loans and leases, net of unearned income Retail exposures 520 Loans and leases, net of unearned income Wholesale exposures 600 Loans & Leases Held for Sale 700 All other assets 800 Total On-Balance Sheet Exposures 900 Financial standby letters of credit 1000 Performance standby letters of credit and transaction-related contingent items 1110 Commercial and similar letters of credit Original maturity of 14 months or less 1120 Commercial and similar letters of credit Original maturity exceeding 14 months 1200 Repo-styled transactions 1310 Unused commitments Original maturity of 14 months or less 1320 Unused commitments Original maturity exceeding 14 months 1330 Unused commitments Original Wholesale exposures 1400 Over-the-counter derivatives 1500 Centrally cleared derivatives 1600 Unsettled Transactions 1700 All other off-balance sheet exposures 1800 Total Off-Balance Sheet Exposures 1900 Total On- and Off-Balance Sheet Exposures 2000 Risk Weight Factor 2100 Risk Weighted Assets before deductions",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyCreditExposure": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Exposure Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CreditConvFactor": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "Credit Conversion Factors (CCFs)",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CreditEquil": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Credit Equivalents",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW0Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "0%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW2Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "2%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW4Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "4%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW10Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "10%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW20Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "20%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW50Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "50%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW100Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "100%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW150Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "150%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW600Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "600%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW625Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "625%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW937pt5Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "937.5%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RW1250Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "1250%",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RWSSFACalc": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "SSFA Calculation",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RWGrossUpCalc": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross-up Calculation",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyRWABfrDed": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Risk Weighted Assets before deductions",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailySysEquityInvest": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Add: Intra-System Equity Investments and Other Adjustments under \u00c2\u00a7 628.22(b) (Sch. RC-R.4, line 6(f)+6(g)+6(h)+6(i)-6(j)+9(a)+17(a))",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyTotDedRegCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Less: Total Deductions from Regulatory Capital",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyRWABfrAllowDed": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Risk Weighted Assets before adjusted allowances for credit losses (AACL) deduction",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyAllowRsrvNotTier2": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Less: Amount of AACL not included in Tier 2 Capital",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyRWARegCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Risk Weighted Assets used for Tier 1/Tier 2 capital ratios",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyRWAPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Risk Weighted Assets used for permanent capital ratio",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

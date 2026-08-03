@@ -1,0 +1,191 @@
+{
+  "name": "RCB4",
+  "periods": [
+    {
+      "start": "2018-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "InvEquityAssocInBankPurch": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Invest in Sys. Inst. & Farmer Mac: Association invest. in district bank (Assoc. only):Purchased",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "InvEquityAssocInBankAlloc": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Invest in Sys. Inst. & Farmer Mac: Association invest. in district bank (Assoc. only):Allocated",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "InvEquityBankInAssoc": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Invest in Sys. Inst. & Farmer Mac: Bank invest. in district associations (Banks only)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "InvEquityFarmerMacStk": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Invest in Sys. Inst. & Farmer Mac: Farmer Mac stock",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "InvEquityFCSIOther": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Invest in Sys. Inst. & Farmer Mac: Other",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TotInvEquityFCSI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Invest in Sys. Inst. & Farmer Mac: Total equity invest. in System inst. and Farmer Mac",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "InvEquityNonFCSIRBIC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Investments in non-System Institutions: Rural business investment companies organized under 7 U.S.C.2009cc et seq",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "InvEquityNonFCSIUBEs": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Investments in non-System Institutions: Unincorporated business entities authorized under 611.1150",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "InvEquityNonFCSICaptiveIns": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Investments in non-System Institutions: FCS Association Captive Insurance Company",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "InvEquityNonFCSInvFunds": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Investments in non-System Institutions: Diversified investment funds",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "InvEquityNonFCSIOther": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Investments in non-System Institutions: Other",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TotInvEquityNonFCSI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Investments in non-System Institutions: Total equity investments in non-System institutions",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

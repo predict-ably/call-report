@@ -1,0 +1,181 @@
+{
+  "name": "RCB",
+  "periods": [
+    {
+      "start": "2000-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "INV_CODE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment Code for Marketable Investments: 10 U.S. Treasury securities 11 Other fully insured or guaranteed U.S. Government obligations 12 Other partially insured or guaranteed obligations 20 U.S. Government agency securities 22 Other partially insured or guaranteed obligation 31 General Municipal obligations 33 Industrial development revenue bonds 34 Other 32 Municipal Revenue Bonds 35 International and multilateral Development Bank obligations 40 Federal funds sold 41 Negotiable certificates of Deposit 43 Non-callable term Federal funds and Euro time deposits 50 Securities purchased under resale agreements 52 Money market instruments: commercial paper 60 Banker acceptances 62 Fully insured or guaranteed by U.S. Government \u2013 NEW TITLE 64 Non-Agency Mortgage securities 65 Commercial MBS 66 Agricultural MBS issued or guaranteed by Farmer MAC 68 Fully insured or guaranteed by US GSA 69 Securities partially insured or guaranteed by US Government or GSA 70 Other 80 Total 81 Domestic debt securities 82 Foreign debt securities 85 Diversified investment funds 90 Master Notes 95 Other structured securities \u2013NEW TITLE 100 Pledged securities 141 Credit card receivables 142 Home equity loans 143 Auto Loans 144 Student Loans 145 Equipment loans 146 Manufactured housing loans 150 Securities subject to the 35% regulatory limit 151 Securities included in the liquidity reserve 152 Securities initially purchased for the liquidity reserve, but are no longer eligible to be included in the liquidity reserve 153 Other securities that are not included in the liquidity reserve 154 Cash and securities in liquidity reserve (fair value) 155 Cash and securities in liquidity reserve, discounted in accordance with \u00a7 615.5134 156 Principal portion of obligations maturing within 90 days 157 Total number days liquidity",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Investment Code for Marketable Investments: 10 U.S. Treasury securities 11 Other fully insured or guaranteed U.S. Government obligations 20 U.S. Government agency securities 31 General Municipal obligations 32 Municipal Revenue Bonds 35 International and multilateral Development Bank obligations 40 Federal funds sold 41 Negotiable certificates of Deposit 43 Non-callable term Federal funds and Euro time deposits 50 Securities purchased under resale agreements 52 Money market instruments: commercial paper 60 Banker acceptances 62 U.S. Government issued or guaranteed mortgage securities 63 Mortgage securities issued or guaranteed by FNMA, FHLMC, or other United States Agency 64 Non-Agency Mortgage securities 65 Commercial mortgage-backed securities 66 Mortgage securities issued or guaranteed by Farmer Mac 70 Other 75 Corporate debt securities 80 Total 85 Diversified investment funds 90 Master Notes 95 Asset-backed securities 100 Pledged securities 110 Structured notes",
+          "period_start": "2004-03-31",
+          "period_end": "2004-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Investment Code for Marketable Investments: 10 U.S. Treasury securities 11 Other fully insured or guaranteed U.S. Government obligations 12 Other partially insured or guaranteed obligations 20 U.S. Government agency securities 22 Other partially insured or guaranteed obligation 31 General Municipal obligations 33 Industrial development revenue bonds 34 Other 32 Municipal Revenue Bonds 35 International and multilateral Development Bank obligations 40 Federal funds sold 41 Negotiable certificates of Deposit 43 Non-callable term Federal funds and Euro time deposits 50 Securities purchased under resale agreements 52 Money market instruments: commercial paper 60 Banker acceptances 62 Fully insured or guaranteed by U.S. Government \u2013 NEW TITLE 64 Non-Agency Mortgage securities 65 Commercial MBS 66 Agricultural MBS issued or guaranteed by Farmer MAC 68 Fully insured or guaranteed by US GSA 69 Securities partially insured or guaranteed by US Government or GSA 70 Other 80 Total 81 Domestic debt securities 82 Foreign debt securities 85 Diversified investment funds 90 Master Notes 95 Other structured securities \u2013NEW TITLE 100 Pledged securities 141 Credit card receivables 142 Home equity loans 143 Auto Loans 144 Student Loans 145 Equipment loans 146 Manufactured housing loans 150 Securities subject to the 35% regulatory limit 151 Securities included in the liquidity reserve 152 Securities initially purchased for the liquidity reserve, but are no longer eligible to be included in the liquidity reserve 153 Other securities that are not included in the liquidity reserve 154 Cash and securities in liquidity reserve (fair value) 155 Cash and securities in liquidity reserve, discounted in accordance with \u00a7 615.5134 156 Principal portion of obligations maturing within 90 days 157 Total number days liquidity",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Investment Code for Marketable Investments: 10 U.S. Treasury securities 11 Other fully insured or guaranteed U.S. Government obligations 20 U.S. Government agency securities 31 General Municipal obligations 32 Municipal Revenue Bonds 35 International and multilateral Development Bank obligations 40 Federal funds sold 41 Negotiable certificates of Deposit 43 Non-callable term Federal funds and Euro time deposits 50 Securities purchased under resale agreements 52 Money market instruments: commercial paper 60 Banker acceptances 62 U.S. Government issued or guaranteed mortgage securities 63 Mortgage securities issued or guaranteed by FNMA, FHLMC, or other United States Agency 64 Non-Agency Mortgage securities 65 Commercial mortgage-backed securities 66 Mortgage securities issued or guaranteed by Farmer Mac 70 Other 75 Corporate debt securities 80 Total 85 Diversified investment funds 90 Master Notes 95 Asset-backed securities 100 Pledged securities 110 Structured notes",
+          "period_start": "2006-03-31",
+          "period_end": "2008-06-30"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Investment Code for Marketable Investments: 10 U.S. Treasury securities 11 Other fully insured or guaranteed U.S. Government obligations 12 Other partially insured or guaranteed obligations 20 U.S. Government agency securities 22 Other partially insured or guaranteed obligation 31 General Municipal obligations 33 Industrial development revenue bonds 34 Other 32 Municipal Revenue Bonds 35 International and multilateral Development Bank obligations 40 Federal funds sold 41 Negotiable certificates of Deposit 43 Non-callable term Federal funds and Euro time deposits 50 Securities purchased under resale agreements 52 Money market instruments: commercial paper 60 Banker acceptances 62 Fully insured or guaranteed by U.S. Government \u2013 NEW TITLE 64 Non-Agency Mortgage securities 65 Commercial MBS 66 Agricultural MBS issued or guaranteed by Farmer MAC 68 Fully insured or guaranteed by US GSA 69 Securities partially insured or guaranteed by US Government or GSA 70 Other 80 Total 81 Domestic debt securities 82 Foreign debt securities 85 Diversified investment funds 90 Master Notes 95 Other structured securities \u2013NEW TITLE 100 Pledged securities 141 Credit card receivables 142 Home equity loans 143 Auto Loans 144 Student Loans 145 Equipment loans 146 Manufactured housing loans 150 Securities subject to the 35% regulatory limit 151 Securities included in the liquidity reserve 152 Securities initially purchased for the liquidity reserve, but are no longer eligible to be included in the liquidity reserve 153 Other securities that are not included in the liquidity reserve 154 Cash and securities in liquidity reserve (fair value) 155 Cash and securities in liquidity reserve, discounted in accordance with \u00a7 615.5134 156 Principal portion of obligations maturing within 90 days 157 Total number days liquidity",
+          "period_start": "2008-09-30",
+          "period_end": "2012-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Investment Code for Marketable Investments: 10 U.S. Treasury securities 11 Other fully insured or guaranteed U.S. Government obligations 12 Other partially insured or guaranteed obligations 20 U.S. Government agency securities 22 Other partially insured or guaranteed obligation 31 General Municipal obligations 33 Industrial development revenue bonds 34 Other 32 Municipal Revenue Bonds 35 International and multilateral Development Bank obligations 40 Federal funds sold 41 Negotiable certificates of Deposit 43 Non-callable term Federal funds and Euro time deposits 50 Securities purchased under resale agreements 52 Money market instruments: commercial paper 60 Banker acceptances 62 Fully insured or guaranteed by U.S. Government \u2013 NEW TITLE 64 Non-Agency Mortgage securities 65 Commercial MBS 66 Agricultural MBS issued or guaranteed by Farmer MAC 68 Fully insured or guaranteed by US GSA 69 Securities partially insured or guaranteed by US Government or GSA 70 Other 80 Total 81 Domestic debt securities 82 Foreign debt securities 85 Diversified investment funds 90 Master Notes 95 Other structured securities \u2013NEW TITLE 100 Pledged securities 141 Credit card receivables 142 Home equity loans 143 Auto Loans 144 Student Loans 145 Equipment loans 146 Manufactured housing loans 150 Securities subject to the 35% regulatory limit (\u00a7 615.5132) 151 Securities included in the liquidity reserve and supplemental liquidity buffer 152 Securities removed from the liquidity reserve and supplemental liquidity buffer due to noncompliance with \u00a7615.5134(e) or \u00a7615.5143 153 Securities held for other purposes 154 Assets in liquidity reserve or supplemental liquidity buffer (fair value) 155 Assets in liquidity reserve or supplemental liquidity buffer, discounted in accordance with \u00a7 615.5134 156 Principal portion of obligations maturing within 90 days 157 Total Days of Liquidity 158 Investment purposes (banks only, or as otherwise required by the FCA): Total 171 Days of liquidity provided by Level 1 assets 172 Days of liquidity provided by Level 2 assets 173 Days of liquidity provided by Level 3 assets 174 Days of liquidity provided by supplemental buffer assets",
+          "period_start": "2013-03-31",
+          "period_end": "2014-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Investment Code for Marketable Investments: 10 U.S. Treasury securities 15 SBA securities 17 Other U.S. Gov\u2019t securities and Agency(excluding MBS) 25 Securities fully and unconditionally guaranteed by a GSE (excluding MBS and Farmer Mac securities) 29 Municipal securities 35 International and multilateral development bank obligations 40 Money market instruments:Federal funds sold 41 Money market instruments:Negotiable certificates of Deposit 60 Money market instruments:Banker acceptances 52 Money market instruments:Commercial paper 50 Money market instruments:Reverse repurchase agreements 51 Money market instruments:Other 62 RMBS fully and unconditionally guaranteed by U.S. government or its agencies 68 RMBS fully and unconditionally guaranteed by GSE 64 Non-Agency RMBS 69 Other RMBS 71 CMBS(excl. Farmer Mac sec.):CMBS fully and unconditionally guaranteed by U.S. government 72 CMBS(excl. Farmer Mac sec.):CMBS fully and unconditionally guaranteed by GSE 73 CMBS(excl. Farmer Mac sec.):Non-Agency CMBS 65 CMBS(excl. Farmer Mac sec.):Other CMBS 86 Farmer Mac guaranteed sec.:Farm and ranch securities (i.e., AMBS) 87 Farmer Mac guaranteed sec.:Rural utility securities 88 Farmer Mac guaranteed sec.:USDA securities 66 Farmer Mac guaranteed sec.:Other Farmer Mac debt securities 141 ABS(excl. Farmer Mac securities):Credit card receivables 142 ABS(excl. Farmer Mac securities):Home equity loans 143 ABS(excl. Farmer Mac securities):Auto Loans 144 ABS(excl. Farmer Mac securities):Student Loans 145 ABS(excl. Farmer Mac securities):Equipment loans 146 ABS(excl. Farmer Mac securities):Manufactured housing loans 95 ABS(excl. Farmer Mac securities):Other ABS 81 Other types of debt securities:Domestic debt securities 82 Other types of debt securities:Foreign debt securities 180 Allowance for Credit Losses on Debt Securities(start collecting on March 2023) 99 Total Debt Securities",
+          "period_start": "2015-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BKVAL": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Amortized cost of Marketable Investments",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MKTVAL": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Fair Value of Marketable Investments",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BKVALFORSALE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Available for Sale - Amortized cost",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Available for Sale - Amortized cost",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Available for Sale - Amortized cost",
+          "period_start": "2008-09-30",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MKTVALFORSALE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Available for Sale - Fair Value",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Available for Sale - Fair Value",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Available for Sale - Fair Value",
+          "period_start": "2008-09-30",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

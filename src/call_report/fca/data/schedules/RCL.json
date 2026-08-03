@@ -1,0 +1,161 @@
+{
+  "name": "RCL",
+  "periods": [
+    {
+      "start": "2000-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NONACRBBAL": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Nonaccrual Loans-Beginning Balance",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TRANSNONACRN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross Amounts Transferred into Nonaccrual",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CHGOFFNONACR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Chargeoffs on Nonaccrual Loans",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TRANSACQPROPN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Transfers to Other Property Owned",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "REINSTTONONACR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Reinstatements to Accrual Status",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RECOVNONACR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Recoveries on Nonaccrual Loans",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "REPAYNONACR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Repayments on Nonaccrual Loans",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ONONACR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other Nonaccrual Loans",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NONACR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Nonaccrual Loans-Ending Balance",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

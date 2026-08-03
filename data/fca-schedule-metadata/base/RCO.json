@@ -1,0 +1,131 @@
+{
+  "name": "RCO",
+  "periods": [
+    {
+      "start": "2000-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSET_CODE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Code for Asset Type: 10 Loan participations: Purchased 20 Loan participations: Sold 30 Similar entity transactions: Acquired 40 Similar entity transactions: Sold 50 Lease interest purchases and sales: Purchased 60 Lease interest purchases and sales: Sold 70 Other asset purchases and sales: Purchased 80 Other asset purchases and sales: Sold 90 Participations in Notes Receivables: Purchased 100 Participations in Notes Receivables: Sold 110 Asset Purchases and Sales - Certain Pool Items: Purchased 120 Asset Purchases and Sales - Certain Pool Items: Sold",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Code for Asset Type: 10 Loan participations: Purchased 20 Loan participations: Sold 30 Similar entity transactions: Acquired 40 Similar entity transactions: Sold 50 Lease interest purchases and sales: Purchased 60 Lease interest purchases and sales: Sold 70 Other asset purchases and sales: Purchased 80 Other asset purchases and sales: Sold 90 Participations in Notes Receivables: Purchased 100 Participations in Notes Receivables: Sold",
+          "period_start": "2004-03-31",
+          "period_end": "2004-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Code for Asset Type: 10 Loan participations: Purchased 20 Loan participations: Sold 30 Similar entity transactions: Acquired 40 Similar entity transactions: Sold 50 Lease interest purchases and sales: Purchased 60 Lease interest purchases and sales: Sold 70 Other asset purchases and sales: Purchased 80 Other asset purchases and sales: Sold 90 Participations in Notes Receivables: Purchased 100 Participations in Notes Receivables: Sold 110 Asset Purchases and Sales - Certain Pool Items: Purchased 120 Asset Purchases and Sales - Certain Pool Items: Sold",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Code for Asset Type: 10 Loan participations: Purchased 20 Loan participations: Sold 30 Similar entity transactions: Acquired 40 Similar entity transactions: Sold 50 Lease interest purchases and sales: Purchased 60 Lease interest purchases and sales: Sold 70 Other asset purchases and sales: Purchased 80 Other asset purchases and sales: Sold 90 Participations in Notes Receivables: Purchased 100 Participations in Notes Receivables: Sold",
+          "period_start": "2006-03-31",
+          "period_end": "2011-09-30"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Code for Asset Type: 10 Loan participations: Purchased 20 Loan participations: Sold 30 Similar entity transactions: Acquired 40 Similar entity transactions: Sold 50 Lease interest purchases and sales: Purchased 60 Lease interest purchases and sales: Sold 70 Other asset purchases and sales: Purchased 80 Other asset purchases and sales: Sold 90 Participations in Notes Receivables: Purchased 100 Participations in Notes Receivables: Sold 110 Asset Purchases and Sales - Certain Pool Items: Purchased 120 Asset Purchases and Sales - Certain Pool Items: Sold",
+          "period_start": "2011-12-31",
+          "period_end": "2012-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Code for Asset Type: 10 Loan participations: Purchased 20 Loan participations: Sold 30 Similar entity transactions: Acquired On Interest Held 40 Similar entity transactions: Sold 50 Lease interest purchases and sales: Purchased 60 Lease interest purchases and sales: Sold 70 Other asset purchases and sales: Purchased 80 Other asset purchases and sales: Sold 90 Participations in Notes Receivables: Purchased 100 Participations in Notes Receivables: Sold 110 Asset Purchases and Sales - Certain Pool Items: Purchased 120 Asset Purchases and Sales - Certain Pool Items: Sold",
+          "period_start": "2013-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TRANSWFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Amortized cost",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TRANSWNONFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Fair Value",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

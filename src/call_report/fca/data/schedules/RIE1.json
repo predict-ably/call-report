@@ -1,0 +1,111 @@
+{
+  "name": "RIE1",
+  "periods": [
+    {
+      "start": "2023-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2023-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2023-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2023-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2023-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2023-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2023-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ACLCode": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Code for Allowances for Credit Losses 10 Allowances for Credit Losses, beginning of period. 20 Net increase (or decrease (-)) resulting from provision for credit losses (current period) 30 Less: Charge-offs: 40 Less: Write-downs arising from transfer of financial assets 50 Recoveries 60 Other 70 Allowances for credit losses, end of period",
+          "period_start": "2023-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ACLLoanLease": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans,Leases, etc. (1)",
+          "period_start": "2023-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ACLHTMDebtSec": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Held-to-Maturity Debt Securities",
+          "period_start": "2023-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ACLAFSDebtSec": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Available-for-Sale Debt Securities",
+          "period_start": "2023-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}
