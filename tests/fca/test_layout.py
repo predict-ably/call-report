@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import narwhals as nw
 import pytest
 
 from call_report.exceptions import LayoutParseError
-from call_report.fca.layout import parse_layout
+from call_report.fca.layout import infer_field_dtype, parse_layout
 from tests.conftest import write_layout
 from tests.fca.conftest import INST_LINES, RC_LINES_7COL, RCB_LINES, RCR7_LINES
 
@@ -142,3 +143,24 @@ def test_parse_layout_skips_incomplete_variable_line(tmp_path: Path) -> None:
     names = [row["name"] for row in layout.variables_as_dicts()]
     assert "BAZ" not in names
     assert layout.scenario == "single"
+
+
+def test_infer_field_dtype_numeric_whole_number_is_int64() -> None:
+    """Numeric with decimal_position 0 maps to Int64."""
+    assert infer_field_dtype(var_type="Numeric", decimal_position=0) == nw.Int64()
+
+
+def test_infer_field_dtype_numeric_with_decimals_is_float64() -> None:
+    """Numeric with a nonzero decimal_position maps to Float64."""
+    assert infer_field_dtype(var_type="Numeric", decimal_position=2) == nw.Float64()
+
+
+def test_infer_field_dtype_alphanum_is_string() -> None:
+    """Alphanum. maps to String, regardless of decimal_position."""
+    assert infer_field_dtype(var_type="Alphanum.", decimal_position=0) == nw.String()
+
+
+def test_infer_field_dtype_is_keyword_only() -> None:
+    """infer_field_dtype takes no positional arguments."""
+    with pytest.raises(TypeError):
+        infer_field_dtype("Numeric", 0)  # type: ignore[call-arg]
