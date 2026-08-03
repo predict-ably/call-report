@@ -102,6 +102,68 @@ Load the institution roster:
 
    institutions = report.load_institutions()
 
+Schedule metadata
+==================
+
+Alongside the data itself, ``call-report`` ships canonical, cross-time
+metadata for every FCA schedule: field names, narwhals dtypes,
+human-readable definitions, and the exact periods each field has
+actually been present for -- generated from FCA's own published
+archives, not hand-maintained. Look a schedule's metadata up with
+:func:`~call_report.fca.get_fca_file_metadata`:
+
+.. code-block:: python
+
+   from call_report.fca import FCASchedule, get_fca_file_metadata
+
+   metadata = get_fca_file_metadata(schedule=FCASchedule.RCF1)
+   metadata.file_schema.names
+   # ('SYSTEM', 'DIST', 'ASSOC', 'MONTH', 'YEAR', 'UNINUM', 'LOANSTATUS',
+   #  'ACCR', 'ACCRPDUE', 'FRMREST', 'NONCSH', 'NONOTH', 'TOTPERF')
+
+These are exactly the columns you get back from ``report.load(schedule=...)``
+-- the loader adds one column of its own, ``period``, identifying which
+quarter each row came from; it isn't part of the schedule's own field
+metadata:
+
+.. code-block:: python
+
+   report = FCACallReport(
+       start="2025-03-31", end="2025-03-31", transport=PackagedArchiveTransport()
+   )
+   rcf1 = report.load(schedule="RCF1")
+   list(rcf1.columns)
+   # ['SYSTEM', 'DIST', 'ASSOC', 'MONTH', 'YEAR', 'UNINUM', 'LOANSTATUS',
+   #  'ACCR', 'ACCRPDUE', 'FRMREST', 'NONCSH', 'NONOTH', 'TOTPERF', 'period']
+
+A field's metadata is more than just its name. ``LOANSTATUS`` holds a
+numeric code identifying each row's loan-performance category (its actual
+values in ``rcf1`` are plain integers, e.g. ``100``, ``105``, ``155``);
+the metadata's `definition` documents what those codes mean, and its
+`dtype` matches the column's real, loaded type:
+
+.. code-block:: python
+
+   loanstatus = metadata.file_schema["LOANSTATUS"]
+   loanstatus.versions[-1].dtype
+   # Int64
+   rcf1["LOANSTATUS"].dtype
+   # dtype('int64')
+
+A field's metadata can also carry more than one version: FCA revised
+``LOANSTATUS``'s own code list in 2015 (splitting code ``155`` into a new
+``152``/``155`` pair), with no gap in the field's presence -- `as_of`
+recovers whichever definition applied at a given quarter:
+
+.. code-block:: python
+
+   len(loanstatus.versions)
+   # 2
+   metadata.file_schema.as_of(period="2010-03-31")["LOANSTATUS"].versions[0].definition
+   # "...150 Discounted loans to OFIs 155 Other loans 160 Total"
+   metadata.file_schema.as_of(period="2020-03-31")["LOANSTATUS"].versions[0].definition
+   # "...150 Discounted loans to OFIs 152 Other loans 155 Total"
+
 Choosing a dataframe backend
 -----------------------------
 
