@@ -66,7 +66,8 @@ packages = ["src/call_report"]
 path = "src/call_report/__init__.py"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "src/call_report"]
+addopts = ["--doctest-modules"]
 
 [tool.ruff]
 line-length = 88

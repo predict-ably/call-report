@@ -104,13 +104,15 @@ class FCACallReport(BaseCallReport):
 
     Examples
     --------
-    >>> from call_report.fca.transport import LocalDirectoryTransport
+    >>> from call_report.fca.transport import PackagedArchiveTransport
     >>> report = FCACallReport(
-    ...     start="2024-03-31",
-    ...     end="2025-12-31",
-    ...     transport=LocalDirectoryTransport(data_dir="fca_data"),
+    ...     start="2026-03-31",
+    ...     end="2026-03-31",
+    ...     transport=PackagedArchiveTransport(),
     ... )
-    >>> report.load(schedule="RCB")  # doctest: +SKIP
+    >>> frame = report.load(schedule="RCB")
+    >>> frame.shape
+    (2240, 12)
     """
 
     def __init__(
@@ -151,6 +153,19 @@ class FCACallReport(BaseCallReport):
             bounds.
         DownloadError
             If every requested period failed to resolve.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> report.fetch() is report
+        True
+        >>> report.periods_
+        PeriodRange(start='2026Q1', end='2026Q1')
         """
         if self.end is None:
             raise InvalidPeriodError(
@@ -373,6 +388,18 @@ class FCACallReport(BaseCallReport):
         ScheduleNotFoundError
             If `schedule` is not present for the requested period (or, if
             `period` was omitted, for any period in range).
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> layout = report.get_layout(schedule="RCB", period="2026-03-31")
+        >>> layout.scenario
+        'single_multiple'
         """
         self._ensure_fetched()
         schedule_enum = coerce_fca_call_report_schedule(value=schedule)
@@ -420,6 +447,20 @@ class FCACallReport(BaseCallReport):
         -------
         tuple[ReportingPeriod, ...]
             The known-available periods, oldest first.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> periods = report.available_periods()
+        >>> periods[0].label
+        '2000Q1'
+        >>> periods[-1].label
+        '2026Q1'
         """
         from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
 
@@ -434,6 +475,20 @@ class FCACallReport(BaseCallReport):
         -------
         tuple[FCASchedule, ...]
             Every `FCASchedule` member.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> schedules = report.available_schedules()
+        >>> len(schedules)
+        37
+        >>> schedules[:3]
+        (<FCASchedule.RC: 'RC'>, <FCASchedule.RC1: 'RC1'>, <FCASchedule.RCB: 'RCB'>)
         """
         return tuple(FCASchedule)
 
@@ -453,6 +508,17 @@ class FCACallReport(BaseCallReport):
         -------
         tuple[ReportingPeriod, ...]
             The subset of `periods_` that have `schedule`.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> report.periods_available(schedule="RCB")
+        (ReportingPeriod(year=2026, quarter=<Quarter.Q1: 1>),)
         """
         self._ensure_fetched()
         schedule_enum = coerce_fca_call_report_schedule(value=schedule)
@@ -474,6 +540,17 @@ class FCACallReport(BaseCallReport):
         -------
         tuple[ReportingPeriod, ...]
             The subset of `periods_` that do not have `schedule`.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> report.periods_missing(schedule="RCB")
+        ()
         """
         self._ensure_fetched()
         available = set(self.periods_available(schedule=schedule))

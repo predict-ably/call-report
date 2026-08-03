@@ -65,6 +65,19 @@ class BaseCallReport(ABC):
     constructor parameters verbatim as identically-named attributes (doing
     no validation work in ``__init__``, per the sklearn estimator
     convention), and implement the abstract methods below.
+
+    Examples
+    --------
+    >>> from call_report.core import BaseCallReport
+    >>> from call_report.fca import FCACallReport
+    >>> from call_report.fca.transport import PackagedArchiveTransport
+    >>> report = FCACallReport(
+    ...     start="2026-03-31",
+    ...     end="2026-03-31",
+    ...     transport=PackagedArchiveTransport(),
+    ... )
+    >>> isinstance(report, BaseCallReport)
+    True
     """
 
     @abstractmethod
@@ -80,6 +93,18 @@ class BaseCallReport(ABC):
         -------
         Self
             This instance, to support method chaining.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCACallReport
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> report.fetch() is report
+        True
         """
 
     @abstractmethod
@@ -156,6 +181,19 @@ class BaseCallReport(ABC):
         NativeDataFrame
             A native dataframe of the configured backend, or of
             `dataframe_type` if it was supplied.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCACallReport
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> frame = report.load(schedule="RCB")
+        >>> frame.shape
+        (2240, 12)
         """
         return convert_dataframe_type(
             data=self._load(schedule=schedule), dataframe_type=dataframe_type
@@ -227,6 +265,19 @@ class BaseCallReport(ABC):
         -------
         dict[Any, NativeDataFrame]
             A mapping from schedule to its stacked native dataframe.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCACallReport
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> frames = report.load_all()
+        >>> len(frames)
+        35
         """
         return {
             schedule: convert_dataframe_type(data=frame, dataframe_type=dataframe_type)
@@ -301,6 +352,19 @@ class BaseCallReport(ABC):
         NativeDataFrame
             A native dataframe of the configured backend, or of
             `dataframe_type` if it was supplied.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCACallReport
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> institutions = report.load_institutions()
+        >>> institutions.shape
+        (64, 13)
         """
         return convert_dataframe_type(
             data=self._load_institutions(), dataframe_type=dataframe_type
@@ -328,6 +392,19 @@ class BaseCallReport(ABC):
         Any
             A single layout object, or a mapping of period to layout,
             depending on whether `period` was supplied.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCACallReport
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> layout = report.get_layout(schedule="RCB", period="2026-03-31")
+        >>> layout.scenario
+        'single_multiple'
         """
 
     @abstractmethod
@@ -342,6 +419,19 @@ class BaseCallReport(ABC):
         -------
         tuple[ReportingPeriod, ...]
             The known-available periods, oldest first.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCACallReport
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> periods = report.available_periods()
+        >>> periods[0].label
+        '2000Q1'
         """
 
     @abstractmethod
@@ -355,6 +445,18 @@ class BaseCallReport(ABC):
         -------
         tuple[Any, ...]
             The known schedules, in whatever form the concrete source uses.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCACallReport
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> len(report.available_schedules())
+        37
         """
 
     def get_params(self, *, deep: bool = True) -> dict[str, Any]:
@@ -375,6 +477,20 @@ class BaseCallReport(ABC):
         -------
         dict[str, Any]
             A mapping from constructor parameter name to its current value.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCACallReport
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> report.get_params()["start"]
+        '2026-03-31'
+        >>> sorted(report.get_params())
+        ['end', 'schema_policy', 'start', 'transport']
         """
         del deep
         signature = inspect.signature(type(self).__init__)
@@ -402,6 +518,20 @@ class BaseCallReport(ABC):
         ------
         ValueError
             If a name in `params` is not a valid constructor parameter.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCACallReport
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> report.set_params(schema_policy="strict") is report
+        True
+        >>> report.schema_policy
+        'strict'
         """
         valid_names = set(self.get_params())
         unknown = sorted(set(params) - valid_names)
@@ -424,5 +554,22 @@ class BaseCallReport(ABC):
         -------
         str
             A string of the form ``ClassName(param1=value1, param2=value2)``.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCACallReport
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> report  # doctest: +ELLIPSIS
+        FCACallReport(
+            start='2026-03-31',
+            end='2026-03-31',
+            schema_policy='union',
+            transport=PackagedArchiveTransport(...),
+        )
         """
         return _format_repr(class_name=type(self).__name__, params=self.get_params())
