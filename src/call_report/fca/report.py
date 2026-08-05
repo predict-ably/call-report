@@ -11,7 +11,13 @@ from typing import TYPE_CHECKING, Any, Literal, Self, overload
 import narwhals as nw
 
 from call_report.core import BaseCallReport, PeriodRange, ReportingPeriod
-from call_report.core._backend import DataFrameType, concat, finalize, finalize_as
+from call_report.core._backend import (
+    DataFrameType,
+    FrameOrLazy,
+    concat,
+    finalize,
+    finalize_as,
+)
 from call_report.exceptions import (
     CallReportError,
     DownloadError,
@@ -675,7 +681,12 @@ class FCACallReport(BaseCallReport):
         Loads each resolved schedule via `_load`, determines its code
         column (if any) from its layout in its first available period,
         then delegates the melt/concat/pivot work to
-        `call_report.fca._reshape.to_wide_format`.
+        `call_report.fca._reshape.to_wide_format`. A schedule loaded lazy
+        (``lazy=True`` configured, polars backend) is passed through as
+        a `narwhals.LazyFrame` rather than collected here -- the melt and
+        concat steps stay lazy too, and only `to_wide_format`'s final
+        `call_report.core._backend.pivot` call actually needs to
+        materialize it.
 
         Parameters
         ----------
@@ -702,14 +713,11 @@ class FCACallReport(BaseCallReport):
                 "requested periods; see errors_ for details."
             )
 
-        frames: dict[str, nw.DataFrame[Any]] = {}
+        frames: dict[str, FrameOrLazy] = {}
         code_columns: dict[str, str | None] = {}
         trailing_columns: dict[str, tuple[str, ...]] = {}
         for schedule in resolved:
-            frame = nw.from_native(self._load(schedule=schedule))
-            if isinstance(frame, nw.LazyFrame):
-                frame = frame.collect()
-            frames[schedule.value] = frame
+            frames[schedule.value] = nw.from_native(self._load(schedule=schedule))
             layout = self._layout_for_schedule(schedule=schedule)
             code_columns[schedule.value] = (
                 layout.multi_columns[0] if layout.multi_columns else None

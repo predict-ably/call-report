@@ -29,6 +29,7 @@ import narwhals as nw
 from call_report.config import DataFrameBackend, config_context
 from call_report.core._backend import (
     DataFrameType,
+    FrameOrLazy,
     build_frame,
     concat,
     convert_dataframe_type,
@@ -2230,8 +2231,6 @@ class FileMetadata:
         ['file_name', 'field_name', 'dtype', 'definition', 'period_start', 'period_end']
         """
         fields_frame = nw.from_native(self.file_schema.to_dataframe(backend=backend))
-        if isinstance(fields_frame, nw.LazyFrame):
-            fields_frame = fields_frame.collect()
         fields_frame = fields_frame.with_columns(
             nw.lit(self.name).alias("file_name")
         ).select(*_FILE_COLUMNS)
@@ -2245,7 +2244,11 @@ class FileMetadata:
             "period_end": [span[-1].period_end.isoformat() for span in self.periods],
         }
         with _backend_context(backend):
-            file_frame = build_frame(data=file_rows)
+            file_frame: FrameOrLazy = build_frame(data=file_rows)
+            # fields_frame may already be lazy (lazy=True configured); match it
+            # so concat isn't asked to stack an eager frame with a lazy one.
+            if isinstance(fields_frame, nw.LazyFrame):
+                file_frame = file_frame.lazy()
             combined = concat(frames=[file_frame, fields_frame], how="strict")
             native = finalize(frame=combined)
         return convert_dataframe_type(data=native, dataframe_type=dataframe_type)

@@ -853,6 +853,44 @@ def test_file_metadata_dataframe_round_trip_when_lazy() -> None:
     assert restored == metadata
 
 
+def test_file_metadata_to_dataframe_lazy_pipeline_does_not_collect_early() -> None:
+    """Under lazy=True, `fields_frame` and `file_frame` reach concat still lazy.
+
+    `FileMetadata.to_dataframe` used to collect `fields_frame` immediately
+    after building it, before combining it with a fresh `file_frame`. It
+    no longer does -- `file_frame` is instead matched to `fields_frame`'s
+    laziness via `.lazy()`. Confirmed here by patching `concat` and
+    checking both frames it receives are still `narwhals.LazyFrame`, not
+    already collected.
+    """
+    from unittest.mock import patch
+
+    from call_report.core import _schema
+
+    metadata = FileMetadata(
+        name="RCB",
+        periods=(FULL_SPAN,),
+        file_schema=FieldSchema(fields=[_field("UNINUM")]),
+    )
+
+    captured: list[object] = []
+    original = _schema.concat
+
+    def spy(*, frames: object, how: object) -> object:
+        captured.extend(frames)  # type: ignore[arg-type]
+        return original(frames=frames, how=how)  # type: ignore[call-overload]
+
+    with (
+        config_context(dataframe_backend="polars", lazy=True),
+        patch.object(_schema, "concat", spy),
+    ):
+        frame = metadata.to_dataframe()
+
+    assert isinstance(frame, pl.LazyFrame)
+    assert len(captured) == 2
+    assert all(isinstance(item, nw.LazyFrame) for item in captured)
+
+
 def test_file_metadata_from_dataframe_rejects_missing_file_rows() -> None:
     """A dataframe with no file-level period rows is rejected."""
     schema = FieldSchema(fields=[_field("UNINUM")])

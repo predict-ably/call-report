@@ -40,6 +40,7 @@ def test_melt_schedule_frame_no_code_column() -> None:
             }
         )
     melted = melt_schedule_frame(frame=frame, schedule="RC", code_column=None)
+    assert isinstance(melted, nw.DataFrame)
     assert set(melted.columns) == {
         "UNINUM",
         "period",
@@ -67,6 +68,7 @@ def test_melt_schedule_frame_with_code_column() -> None:
             }
         )
     melted = melt_schedule_frame(frame=frame, schedule="RCB", code_column="INV_CODE")
+    assert isinstance(melted, nw.DataFrame)
     assert set(melted.columns) == {
         "UNINUM",
         "period",
@@ -100,6 +102,7 @@ def test_melt_schedule_frame_trailing_columns_not_duplicated_per_code() -> None:
         code_column="CAPCODE",
         trailing_columns=("TOTAL",),
     )
+    assert isinstance(melted, nw.DataFrame)
     # 4 coded rows (2 measures x 2 code-rows for UNINUM 1) + 2 for UNINUM 2's
     # single code-row, plus exactly one TOTAL row per (UNINUM, period) grain.
     coded_rows = melted.filter(nw.col("variable_name") != "TOTAL")
@@ -282,3 +285,116 @@ def test_to_wide_format_is_keyword_only() -> None:
         rc = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"], "A": [1]})
     with pytest.raises(TypeError):
         to_wide_format({"RC": rc}, {"RC": None}, {"RC": ()})  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# laziness (polars.LazyFrame input): nothing before pivot should collect
+# ---------------------------------------------------------------------------
+
+
+def _lazy_frame(*, data: dict[str, Any]) -> nw.LazyFrame[Any]:
+    with config_context(dataframe_backend="polars"):
+        frame = build_frame(data=data)
+    result = frame.lazy()
+    assert isinstance(result, nw.LazyFrame)
+    return result
+
+
+def test_melt_schedule_frame_preserves_laziness() -> None:
+    """A LazyFrame input stays lazy through melt -- nothing forces a collect."""
+    frame = _lazy_frame(
+        data={
+            "UNINUM": [1, 2],
+            "period": ["2026-03-31", "2026-03-31"],
+            "TOTASSETS": [100, 200],
+        }
+    )
+    melted = melt_schedule_frame(frame=frame, schedule="RC", code_column=None)
+    assert isinstance(melted, nw.LazyFrame)
+    rows = melted.collect().rows(named=True)
+    assert {row["variable_name"] for row in rows} == {"TOTASSETS"}
+
+
+def test_melt_schedule_frame_with_trailing_columns_preserves_laziness() -> None:
+    """The coded-vs-trailing split (its own internal concat) also stays lazy."""
+    frame = _lazy_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31"] * 2,
+            "CAPCODE": [10, 20],
+            "VAL1": [100, 150],
+            "TOTAL": [999, 999],
+        }
+    )
+    melted = melt_schedule_frame(
+        frame=frame,
+        schedule="RCR7",
+        code_column="CAPCODE",
+        trailing_columns=("TOTAL",),
+    )
+    assert isinstance(melted, nw.LazyFrame)
+    rows = melted.collect().rows(named=True)
+    assert any(row["variable_name"] == "TOTAL" for row in rows)
+
+
+def test_with_column_key_preserves_laziness() -> None:
+    """_with_column_key stays lazy given a LazyFrame input."""
+    frame = _lazy_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "schedule": ["RC"],
+            "variable_name": ["TOTASSETS"],
+            "value": [100.0],
+        }
+    )
+    result = _with_column_key(frame)
+    assert isinstance(result, nw.LazyFrame)
+    assert result.collect()["column_key"].to_list() == ["RC__TOTASSETS"]
+
+
+def test_to_wide_format_full_pipeline_stays_lazy_until_pivot() -> None:
+    """Every step before the final pivot stays lazy; only pivot collects.
+
+    Replicates `to_wide_format`'s own melt/concat/column-key steps
+    manually to check each intermediate result's type, then calls
+    `to_wide_format` itself to confirm its (necessarily eager, since
+    pivot forces materialization) result is still correct.
+    """
+    rc = _lazy_frame(
+        data={
+            "UNINUM": [1, 2],
+            "period": ["2026-03-31", "2026-03-31"],
+            "TOTASSETS": [1000, 2000],
+        }
+    )
+    rcb = _lazy_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "INV_CODE": [10, 20],
+            "BKVAL": [100, 150],
+        }
+    )
+    melted_rc = melt_schedule_frame(frame=rc, schedule="RC", code_column=None)
+    melted_rcb = melt_schedule_frame(frame=rcb, schedule="RCB", code_column="INV_CODE")
+    assert isinstance(melted_rc, nw.LazyFrame)
+    assert isinstance(melted_rcb, nw.LazyFrame)
+
+    from call_report.core._backend import concat
+
+    combined = concat(frames=[melted_rc, melted_rcb], how="union")
+    assert isinstance(combined, nw.LazyFrame)
+    keyed = _with_column_key(combined)
+    assert isinstance(keyed, nw.LazyFrame)
+
+    result = to_wide_format(
+        frames={"RC": rc, "RCB": rcb},
+        code_columns={"RC": None, "RCB": "INV_CODE"},
+        trailing_columns={"RC": (), "RCB": ()},
+    )
+    assert isinstance(result, nw.DataFrame)
+    rows = {row["UNINUM"]: row for row in _rows(result)}
+    assert rows[1]["RC__TOTASSETS"] == 1000.0
+    assert rows[1]["RCB__INV_CODE_10__BKVAL"] == 100.0
+    assert rows[2]["RC__TOTASSETS"] == 2000.0

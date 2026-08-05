@@ -29,6 +29,15 @@ if TYPE_CHECKING:
 
 DataFrameT = TypeVar("DataFrameT", bound="NativeDataFrame")
 
+FrameOrLazy: TypeAlias = "nw.DataFrame[Any] | nw.LazyFrame[Any]"
+"""A narwhals frame that may be eager or lazy, depending on config/backend.
+
+Used throughout this module and `call_report.fca._reshape` for
+intermediate reshaping steps that stay lazy when their input already is,
+so a `polars.LazyFrame` source isn't collected until an operation that
+genuinely requires it (e.g. `pivot`) forces the issue.
+"""
+
 SchemaPolicy = Literal["union", "intersection", "strict"]
 DataFrameType = Literal[
     "pandas", "pyarrow_table", "polars_lazyframe", "polars_dataframe"
@@ -61,17 +70,22 @@ def build_frame(*, data: dict[str, list[Any]]) -> nw.DataFrame[Any]:
     return nw.from_dict(data, backend=backend)
 
 
-def finalize(*, frame: nw.DataFrame[Any]) -> NativeDataFrame:
+def finalize(*, frame: FrameOrLazy) -> NativeDataFrame:
     """Apply the configured laziness and unwrap to a native frame.
 
     This is the single point where every public, frame-returning function
-    in this package converts its internal, always-eager narwhals frame
-    into the native object callers actually receive.
+    in this package converts its internal narwhals frame into the native
+    object callers actually receive. `frame` is usually eager, but may
+    already be lazy if it was built from another already-lazy source
+    (e.g. `call_report.core._schema.FileMetadata.to_dataframe` combining
+    a fresh frame with one that came from a call that was itself already
+    finalized) -- `nw.LazyFrame.lazy()` is a no-op on an already-lazy
+    frame, so this handles both without needing to know which it got.
 
     Parameters
     ----------
-    frame : narwhals.DataFrame
-        The eager narwhals frame to finalize.
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        The narwhals frame to finalize.
 
     Returns
     -------
@@ -80,24 +94,40 @@ def finalize(*, frame: nw.DataFrame[Any]) -> NativeDataFrame:
         ``lazy=True`` is configured (e.g. a ``polars.LazyFrame``).
     """
     config = get_config()
-    result: nw.DataFrame[Any] | nw.LazyFrame[Any] = (
-        frame.lazy() if config["lazy"] else frame
-    )
+    result: FrameOrLazy = frame.lazy() if config["lazy"] else frame
     return result.to_native()
 
 
+@overload
 def concat(
     *, frames: Sequence[nw.DataFrame[Any]], how: SchemaPolicy
-) -> nw.DataFrame[Any]:
-    """Stack multiple eager narwhals frames according to a schema policy.
+) -> nw.DataFrame[Any]:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def concat(
+    *, frames: Sequence[nw.LazyFrame[Any]], how: SchemaPolicy
+) -> nw.LazyFrame[Any]:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def concat(
+    *, frames: Sequence[FrameOrLazy], how: SchemaPolicy
+) -> FrameOrLazy:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+def concat(*, frames: Sequence[FrameOrLazy], how: SchemaPolicy) -> FrameOrLazy:
+    """Stack multiple narwhals frames according to a schema policy.
 
     Used to combine one dataframe per requested period into a single
     result, reconciling any schema differences between periods (e.g. a
-    column added in a later quarter) according to `how`.
+    column added in a later quarter) according to `how`. `frames` must
+    be either all eager or all lazy -- narwhals (like polars) cannot
+    concatenate a mix of the two. Column names are read via
+    `narwhals.DataFrame.collect_schema`/`narwhals.LazyFrame.collect_schema`
+    rather than `.columns`, since the latter emits a `PerformanceWarning`
+    when called on a `LazyFrame`.
 
     Parameters
     ----------
-    frames : Sequence[narwhals.DataFrame]
+    frames : Sequence[narwhals.DataFrame or narwhals.LazyFrame]
         The per-period frames to stack, in the order they should appear.
     how : {"union", "intersection", "strict"}
         ``"union"`` outer-joins columns, nulling out any column a given
@@ -107,35 +137,42 @@ def concat(
 
     Returns
     -------
-    narwhals.DataFrame
-        The stacked frame.
+    narwhals.DataFrame or narwhals.LazyFrame
+        The stacked frame -- lazy if `frames` were lazy, eager otherwise.
 
     Raises
     ------
     LayoutParseError
         If `how` is ``"strict"`` and the frames' columns are not identical.
     """
+    # nw.concat's own signature binds a single FrameT, so it can't statically
+    # express "homogeneously eager or homogeneously lazy, whichever `frames`
+    # happens to be" -- every caller in this codebase only ever passes
+    # frames sharing one call's laziness state (see FrameOrLazy), so this
+    # is a real runtime invariant the type system just can't see.
     if how == "union":
-        return nw.concat(list(frames), how="diagonal")
+        return nw.concat(list(frames), how="diagonal")  # type: ignore[type-var]
 
     if how == "intersection":
-        common = set(frames[0].columns)
-        for frame in frames[1:]:
-            common &= set(frame.columns)
-        ordered = [name for name in frames[0].columns if name in common]
+        schemas = [frame.collect_schema().names() for frame in frames]
+        common = set(schemas[0])
+        for names in schemas[1:]:
+            common &= set(names)
+        ordered = [name for name in schemas[0] if name in common]
         selected = [frame.select(ordered) for frame in frames]
-        return nw.concat(selected, how="vertical")
+        return nw.concat(selected, how="vertical")  # type: ignore[type-var]
 
     if how == "strict":
-        first_columns = set(frames[0].columns)
-        for frame in frames[1:]:
-            if set(frame.columns) != first_columns:
+        column_sets = [set(frame.collect_schema().names()) for frame in frames]
+        first_columns = column_sets[0]
+        for columns in column_sets[1:]:
+            if columns != first_columns:
                 raise LayoutParseError(
                     "schema_policy='strict' requires every stacked period to share "
                     "the exact same columns, but they differ; use 'union' or "
                     "'intersection' to reconcile schema differences across periods."
                 )
-        return nw.concat(list(frames), how="vertical")
+        return nw.concat(list(frames), how="vertical")  # type: ignore[type-var]
 
     raise ValueError(
         f"Unknown schema policy {how!r}; expected 'union', 'intersection', or 'strict'."
@@ -306,9 +343,17 @@ def finalize_as(
 
 
 def pivot(
-    *, frame: nw.DataFrame[Any], on: str, index: list[str], values: str
+    *, frame: FrameOrLazy, on: str, index: list[str], values: str
 ) -> nw.DataFrame[Any]:
     """Pivot a long-shaped frame wide, working around a real pyarrow gap.
+
+    Pivoting fundamentally requires eager data -- the output schema
+    depends on `on`'s distinct values, which can't be known without
+    materializing -- so this is the one place a lazy `frame` (e.g. a
+    `polars.LazyFrame`-backed pipeline built by
+    `call_report.fca._reshape`) is finally collected; every operation
+    before this point (melt, concat, column-key computation) stays lazy
+    for as long as `frame` lets it.
 
     narwhals' native ``pivot`` is not implemented for the pyarrow backend
     (confirmed: it raises ``NotImplementedError`` outright); for that one
@@ -321,7 +366,7 @@ def pivot(
 
     Parameters
     ----------
-    frame : narwhals.DataFrame
+    frame : narwhals.DataFrame or narwhals.LazyFrame
         The long-shaped frame to pivot.
     on : str
         The column whose distinct values become new column names.
@@ -342,6 +387,8 @@ def pivot(
         If `index` + `on` is not a unique grain, or the pivot otherwise
         fails.
     """
+    if isinstance(frame, nw.LazyFrame):
+        frame = frame.collect()
     if frame.implementation is nw.Implementation.PYARROW:
         return _manual_pivot(frame=frame, on=on, index=index, values=values)
     try:

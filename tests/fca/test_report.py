@@ -6,6 +6,7 @@ import math
 from datetime import date
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import narwhals as nw
 import pytest
@@ -891,10 +892,10 @@ def test_to_wide_format_is_keyword_only(data_dir: Path, release_2026q1: Path) ->
         report.to_wide_format(["RC"])  # type: ignore[call-overload]
 
 
-def test_to_wide_format_collects_a_lazy_loaded_schedule(
+def test_to_wide_format_reshapes_a_lazy_loaded_schedule_correctly(
     data_dir: Path, release_2026q1: Path
 ) -> None:
-    """lazy=True with the polars backend still reshapes correctly (collects first)."""
+    """lazy=True with the polars backend still reshapes correctly end to end."""
     import polars as pl
 
     with config_context(dataframe_backend="polars", lazy=True):
@@ -906,3 +907,38 @@ def test_to_wide_format_collects_a_lazy_loaded_schedule(
         wide = report.to_wide_format(schedules=["RC"])
     assert isinstance(wide, pl.LazyFrame)
     assert wide.collect().to_dicts()[0]["RC__TOTASSETS"] == 1100000.0
+
+
+def test_to_wide_format_does_not_collect_before_reshaping(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """A lazily-loaded schedule is passed to _reshape.to_wide_format still lazy.
+
+    `_to_wide_format` used to call `.collect()` on each schedule
+    immediately after loading it, before any melt/concat/pivot work
+    started. It no longer does -- this confirms `_reshape.to_wide_format`
+    receives a genuine, uncollected `narwhals.LazyFrame` per schedule, so
+    the melt/concat/column-key steps can run as one query instead of N
+    separate eager materializations.
+    """
+    from call_report.fca import _reshape
+
+    captured_frames: dict[str, object] = {}
+    original = _reshape.to_wide_format
+
+    def spy(*, frames: dict[str, object], **kwargs: object) -> object:
+        captured_frames.update(frames)
+        return original(frames=frames, **kwargs)  # type: ignore[arg-type]
+
+    with config_context(dataframe_backend="polars", lazy=True):
+        report = FCACallReport(
+            start="2026-03-31",
+            end="2026-03-31",
+            transport=LocalDirectoryTransport(data_dir=data_dir),
+        )
+        with patch.object(_reshape, "to_wide_format", spy):
+            report.to_wide_format(schedules=["RC", "RCB"])
+
+    assert set(captured_frames) == {"RC", "RCB"}
+    for frame in captured_frames.values():
+        assert isinstance(frame, nw.LazyFrame)

@@ -6,6 +6,12 @@ melt each already-loaded schedule's frame into a long-shaped
 intermediate (tagging a code-bearing schedule's code column distinctly
 from a plain variable), stack every schedule together, compute each row's
 final wide column name, then pivot.
+
+Every function here accepts and returns `FrameOrLazy`: if a schedule's
+frame is already a `polars.LazyFrame` (``lazy=True`` configured), the
+melt/concat/column-key steps all stay lazy too -- only `pivot` (called
+last, by `to_wide_format`) actually needs eager data, so that's the one
+point collection happens.
 """
 
 from __future__ import annotations
@@ -14,7 +20,7 @@ from typing import Any
 
 import narwhals as nw
 
-from call_report.core._backend import concat, pivot
+from call_report.core._backend import FrameOrLazy, concat, pivot
 from call_report.fca.layout import FIXED_IDENTIFIER_COLUMNS
 
 WIDE_FORMAT_INDEX: tuple[str, ...] = ("UNINUM", "period")
@@ -23,7 +29,7 @@ WIDE_FORMAT_INDEX: tuple[str, ...] = ("UNINUM", "period")
 _EXCLUDED_FROM_MELT = frozenset({*FIXED_IDENTIFIER_COLUMNS, "period"})
 
 
-def _normalize_value_dtype(frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
+def _normalize_value_dtype(frame: FrameOrLazy) -> FrameOrLazy:
     """Cast a melted frame's numeric `value` column to a consistent Float64.
 
     Different fields carry different declared decimal positions, so two
@@ -34,30 +40,32 @@ def _normalize_value_dtype(frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
     numeric dtypes raises ``polars.exceptions.SchemaError`` depending on
     which piece happens to concatenate first; normalizing every numeric
     `value` column to Float64 up front removes that order-dependence. A
-    non-numeric (``Alphanum.``) `value` column is left as-is.
+    non-numeric (``Alphanum.``) `value` column is left as-is. Reads the
+    dtype via `collect_schema` rather than the `.schema` property, which
+    emits a `PerformanceWarning` when `frame` is a `LazyFrame`.
 
     Parameters
     ----------
-    frame : narwhals.DataFrame
+    frame : narwhals.DataFrame or narwhals.LazyFrame
         A melted frame with a `value` column.
 
     Returns
     -------
-    narwhals.DataFrame
+    narwhals.DataFrame or narwhals.LazyFrame
         `frame`, with `value` cast to Float64 if it was numeric.
     """
-    if frame.schema["value"].is_numeric():
+    if frame.collect_schema()["value"].is_numeric():
         return frame.with_columns(nw.col("value").cast(nw.Float64))
     return frame
 
 
 def melt_schedule_frame(
     *,
-    frame: nw.DataFrame[Any],
+    frame: FrameOrLazy,
     schedule: str,
     code_column: str | None,
     trailing_columns: tuple[str, ...] = (),
-) -> nw.DataFrame[Any]:
+) -> FrameOrLazy:
     """Melt one already-loaded, already-stacked schedule frame into long shape.
 
     Every column except `FIXED_IDENTIFIER_COLUMNS`, ``"period"``,
@@ -80,7 +88,7 @@ def melt_schedule_frame(
 
     Parameters
     ----------
-    frame : narwhals.DataFrame
+    frame : narwhals.DataFrame or narwhals.LazyFrame
         One schedule's already period-stacked frame (i.e. what
         `FCACallReport._load` produces, wrapped back into narwhals).
     schedule : str
@@ -94,15 +102,17 @@ def melt_schedule_frame(
 
     Returns
     -------
-    narwhals.DataFrame
+    narwhals.DataFrame or narwhals.LazyFrame
         Columns ``UNINUM``, ``period``, ``schedule``, ``variable_name``,
         ``value``, plus ``code_column``/``code_value`` for any row that
-        came from a coded field.
+        came from a coded field. Lazy if `frame` was lazy.
     """
     exclude = set(_EXCLUDED_FROM_MELT) | set(trailing_columns)
     if code_column is not None:
         exclude.add(code_column)
-    melt_columns = [name for name in frame.columns if name not in exclude]
+    melt_columns = [
+        name for name in frame.collect_schema().names() if name not in exclude
+    ]
 
     index_columns = [*WIDE_FORMAT_INDEX]
     if code_column is not None:
@@ -141,7 +151,7 @@ def melt_schedule_frame(
     return concat(frames=[melted, trailing_melted], how="union")
 
 
-def _with_column_key(frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
+def _with_column_key(frame: FrameOrLazy) -> FrameOrLazy:
     """Compute the wide-format column name for every melted row.
 
     ``{schedule}__{variable_name}`` for a row with no code column;
@@ -152,20 +162,21 @@ def _with_column_key(frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
     through `fill_null` first -- casting a `Float64`-with-null column
     (the normal shape here once code- and non-code schedules are
     concatenated together) straight to `Int64` raises on the pandas
-    backend.
+    backend. Checks for `code_column` via `collect_schema` rather than
+    `.columns`, which emits a `PerformanceWarning` on a `LazyFrame`.
 
     Parameters
     ----------
-    frame : narwhals.DataFrame
+    frame : narwhals.DataFrame or narwhals.LazyFrame
         The concatenated, melted frame, with `schedule`/`variable_name`
         columns and (for at least one row) `code_column`/`code_value`.
 
     Returns
     -------
-    narwhals.DataFrame
+    narwhals.DataFrame or narwhals.LazyFrame
         `frame` with an added `column_key` string column.
     """
-    if "code_column" not in frame.columns:
+    if "code_column" not in frame.collect_schema():
         return frame.with_columns(
             nw.concat_str(
                 [nw.col("schedule"), nw.col("variable_name")], separator="__"
@@ -194,7 +205,7 @@ def _with_column_key(frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
 
 def to_wide_format(
     *,
-    frames: dict[str, nw.DataFrame[Any]],
+    frames: dict[str, FrameOrLazy],
     code_columns: dict[str, str | None],
     trailing_columns: dict[str, tuple[str, ...]],
 ) -> nw.DataFrame[Any]:
@@ -203,11 +214,14 @@ def to_wide_format(
     Melts and tags every schedule via `melt_schedule_frame`, concatenates
     them (schedules with no code column naturally get null
     `code_column`/`code_value` once unioned against ones that have it),
-    computes each row's `column_key`, then pivots on it.
+    computes each row's `column_key`, then pivots on it. Everything before
+    `pivot` stays lazy if `frames`' values are -- `pivot` is the one
+    step that must collect, since a pivoted result's schema depends on
+    `column_key`'s distinct values.
 
     Parameters
     ----------
-    frames : dict[str, narwhals.DataFrame]
+    frames : dict[str, narwhals.DataFrame or narwhals.LazyFrame]
         Each schedule's already-loaded, already-stacked frame, keyed by
         schedule root name.
     code_columns : dict[str, str or None]

@@ -104,7 +104,89 @@ def test_concat_rejects_unknown_schema_policy() -> None:
     with config_context(dataframe_backend="pandas"):
         frame = build_frame(data={"UNINUM": [1]})
         with pytest.raises(ValueError, match="Unknown schema policy"):
-            concat(frames=[frame], how="bogus")  # type: ignore[arg-type]
+            concat(frames=[frame], how="bogus")  # type: ignore[call-overload]
+
+
+# ---------------------------------------------------------------------------
+# concat / finalize / pivot with lazy (polars.LazyFrame) input
+# ---------------------------------------------------------------------------
+
+
+def _lazy_frame(*, data: dict[str, list[Any]]) -> nw.LazyFrame[Any]:
+    with config_context(dataframe_backend="polars"):
+        frame = build_frame(data=data)
+    result = frame.lazy()
+    assert isinstance(result, nw.LazyFrame)
+    return result
+
+
+def test_finalize_accepts_an_already_lazy_frame() -> None:
+    """finalize() is a no-op passthrough for a frame that's already lazy."""
+    import polars as pl
+
+    lazy = _lazy_frame(data={"UNINUM": [1, 2]})
+    with config_context(dataframe_backend="polars", lazy=True):
+        result = finalize(frame=lazy)
+    assert isinstance(result, pl.LazyFrame)
+    assert result.collect().to_dicts() == [{"UNINUM": 1}, {"UNINUM": 2}]
+
+
+def test_concat_union_preserves_laziness() -> None:
+    """how='union' returns a LazyFrame, uncollected, when given LazyFrame input."""
+    first = _lazy_frame(data={"UNINUM": [1], "TOTASSETS": [100]})
+    second = _lazy_frame(data={"UNINUM": [2], "TOTASSETS": [200], "TOTLIAB": [50]})
+    stacked = concat(frames=[first, second], how="union")
+    assert isinstance(stacked, nw.LazyFrame)
+    assert set(stacked.collect().columns) == {"UNINUM", "TOTASSETS", "TOTLIAB"}
+
+
+def test_concat_intersection_preserves_laziness() -> None:
+    """how='intersection' returns an uncollected LazyFrame given LazyFrame input."""
+    first = _lazy_frame(data={"UNINUM": [1], "TOTASSETS": [100]})
+    second = _lazy_frame(data={"UNINUM": [2], "TOTASSETS": [200], "TOTLIAB": [50]})
+    stacked = concat(frames=[first, second], how="intersection")
+    assert isinstance(stacked, nw.LazyFrame)
+    assert set(stacked.collect().columns) == {"UNINUM", "TOTASSETS"}
+
+
+def test_concat_strict_preserves_laziness() -> None:
+    """how='strict' returns a LazyFrame, uncollected, when given LazyFrame input."""
+    first = _lazy_frame(data={"UNINUM": [1], "TOTASSETS": [100]})
+    second = _lazy_frame(data={"UNINUM": [2], "TOTASSETS": [200]})
+    stacked = concat(frames=[first, second], how="strict")
+    assert isinstance(stacked, nw.LazyFrame)
+    assert len(stacked.collect().rows(named=True)) == 2
+
+
+@pytest.mark.parametrize("how", ["intersection", "strict"])
+def test_concat_lazy_does_not_emit_performance_warning(how: str) -> None:
+    """Schema comparisons use collect_schema, not .columns, to avoid the warning."""
+    import warnings
+
+    first = _lazy_frame(data={"UNINUM": [1], "TOTASSETS": [100]})
+    second = _lazy_frame(data={"UNINUM": [2], "TOTASSETS": [200]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        concat(frames=[first, second], how=how)  # type: ignore[call-overload]
+
+
+def test_pivot_collects_a_lazy_frame() -> None:
+    """pivot() accepts a LazyFrame, collecting it internally before pivoting."""
+    frame = _lazy_frame(
+        data={
+            "UNINUM": [1, 1, 2, 2],
+            "period": ["2026-03-31"] * 4,
+            "key": ["A", "B", "A", "B"],
+            "value": [10, 20, 30, 40],
+        }
+    )
+    result = pivot(frame=frame, on="key", index=["UNINUM", "period"], values="value")
+    assert isinstance(result, nw.DataFrame)
+    rows = {row["UNINUM"]: row for row in result.sort(["UNINUM"]).rows(named=True)}
+    assert rows[1]["A"] == 10
+    assert rows[1]["B"] == 20
+    assert rows[2]["A"] == 30
+    assert rows[2]["B"] == 40
 
 
 # ---------------------------------------------------------------------------
