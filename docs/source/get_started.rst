@@ -164,6 +164,46 @@ recovers whichever definition applied at a given quarter:
    metadata.file_schema.as_of(period="2020-03-31")["LOANSTATUS"].versions[0].definition
    # "...150 Discounted loans to OFIs 152 Other loans 155 Total"
 
+Reshaping to wide format
+==========================
+
+``report.load(schedule=...)`` returns one row per institution per period,
+per *schedule*. :meth:`~call_report.fca.FCACallReport.to_wide_format`
+goes a step further, stacking every schedule together into a single
+frame with one row per ``(UNINUM, period)`` and one column per variable:
+
+.. code-block:: python
+
+   report = FCACallReport(
+       start="2025-03-31", end="2025-03-31", transport=PackagedArchiveTransport()
+   )
+   wide = report.to_wide_format(schedules=["RC", "RCB"])
+   wide.shape
+   # (64, 194)
+
+A plain (non-code) field is named ``{schedule}__{variable}``:
+
+.. code-block:: python
+
+   row = wide[wide["UNINUM"] == 620000].iloc[0]
+   row["RC__ASSETS"]
+   # 47138132.0
+
+A field that RCB reports once per investment code instead becomes
+``{schedule}__{code_column}_{code_value}__{variable}`` -- one column per
+code actually reported:
+
+.. code-block:: python
+
+   row["RCB__INV_CODE_81__BKVAL"]
+   # 9579.0
+
+Leave ``schedules`` unset to include every schedule discovered across the
+requested range. This works the same way on every configured dataframe
+backend, including ``pyarrow`` -- which has no native pivot operation, so
+``to_wide_format`` falls back to an equivalent filter-and-join reshape for
+it automatically.
+
 Choosing a dataframe backend
 -----------------------------
 

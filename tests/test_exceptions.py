@@ -10,6 +10,7 @@ from call_report.exceptions import (
     InvalidPeriodError,
     LayoutParseError,
     PeriodNotAvailableError,
+    ReshapeError,
     ScheduleNotFoundError,
     SchemaError,
 )
@@ -24,6 +25,7 @@ from call_report.exceptions import (
         LayoutParseError,
         SchemaError,
         DownloadError,
+        ReshapeError,
     ],
 )
 def test_all_errors_are_rooted_at_call_report_error(

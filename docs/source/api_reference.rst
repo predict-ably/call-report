@@ -61,6 +61,7 @@ The exception hierarchy shared across sources.
    call_report.exceptions.ScheduleNotFoundError
    call_report.exceptions.LayoutParseError
    call_report.exceptions.DownloadError
+   call_report.exceptions.ReshapeError
 
 FCA Call Report
 ================

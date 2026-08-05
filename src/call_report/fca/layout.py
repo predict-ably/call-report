@@ -24,6 +24,24 @@ LayoutScenario = Literal["single", "single_multiple", "single_multiple_single"]
 ENCODING = "windows-1252"
 """str: The encoding used by every FCA Call Report file, layout or data."""
 
+FIXED_IDENTIFIER_COLUMNS: tuple[str, ...] = (
+    "SYSTEM",
+    "DIST",
+    "ASSOC",
+    "MONTH",
+    "YEAR",
+    "UNINUM",
+)
+"""tuple[str, ...]: The fixed institution/period-identifying column prefix.
+
+Verified present, in this exact order, as the start of `leading_columns`
+for every schedule across FCA's entire published history (2000-present),
+including the institution roster. For a ``"single"``-scenario schedule,
+`leading_columns` also contains every measure field after this prefix
+(there is no multi/trailing split at all); for a code-bearing scenario,
+`leading_columns` is narrowly just this prefix.
+"""
+
 _TYPE_LOOKAHEAD = r"(?=(\s+Alphanum\.|\s+Numeric))"
 _TOKEN_RE = re.compile(rf"(\*\*)?\b(\w+){_TYPE_LOOKAHEAD}")
 _NOTE_STRIP_RE = re.compile(r"\*\*\s+NOTE.*$")

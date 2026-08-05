@@ -67,3 +67,13 @@ class DownloadError(CallReportError):
     Raised when a transport cannot locate or fetch the files for a period,
     e.g. a missing local directory or a failed network request.
     """
+
+
+class ReshapeError(CallReportError):
+    """Loaded schedule data could not be reshaped into the requested layout.
+
+    Raised for a non-unique pivot grain (the same row would need to
+    contribute more than one value to a single output cell) or any other
+    failure while reshaping long- or wide-format data, regardless of
+    which dataframe backend produced the underlying error.
+    """

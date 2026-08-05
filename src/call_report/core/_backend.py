@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar, overload
 import narwhals as nw
 
 from call_report.config import get_config
-from call_report.exceptions import LayoutParseError
+from call_report.exceptions import LayoutParseError, ReshapeError
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -303,3 +303,145 @@ def finalize_as(
     return convert_dataframe_type(
         data=finalize(frame=frame), dataframe_type=dataframe_type
     )
+
+
+def pivot(
+    *, frame: nw.DataFrame[Any], on: str, index: list[str], values: str
+) -> nw.DataFrame[Any]:
+    """Pivot a long-shaped frame wide, working around a real pyarrow gap.
+
+    narwhals' native ``pivot`` is not implemented for the pyarrow backend
+    (confirmed: it raises ``NotImplementedError`` outright); for that one
+    backend this falls back to `_manual_pivot`, a filter-and-join reshape
+    verified to produce identical results to the native path on every
+    other backend. `index` + `on` must be a unique grain -- a genuine
+    duplicate raises `ReshapeError` on every backend rather than silently
+    aggregating, whether that's narwhals' own native error (translated
+    here) or `_manual_pivot`'s own explicit check.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame
+        The long-shaped frame to pivot.
+    on : str
+        The column whose distinct values become new column names.
+    index : list[str]
+        The column(s) that stay fixed, identifying each output row.
+    values : str
+        The column supplying each new column's values.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        The pivoted, wide-shaped frame, with columns in a deterministic
+        (sorted) order.
+
+    Raises
+    ------
+    ReshapeError
+        If `index` + `on` is not a unique grain, or the pivot otherwise
+        fails.
+    """
+    if frame.implementation is nw.Implementation.PYARROW:
+        return _manual_pivot(frame=frame, on=on, index=index, values=values)
+    try:
+        return frame.pivot(on=on, index=index, values=values, sort_columns=True)
+    except Exception as error:
+        raise ReshapeError(
+            f"Could not pivot on={on!r}, index={index!r}, values={values!r}: {error}"
+        ) from error
+
+
+def _manual_pivot(
+    *, frame: nw.DataFrame[Any], on: str, index: list[str], values: str
+) -> nw.DataFrame[Any]:
+    """Pivot `frame` wide using filter-and-join, for backends without native pivot.
+
+    One filter+join per distinct `on` value, so this is O(number of
+    distinct columns) rather than native ``pivot``'s single pass -- the
+    honest cost of a backend (pyarrow) lacking the primitive, not a
+    hidden inefficiency. Verified to produce output identical to
+    narwhals' native `nw.DataFrame.pivot` for the same input.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame
+        The long-shaped frame to pivot.
+    on : str
+        The column whose distinct values become new column names.
+    index : list[str]
+        The column(s) that stay fixed, identifying each output row.
+    values : str
+        The column supplying each new column's values.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        The pivoted, wide-shaped frame, with columns in a deterministic
+        (sorted) order.
+
+    Raises
+    ------
+    ReshapeError
+        If `index` + `on` is not a unique grain.
+    """
+    grain_columns = [*index, on]
+    if (
+        frame.select(*grain_columns).unique(subset=grain_columns).shape[0]
+        != frame.shape[0]
+    ):
+        raise ReshapeError(
+            f"Could not pivot: index={index!r} + on={on!r} is not a unique grain."
+        )
+
+    key_rows = frame.select(on).unique(subset=[on]).sort(on).rows(named=True)
+    pieces: list[nw.DataFrame[Any]] = []
+    for row in key_rows:
+        key_value = row[on]
+        column_name = str(key_value)
+        piece = (
+            frame.filter(nw.col(on) == key_value)
+            .select(*index, values)
+            .rename({values: column_name})
+        )
+        pieces.append(piece)
+
+    result = pieces[0]
+    for piece in pieces[1:]:
+        result = _join_on_index(left=result, right=piece, index=index)
+    return result.sort(index)
+
+
+def _join_on_index(
+    *, left: nw.DataFrame[Any], right: nw.DataFrame[Any], index: list[str]
+) -> nw.DataFrame[Any]:
+    """Full-join two frames on `index`, coalescing the duplicated join-key columns.
+
+    narwhals' ``"full"`` join does not coalesce the join keys -- it
+    produces a ``{col}_right`` counterpart for each `index` column
+    instead of merging them (confirmed on every backend this package
+    supports). This fills each `index` column from its ``_right``
+    counterpart wherever the left side is null, then drops the
+    ``_right`` columns.
+
+    Parameters
+    ----------
+    left : narwhals.DataFrame
+        The left side of the join.
+    right : narwhals.DataFrame
+        The right side of the join.
+    index : list[str]
+        The shared column(s) to join and coalesce on.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        The joined frame, with exactly one copy of each `index` column.
+    """
+    joined = left.join(right, on=index, how="full")
+    for column in index:
+        right_column = f"{column}_right"
+        joined = joined.with_columns(
+            nw.col(column).fill_null(nw.col(right_column)).alias(column)
+        ).drop(right_column)
+    return joined

@@ -391,3 +391,60 @@ def test_release_schedules_match_across_backends(
             _assert_rows_equal(
                 reference=reference[root], other=other[root], label=f"{backend}:{root}"
             )
+
+
+def _to_wide_format_rows(
+    *, period: ReportingPeriod, backend: str
+) -> list[dict[str, Any]]:
+    """Build to_wide_format() for one real release under one backend, as rows.
+
+    Scoped to a single-period `FCACallReport` (rather than reusing the
+    full-history `archive_report` fixture) since `to_wide_format()`
+    reshapes every period an instance was fetched for -- comparing across
+    backends only needs one release at a time. Rows are sorted by UNINUM
+    (unique within a single period) so backends whose pivot doesn't
+    preserve a particular row order can still be compared position-by-position.
+
+    Parameters
+    ----------
+    period : ReportingPeriod
+        The release to build the wide-format frame for.
+    backend : str
+        The dataframe backend to configure while building it.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        The wide-format frame's rows, sorted by UNINUM.
+    """
+    with config_context(dataframe_backend=backend):
+        report = FCACallReport(
+            start=period.period_end,
+            end=period.period_end,
+            transport=PackagedArchiveTransport(),
+        )
+        wide = report.to_wide_format()
+    rows = _native_rows(wide)
+    return sorted(rows, key=lambda row: row["UNINUM"])
+
+
+@pytest.mark.parametrize(
+    "period",
+    EQUALITY_CHECK_PERIODS,
+    ids=[period.label for period in EQUALITY_CHECK_PERIODS],
+)
+def test_wide_format_matches_across_backends(period: ReportingPeriod) -> None:
+    """to_wide_format()'s schema and data agree no matter which backend built it.
+
+    Builds the full wide-format frame for one real release, once per
+    backend -- including pyarrow, which has no native pivot and instead
+    goes through the manual filter-and-join fallback (see
+    `call_report.core._backend.pivot`) -- and asserts pandas, polars, and
+    pyarrow all produced the exact same columns and values.
+    """
+    reference = _to_wide_format_rows(period=period, backend="pandas")
+    for backend in ("polars", "pyarrow"):
+        other = _to_wide_format_rows(period=period, backend=backend)
+        _assert_rows_equal(
+            reference=reference, other=other, label=f"{backend}:{period.label}"
+        )
