@@ -2,24 +2,39 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 import narwhals as nw
 import pytest
 
 from call_report.config import config_context
-from call_report.core._backend import build_frame
+from call_report.core._backend import build_frame, concat
 from call_report.exceptions import ReshapeError
 from call_report.fca._reshape import (
-    _normalize_value_dtype,
+    _cast_numeric_to_float64,
+    _parse_wide_column_key,
     _with_column_key,
+    _with_is_multiple_flag,
+    convert_long_format_to_wide_format,
+    convert_wide_format_to_long_format,
     melt_schedule_frame,
+    to_long_format,
     to_wide_format,
 )
 
 
 def _rows(frame: nw.DataFrame[Any]) -> list[dict[str, Any]]:
     return frame.sort(["UNINUM", "period"]).rows(named=True)
+
+
+def _is_missing(value: object) -> bool:
+    """Return True for a missing value, however the active backend represents it.
+
+    pandas represents a missing (non-numeric) value as NaN, not None --
+    both count as "missing" here.
+    """
+    return value is None or (isinstance(value, float) and value != value)
 
 
 # ---------------------------------------------------------------------------
@@ -125,26 +140,85 @@ def test_melt_schedule_frame_is_keyword_only() -> None:
         melt_schedule_frame(frame, "RC", None)  # type: ignore[call-arg]
 
 
+def test_melt_schedule_frame_empty_input_produces_float64_value() -> None:
+    """A zero-row schedule still gets Float64 `value`, not `Unknown`.
+
+    Confirmed real: RCO has zero rows at 2000Q1. See
+    `test_cast_numeric_to_float64_casts_an_unknown_dtype_column` for why
+    this matters -- an uncast `Unknown` column can raise
+    `polars.exceptions.SchemaError` when later concatenated against a
+    populated schedule's real numeric `value` column.
+    """
+    with config_context(dataframe_backend="polars"):
+        frame = build_frame(data={"UNINUM": [], "period": [], "TOTASSETS": []})
+    melted = melt_schedule_frame(frame=frame, schedule="RCO", code_column=None)
+    assert melted.collect_schema()["value"] == nw.Float64()
+
+
+def test_melt_schedule_frame_empty_coded_input_produces_float64_code_value() -> None:
+    """A zero-row *coded* schedule gets Float64 `value` and `code_value`."""
+    with config_context(dataframe_backend="polars"):
+        frame = build_frame(
+            data={"UNINUM": [], "period": [], "INV_CODE": [], "BKVAL": []}
+        )
+    melted = melt_schedule_frame(frame=frame, schedule="RCB", code_column="INV_CODE")
+    assert melted.collect_schema()["value"] == nw.Float64()
+    assert melted.collect_schema()["code_value"] == nw.Float64()
+
+
 # ---------------------------------------------------------------------------
-# _normalize_value_dtype
+# _cast_numeric_to_float64
 # ---------------------------------------------------------------------------
 
 
-def test_normalize_value_dtype_casts_numeric_to_float64() -> None:
-    """An Int64 `value` column is cast to Float64."""
+def test_cast_numeric_to_float64_casts_an_int_column() -> None:
+    """An Int64 column is cast to Float64."""
     with config_context(dataframe_backend="pandas"):
         frame = build_frame(data={"value": [1, 2, 3]})
     assert frame.schema["value"] == nw.Int64()
-    result = _normalize_value_dtype(frame)
+    result = _cast_numeric_to_float64(frame, column="value")
     assert result.schema["value"] == nw.Float64()
 
 
-def test_normalize_value_dtype_leaves_non_numeric_untouched() -> None:
-    """A String `value` column is left as-is."""
+def test_cast_numeric_to_float64_leaves_non_numeric_untouched() -> None:
+    """A String column is left as-is."""
     with config_context(dataframe_backend="pandas"):
         frame = build_frame(data={"value": ["a", "b"]})
-    result = _normalize_value_dtype(frame)
+    result = _cast_numeric_to_float64(frame, column="value")
     assert result.schema["value"] == nw.String()
+
+
+def test_cast_numeric_to_float64_works_on_a_different_column_name() -> None:
+    """The column to normalize is a parameter, not hardcoded to "value"."""
+    with config_context(dataframe_backend="pandas"):
+        frame = build_frame(data={"code_value": [10, 20]})
+    result = _cast_numeric_to_float64(frame, column="code_value")
+    assert result.schema["code_value"] == nw.Float64()
+
+
+def test_cast_numeric_to_float64_casts_an_unknown_dtype_column() -> None:
+    """An empty column (Unknown dtype -- no data to infer a type from) is cast too.
+
+    Regression test for a real CI failure:
+    ``polars.exceptions.SchemaError: type Int64 is incompatible with
+    expected type Null``. A schedule with zero rows for a period
+    (confirmed real: RCO at 2000Q1), or a field that's entirely null even
+    though rows exist (confirmed real: RCF1's own ``value`` at 2000Q1),
+    leaves narwhals unable to infer any concrete dtype -- `Unknown`,
+    which `is_numeric()` reports False for. Left alone, concatenating
+    that against a real Int64/Float64 piece can raise depending on the
+    installed polars version and concat order (both confirmed to vary --
+    this didn't reproduce locally, only on a CI platform this project's
+    dev environment doesn't cover). pandas doesn't reproduce `Unknown`
+    for an empty column (it infers Float64 directly), so this needs a
+    backend where empty data genuinely produces it.
+    """
+    with config_context(dataframe_backend="polars"):
+        frame = build_frame(data={"value": []})
+    dtype = frame.collect_schema()["value"]
+    assert isinstance(dtype, nw.Unknown)
+    result = _cast_numeric_to_float64(frame, column="value")
+    assert result.collect_schema()["value"] == nw.Float64()
 
 
 # ---------------------------------------------------------------------------
@@ -211,8 +285,6 @@ def test_with_column_key_mixed_null_and_coded_rows() -> None:
                 "code_value": [None],
             }
         )
-        from call_report.core._backend import concat
-
         combined = concat(frames=[coded, plain], how="union")
     result = _with_column_key(combined)
     keys = dict(
@@ -277,6 +349,39 @@ def test_to_wide_format_duplicate_grain_raises_reshape_error() -> None:
             code_columns={"RC": None},
             trailing_columns={"RC": ()},
         )
+
+
+def test_to_wide_format_empty_schedule_alongside_a_populated_one() -> None:
+    """A zero-row schedule concatenated with a real one doesn't raise.
+
+    Regression test for a real CI failure:
+    ``polars.exceptions.SchemaError: type Int64 is incompatible with
+    expected type Null`` -- triggered by a genuinely empty schedule (RCO
+    at 2000Q1) whose `value` column has no data to infer a dtype from
+    (`Unknown`), concatenated against a populated schedule's real
+    Int64/Float64 `value` column.
+
+    `period` is attached via `nw.lit(...)` rather than passed as raw
+    frame data, matching how `FCACallReport._load` actually builds it
+    (`_with_period_column`, always a concrete date literal, regardless of
+    row count) -- unlike `UNINUM`/`value`, `period` can never genuinely be
+    `Unknown` by the time `melt_schedule_frame` sees it.
+    """
+    period_end = date(2026, 3, 31)
+    with config_context(dataframe_backend="polars"):
+        empty = build_frame(data={"UNINUM": [], "TOTASSETS": []}).with_columns(
+            nw.lit(period_end).alias("period")
+        )
+        populated = build_frame(data={"UNINUM": [1], "BKVAL": [100]}).with_columns(
+            nw.lit(period_end).alias("period")
+        )
+    result = to_wide_format(
+        frames={"RCO": empty, "RC": populated},
+        code_columns={"RCO": None, "RC": None},
+        trailing_columns={"RCO": (), "RC": ()},
+    )
+    assert isinstance(result, nw.DataFrame)
+    assert result.collect_schema()["RC__BKVAL"] == nw.Float64()
 
 
 def test_to_wide_format_is_keyword_only() -> None:
@@ -381,8 +486,6 @@ def test_to_wide_format_full_pipeline_stays_lazy_until_pivot() -> None:
     assert isinstance(melted_rc, nw.LazyFrame)
     assert isinstance(melted_rcb, nw.LazyFrame)
 
-    from call_report.core._backend import concat
-
     combined = concat(frames=[melted_rc, melted_rcb], how="union")
     assert isinstance(combined, nw.LazyFrame)
     keyed = _with_column_key(combined)
@@ -398,3 +501,485 @@ def test_to_wide_format_full_pipeline_stays_lazy_until_pivot() -> None:
     assert rows[1]["RC__TOTASSETS"] == 1000.0
     assert rows[1]["RCB__INV_CODE_10__BKVAL"] == 100.0
     assert rows[2]["RC__TOTASSETS"] == 2000.0
+
+
+# ---------------------------------------------------------------------------
+# _with_is_multiple_flag
+# ---------------------------------------------------------------------------
+
+
+def test_with_is_multiple_flag_true_for_a_coded_row() -> None:
+    """A row with a real code gets is_multiple=True."""
+    with config_context(dataframe_backend="pandas"):
+        frame = build_frame(
+            data={
+                "schedule": ["RCB"],
+                "code_column": ["INV_CODE"],
+                "code_value": [15.0],
+            }
+        )
+    result = _with_is_multiple_flag(frame)
+    assert result["is_multiple"].to_list() == [True]
+
+
+def test_with_is_multiple_flag_false_for_a_null_code_row() -> None:
+    """A row with code_column present but null gets is_multiple=False."""
+    with config_context(dataframe_backend="pandas"):
+        coded = build_frame(
+            data={"schedule": ["RCB"], "code_column": ["INV_CODE"], "code_value": [15]}
+        )
+        plain = build_frame(
+            data={"schedule": ["RC"], "code_column": [None], "code_value": [None]}
+        )
+        combined = concat(frames=[coded, plain], how="union")
+    result = _with_is_multiple_flag(combined)
+    flags = dict(
+        zip(result["schedule"].to_list(), result["is_multiple"].to_list(), strict=True)
+    )
+    assert flags == {"RCB": True, "RC": False}
+
+
+def test_with_is_multiple_flag_adds_null_code_columns_when_entirely_absent() -> None:
+    """No coded schedule at all: code_column/code_value are added, all null."""
+    with config_context(dataframe_backend="pandas"):
+        frame = build_frame(data={"schedule": ["RC"]})
+    assert "code_column" not in frame.columns
+    result = _with_is_multiple_flag(frame)
+    assert isinstance(result, nw.DataFrame)
+    assert set(result.columns) >= {"code_column", "code_value", "is_multiple"}
+    assert result["is_multiple"].to_list() == [False]
+    row = result.rows(named=True)[0]
+    assert _is_missing(row["code_column"])
+    assert _is_missing(row["code_value"])
+
+
+# ---------------------------------------------------------------------------
+# to_long_format
+# ---------------------------------------------------------------------------
+
+
+def test_to_long_format_combines_coded_and_plain_schedules() -> None:
+    """to_long_format tags plain and coded schedules' rows correctly."""
+    with config_context(dataframe_backend="pandas"):
+        rc = build_frame(
+            data={
+                "UNINUM": [1, 2],
+                "period": ["2026-03-31", "2026-03-31"],
+                "TOTASSETS": [1000, 2000],
+            }
+        )
+        rcb = build_frame(
+            data={
+                "UNINUM": [1, 1],
+                "period": ["2026-03-31", "2026-03-31"],
+                "INV_CODE": [10, 20],
+                "BKVAL": [100, 150],
+            }
+        )
+    result = to_long_format(
+        frames={"RC": rc, "RCB": rcb},
+        code_columns={"RC": None, "RCB": "INV_CODE"},
+        trailing_columns={"RC": (), "RCB": ()},
+    )
+    assert isinstance(result, nw.DataFrame)
+    rows = result.rows(named=True)
+    rc_row = next(r for r in rows if r["schedule"] == "RC" and r["UNINUM"] == 1)
+    assert rc_row["is_multiple"] is False
+    assert _is_missing(rc_row["code_column"])
+    assert rc_row["value"] == 1000.0
+    rcb_row = next(
+        r for r in rows if r["schedule"] == "RCB" and r["code_value"] == 10.0
+    )
+    assert rcb_row["is_multiple"] is True
+    assert rcb_row["code_column"] == "INV_CODE"
+    assert rcb_row["value"] == 100.0
+
+
+def test_to_long_format_trailing_column_is_single() -> None:
+    """A single_multiple_single schedule's trailing field is tagged not-multiple."""
+    with config_context(dataframe_backend="pandas"):
+        rcr7 = build_frame(
+            data={
+                "UNINUM": [1, 1],
+                "period": ["2026-03-31"] * 2,
+                "CAPCODE": [10, 20],
+                "VAL1": [100, 150],
+                "TOTAL": [999, 999],
+            }
+        )
+    result = to_long_format(
+        frames={"RCR7": rcr7},
+        code_columns={"RCR7": "CAPCODE"},
+        trailing_columns={"RCR7": ("TOTAL",)},
+    )
+    rows = result.rows(named=True)
+    total_row = next(r for r in rows if r["variable_name"] == "TOTAL")
+    assert total_row["is_multiple"] is False
+    assert _is_missing(total_row["code_column"])
+    assert total_row["value"] == 999.0
+    val1_row = next(
+        r for r in rows if r["variable_name"] == "VAL1" and r["code_value"] == 10.0
+    )
+    assert val1_row["is_multiple"] is True
+
+
+def test_to_long_format_no_coded_schedule_still_has_code_columns() -> None:
+    """Schedules with zero code columns still produce a complete long schema."""
+    with config_context(dataframe_backend="pandas"):
+        rc = build_frame(
+            data={"UNINUM": [1], "period": ["2026-03-31"], "TOTASSETS": [1000]}
+        )
+    result = to_long_format(
+        frames={"RC": rc}, code_columns={"RC": None}, trailing_columns={"RC": ()}
+    )
+    assert set(result.columns) == {
+        "UNINUM",
+        "period",
+        "schedule",
+        "code_column",
+        "code_value",
+        "is_multiple",
+        "variable_name",
+        "value",
+    }
+    assert result["is_multiple"].to_list() == [False]
+
+
+def test_to_long_format_duplicate_grain_raises_reshape_error() -> None:
+    """A genuinely duplicated (UNINUM, period, schedule, ..., variable) row raises."""
+    with config_context(dataframe_backend="pandas"):
+        rc = build_frame(
+            data={
+                "UNINUM": [1, 1],
+                "period": ["2026-03-31", "2026-03-31"],
+                "TOTASSETS": [1000, 9999],
+            }
+        )
+    with pytest.raises(ReshapeError, match="not a unique grain"):
+        to_long_format(
+            frames={"RC": rc}, code_columns={"RC": None}, trailing_columns={"RC": ()}
+        )
+
+
+def test_to_long_format_empty_schedule_alongside_a_populated_one() -> None:
+    """A zero-row schedule concatenated with a real one doesn't raise.
+
+    Same regression as `test_to_wide_format_empty_schedule_alongside_a_populated_one`,
+    for the long-format path.
+    """
+    period_end = date(2026, 3, 31)
+    with config_context(dataframe_backend="polars"):
+        empty = build_frame(data={"UNINUM": [], "TOTASSETS": []}).with_columns(
+            nw.lit(period_end).alias("period")
+        )
+        populated = build_frame(data={"UNINUM": [1], "BKVAL": [100]}).with_columns(
+            nw.lit(period_end).alias("period")
+        )
+    result = to_long_format(
+        frames={"RCO": empty, "RC": populated},
+        code_columns={"RCO": None, "RC": None},
+        trailing_columns={"RCO": (), "RC": ()},
+    )
+    assert isinstance(result, nw.DataFrame)
+    assert result.collect_schema()["value"] == nw.Float64()
+
+
+def test_to_long_format_is_keyword_only() -> None:
+    """to_long_format takes no positional arguments."""
+    with config_context(dataframe_backend="pandas"):
+        rc = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"], "A": [1]})
+    with pytest.raises(TypeError):
+        to_long_format({"RC": rc}, {"RC": None}, {"RC": ()})  # type: ignore[call-arg]
+
+
+def test_to_long_format_stays_lazy_until_grain_check() -> None:
+    """Melt/concat/flag steps stay lazy; only assert_unique_grain collects."""
+    rc = _lazy_frame(
+        data={
+            "UNINUM": [1, 2],
+            "period": ["2026-03-31", "2026-03-31"],
+            "TOTASSETS": [1000, 2000],
+        }
+    )
+    rcb = _lazy_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "INV_CODE": [10, 20],
+            "BKVAL": [100, 150],
+        }
+    )
+    melted_rc = melt_schedule_frame(frame=rc, schedule="RC", code_column=None)
+    melted_rcb = melt_schedule_frame(frame=rcb, schedule="RCB", code_column="INV_CODE")
+    combined = concat(frames=[melted_rc, melted_rcb], how="union")
+    assert isinstance(combined, nw.LazyFrame)
+    flagged = _with_is_multiple_flag(combined)
+    assert isinstance(flagged, nw.LazyFrame)
+
+    result = to_long_format(
+        frames={"RC": rc, "RCB": rcb},
+        code_columns={"RC": None, "RCB": "INV_CODE"},
+        trailing_columns={"RC": (), "RCB": ()},
+    )
+    assert isinstance(result, nw.DataFrame)
+    # 2 RC rows (one TOTASSETS per UNINUM) + 2 RCB rows (one BKVAL per code).
+    assert result.shape[0] == 4
+
+
+# ---------------------------------------------------------------------------
+# _parse_wide_column_key
+# ---------------------------------------------------------------------------
+
+
+def test_parse_wide_column_key_plain() -> None:
+    """A plain column name parses to a single-variable tuple."""
+    assert _parse_wide_column_key("RC__TOTASSETS") == (
+        "RC",
+        None,
+        None,
+        False,
+        "TOTASSETS",
+    )
+
+
+def test_parse_wide_column_key_coded_with_underscore_in_code_column() -> None:
+    """A code column name containing its own underscore still parses correctly."""
+    assert _parse_wide_column_key("RCB__INV_CODE_15__BKVAL") == (
+        "RCB",
+        "INV_CODE",
+        15.0,
+        True,
+        "BKVAL",
+    )
+
+
+@pytest.mark.parametrize(
+    "column_key",
+    [
+        "NODUNDERSCOREATALL",
+        "RC__CODE_abc__VAR",
+        "RC__A__B__C",
+    ],
+)
+def test_parse_wide_column_key_rejects_malformed_names(column_key: str) -> None:
+    """A column name matching neither the plain nor coded pattern raises."""
+    with pytest.raises(ReshapeError):
+        _parse_wide_column_key(column_key)
+
+
+# ---------------------------------------------------------------------------
+# convert_wide_format_to_long_format / convert_long_format_to_wide_format
+# ---------------------------------------------------------------------------
+
+
+def test_convert_wide_format_to_long_format_basic() -> None:
+    """A wide frame converts to the same information in long form."""
+    with config_context(dataframe_backend="pandas"):
+        wide = build_frame(
+            data={
+                "UNINUM": [1, 2],
+                "period": ["2026-03-31", "2026-03-31"],
+                "RC__TOTASSETS": [1000.0, 2000.0],
+                "RCB__INV_CODE_15__BKVAL": [9.0, 8.0],
+            }
+        )
+    result = convert_wide_format_to_long_format(wide=wide.to_native())
+    frame = nw.from_native(result)
+    assert isinstance(frame, nw.DataFrame)
+    rows = frame.rows(named=True)
+    assert len(rows) == 4
+    rc_row = next(
+        r for r in rows if r["UNINUM"] == 1 and r["variable_name"] == "TOTASSETS"
+    )
+    assert rc_row["schedule"] == "RC"
+    assert rc_row["is_multiple"] is False
+    assert rc_row["value"] == 1000.0
+    rcb_row = next(
+        r for r in rows if r["UNINUM"] == 1 and r["variable_name"] == "BKVAL"
+    )
+    assert rcb_row["schedule"] == "RCB"
+    assert rcb_row["code_column"] == "INV_CODE"
+    assert rcb_row["code_value"] == 15.0
+    assert rcb_row["is_multiple"] is True
+    assert rcb_row["value"] == 9.0
+
+
+def test_convert_wide_format_to_long_format_rejects_a_malformed_column_name() -> None:
+    """A wide column not matching the naming convention raises ReshapeError."""
+    with config_context(dataframe_backend="pandas"):
+        wide = build_frame(
+            data={"UNINUM": [1], "period": ["2026-03-31"], "NOTVALIDATALL": [1.0]}
+        )
+    with pytest.raises(ReshapeError):
+        convert_wide_format_to_long_format(wide=wide.to_native())
+
+
+def test_convert_wide_format_to_long_format_is_keyword_only() -> None:
+    """convert_wide_format_to_long_format takes no positional arguments."""
+    with config_context(dataframe_backend="pandas"):
+        wide = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"]})
+    with pytest.raises(TypeError):
+        convert_wide_format_to_long_format(  # type: ignore[call-overload]
+            wide.to_native()
+        )
+
+
+def test_convert_wide_format_to_long_format_stays_lazy() -> None:
+    """A LazyFrame input produces a genuinely uncollected LazyFrame output."""
+    import polars as pl
+
+    wide_native = _lazy_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "RC__TOTASSETS": [1000.0],
+        }
+    ).to_native()
+    assert isinstance(wide_native, pl.LazyFrame)
+    result = convert_wide_format_to_long_format(wide=wide_native)
+    assert isinstance(result, pl.LazyFrame)
+    assert result.collect().to_dicts()[0]["value"] == 1000.0
+
+
+def test_convert_wide_format_to_long_format_honors_dataframe_type() -> None:
+    """dataframe_type converts the result as a final step."""
+    import pyarrow as pa
+
+    with config_context(dataframe_backend="pandas"):
+        wide = build_frame(
+            data={"UNINUM": [1], "period": ["2026-03-31"], "RC__TOTASSETS": [1000.0]}
+        )
+    result = convert_wide_format_to_long_format(
+        wide=wide.to_native(), dataframe_type="pyarrow_table"
+    )
+    assert isinstance(result, pa.Table)
+
+
+def test_convert_long_format_to_wide_format_basic() -> None:
+    """A long frame converts to the same information in wide form."""
+    with config_context(dataframe_backend="pandas"):
+        long_ = build_frame(
+            data={
+                "UNINUM": [1, 1],
+                "period": ["2026-03-31", "2026-03-31"],
+                "schedule": ["RC", "RCB"],
+                "code_column": [None, "INV_CODE"],
+                "code_value": [None, 15.0],
+                "is_multiple": [False, True],
+                "variable_name": ["TOTASSETS", "BKVAL"],
+                "value": [1000.0, 9.0],
+            }
+        )
+    result = convert_long_format_to_wide_format(long=long_.to_native())
+    frame = nw.from_native(result)
+    assert isinstance(frame, nw.DataFrame)
+    row = frame.rows(named=True)[0]
+    assert row["RC__TOTASSETS"] == 1000.0
+    assert row["RCB__INV_CODE_15__BKVAL"] == 9.0
+
+
+def test_convert_long_format_to_wide_format_duplicate_grain_raises() -> None:
+    """A duplicated (UNINUM, period, column_key) grain raises via pivot."""
+    with config_context(dataframe_backend="pandas"):
+        long_ = build_frame(
+            data={
+                "UNINUM": [1, 1],
+                "period": ["2026-03-31", "2026-03-31"],
+                "schedule": ["RC", "RC"],
+                "code_column": [None, None],
+                "code_value": [None, None],
+                "is_multiple": [False, False],
+                "variable_name": ["TOTASSETS", "TOTASSETS"],
+                "value": [1000.0, 9999.0],
+            }
+        )
+    with pytest.raises(ReshapeError):
+        convert_long_format_to_wide_format(long=long_.to_native())
+
+
+def test_convert_long_format_to_wide_format_is_keyword_only() -> None:
+    """convert_long_format_to_wide_format takes no positional arguments."""
+    with config_context(dataframe_backend="pandas"):
+        long_ = build_frame(
+            data={
+                "UNINUM": [1],
+                "period": ["2026-03-31"],
+                "schedule": ["RC"],
+                "code_column": [None],
+                "code_value": [None],
+                "is_multiple": [False],
+                "variable_name": ["TOTASSETS"],
+                "value": [1000.0],
+            }
+        )
+    with pytest.raises(TypeError):
+        convert_long_format_to_wide_format(  # type: ignore[call-overload]
+            long_.to_native()
+        )
+
+
+# ---------------------------------------------------------------------------
+# round-trip equivalence (hermetic)
+# ---------------------------------------------------------------------------
+
+
+def test_wide_to_long_to_wide_round_trip_matches_original() -> None:
+    """Wide -> long -> wide reproduces the original wide frame exactly.
+
+    No gaps in this fixture (every UNINUM has every code), so pivot's
+    grid-completion introduces no extra rows either way -- an exact match
+    is expected here (see the real-archive test for the with-gaps case).
+    """
+    with config_context(dataframe_backend="pandas"):
+        wide = build_frame(
+            data={
+                "UNINUM": [1, 2],
+                "period": ["2026-03-31", "2026-03-31"],
+                "RC__TOTASSETS": [1000.0, 2000.0],
+                "RCB__INV_CODE_15__BKVAL": [9.0, 8.0],
+            }
+        ).to_native()
+    long_ = convert_wide_format_to_long_format(wide=wide)
+    round_tripped = nw.from_native(convert_long_format_to_wide_format(long=long_))
+    original = nw.from_native(wide)
+    assert isinstance(round_tripped, nw.DataFrame)
+    assert isinstance(original, nw.DataFrame)
+    cols = sorted(original.columns)
+    round_tripped_rows = round_tripped.select(cols).sort(cols).rows(named=True)
+    original_rows = original.select(cols).sort(cols).rows(named=True)
+    assert round_tripped_rows == original_rows
+
+
+def test_long_to_wide_to_long_round_trip_matches_non_null_rows() -> None:
+    """Long -> wide -> long reproduces every non-null-value row exactly.
+
+    This fixture has a genuine gap (UNINUM 2 has no INV_CODE=20 row at
+    all), so the round-tripped long frame has one extra, structurally
+    null row that the original never had -- documented behavior, not a
+    bug (see convert_wide_format_to_long_format's docstring).
+    """
+    with config_context(dataframe_backend="pandas"):
+        original = build_frame(
+            data={
+                "UNINUM": [1, 1, 2],
+                "period": ["2026-03-31"] * 3,
+                "schedule": ["RCB", "RCB", "RCB"],
+                "code_column": ["INV_CODE"] * 3,
+                "code_value": [10.0, 20.0, 10.0],
+                "is_multiple": [True, True, True],
+                "variable_name": ["BKVAL"] * 3,
+                "value": [100.0, 150.0, 300.0],
+            }
+        ).to_native()
+    wide = convert_long_format_to_wide_format(long=original)
+    round_tripped = nw.from_native(convert_wide_format_to_long_format(wide=wide))
+    original_frame = nw.from_native(original)
+    assert isinstance(round_tripped, nw.DataFrame)
+    assert isinstance(original_frame, nw.DataFrame)
+    round_tripped_non_null = round_tripped.filter(~nw.col("value").is_null())
+
+    cols = sorted(original_frame.columns)
+    non_null_rows = round_tripped_non_null.select(cols).sort(cols).rows(named=True)
+    original_rows = original_frame.select(cols).sort(cols).rows(named=True)
+    assert non_null_rows == original_rows
+    assert round_tripped.shape[0] == original_frame.shape[0] + 1

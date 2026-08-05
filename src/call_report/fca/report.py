@@ -678,9 +678,8 @@ class FCACallReport(BaseCallReport):
     ) -> nw.DataFrame[Any]:
         """Build the wide-format frame; the private hook behind `to_wide_format`.
 
-        Loads each resolved schedule via `_load`, determines its code
-        column (if any) from its layout in its first available period,
-        then delegates the melt/concat/pivot work to
+        Loads each resolved schedule via `_load_reshape_inputs`, then
+        delegates the melt/concat/pivot work to
         `call_report.fca._reshape.to_wide_format`. A schedule loaded lazy
         (``lazy=True`` configured, polars backend) is passed through as
         a `narwhals.LazyFrame` rather than collected here -- the melt and
@@ -704,7 +703,190 @@ class FCACallReport(BaseCallReport):
         ScheduleNotFoundError
             If `schedules` resolves to zero schedules.
         """
-        resolved = self._resolve_wide_format_schedules(schedules=schedules)
+        frames, code_columns, trailing_columns = self._load_reshape_inputs(
+            schedules=schedules
+        )
+        return _reshape.to_wide_format(
+            frames=frames, code_columns=code_columns, trailing_columns=trailing_columns
+        )
+
+    @overload
+    def to_long_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: None = None,
+    ) -> NativeDataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_long_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: Literal["pandas"],
+    ) -> pd.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_long_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: Literal["pyarrow_table"],
+    ) -> pa.Table:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_long_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: Literal["polars_dataframe"],
+    ) -> pl.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_long_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: Literal["polars_lazyframe"],
+    ) -> pl.LazyFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    def to_long_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: DataFrameType | None = None,
+    ) -> NativeDataFrame:
+        """Stack every loaded schedule into one long, tidy-shaped frame.
+
+        One row per ``(UNINUM, period, schedule, code_column, code_value,
+        variable_name)``. A plain (non-code) field has ``code_column``/
+        ``code_value`` null and ``is_multiple`` ``False``; a field that
+        repeats once per reported code has them set to the code's field
+        name and value, with ``is_multiple`` ``True`` -- matching
+        `~call_report.fca.layout.FCALayout`'s own "single"/"multiple"
+        scenario vocabulary. `value` (and `code_value`, when present) is
+        always ``Float64``, the most generic type that represents every
+        schedule's measures. See
+        `~call_report.fca.convert_long_format_to_wide_format` to pivot
+        this back to `to_wide_format`'s shape.
+
+        Parameters
+        ----------
+        schedules : Iterable[FCASchedule or str], optional
+            The schedules to include; each is matched case-insensitively.
+            Leave this ``None`` (the default) to include every schedule
+            discovered across the requested periods.
+        dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"}, optional
+            The dataframe type to convert the result to as a final step.
+            Leave this ``None`` (the default) to get back whatever backend
+            `call_report.config.get_config` currently has configured; set
+            it when the next step in your own code needs a specific type.
+
+        Returns
+        -------
+        NativeDataFrame
+            A native dataframe of the configured backend, or of
+            `dataframe_type` if it was supplied.
+
+        Raises
+        ------
+        ScheduleNotFoundError
+            If `schedules` resolves to zero schedules, or an explicitly
+            named schedule has zero surviving periods.
+        ReshapeError
+            If ``(UNINUM, period, schedule, code_column, code_value,
+            variable_name)`` is not a unique grain -- e.g. a genuinely
+            duplicated row in the source data.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> long = report.to_long_format(schedules=["RC", "RCB"])
+        >>> sorted(long.columns)
+        ['UNINUM', 'code_column', 'code_value', 'is_multiple', 'period', \
+'schedule', 'value', 'variable_name']
+        """
+        return finalize_as(
+            frame=self._to_long_format(schedules=schedules),
+            dataframe_type=dataframe_type,
+        )
+
+    def _to_long_format(
+        self, *, schedules: Iterable[FCASchedule | str] | None
+    ) -> nw.DataFrame[Any]:
+        """Build the long-format frame; the private hook behind `to_long_format`.
+
+        Loads each resolved schedule via `_load_reshape_inputs`, then
+        delegates to `call_report.fca._reshape.to_long_format`. Unlike
+        `_to_wide_format`, there's no pivot -- the melt/concat/flag steps
+        all stay lazy if a schedule was loaded lazy; the one place this
+        collects is `to_long_format`'s own grain-uniqueness check
+        (verifying data isn't a lazy-safe question either), so the result
+        here is always eager, the same as `_to_wide_format`'s.
+
+        Parameters
+        ----------
+        schedules : Iterable[FCASchedule or str], optional
+            The schedules to include, or ``None`` for every schedule
+            discovered across the requested periods.
+
+        Returns
+        -------
+        narwhals.DataFrame
+            The eager, un-finalized long-format frame.
+
+        Raises
+        ------
+        ScheduleNotFoundError
+            If `schedules` resolves to zero schedules.
+        ReshapeError
+            If the long-format grain is not unique in the source data.
+        """
+        frames, code_columns, trailing_columns = self._load_reshape_inputs(
+            schedules=schedules
+        )
+        return _reshape.to_long_format(
+            frames=frames, code_columns=code_columns, trailing_columns=trailing_columns
+        )
+
+    def _load_reshape_inputs(
+        self, *, schedules: Iterable[FCASchedule | str] | None
+    ) -> tuple[
+        dict[str, FrameOrLazy], dict[str, str | None], dict[str, tuple[str, ...]]
+    ]:
+        """Resolve `schedules` and load each one's frame, code, and trailing columns.
+
+        Shared by `_to_wide_format` and `_to_long_format`, which differ
+        only in which `call_report.fca._reshape` function they hand this
+        to. A schedule loaded lazy (``lazy=True`` configured, polars
+        backend) is passed through as a `narwhals.LazyFrame` rather than
+        collected here.
+
+        Parameters
+        ----------
+        schedules : Iterable[FCASchedule or str], optional
+            The schedules to include, or ``None`` for every schedule
+            discovered across the requested periods.
+
+        Returns
+        -------
+        tuple[dict[str, FrameOrLazy], dict[str, str or None], \
+dict[str, tuple[str, ...]]]
+            `frames`, `code_columns`, and `trailing_columns`, each keyed
+            by schedule root name.
+
+        Raises
+        ------
+        ScheduleNotFoundError
+            If `schedules` resolves to zero schedules.
+        """
+        resolved = self._resolve_reshape_schedules(schedules=schedules)
         if not resolved:
             raise ScheduleNotFoundError(
                 "No schedules to reshape: `schedules` resolved to an empty "
@@ -723,14 +905,12 @@ class FCACallReport(BaseCallReport):
                 layout.multi_columns[0] if layout.multi_columns else None
             )
             trailing_columns[schedule.value] = layout.trailing_columns
-        return _reshape.to_wide_format(
-            frames=frames, code_columns=code_columns, trailing_columns=trailing_columns
-        )
+        return frames, code_columns, trailing_columns
 
-    def _resolve_wide_format_schedules(
+    def _resolve_reshape_schedules(
         self, *, schedules: Iterable[FCASchedule | str] | None
     ) -> tuple[FCASchedule, ...]:
-        """Resolve `to_wide_format`'s `schedules` parameter to a concrete tuple.
+        """Resolve `to_wide_format`/`to_long_format`'s `schedules` to a concrete tuple.
 
         ``None`` mirrors `_load_all`'s lenient behavior: every schedule
         discovered across the requested periods. An explicit iterable is

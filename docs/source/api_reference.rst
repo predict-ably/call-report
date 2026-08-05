@@ -76,6 +76,8 @@ parsing an individual layout or data file.
 
    call_report.fca.FCACallReport
    call_report.fca.FCASchedule
+   call_report.fca.convert_wide_format_to_long_format
+   call_report.fca.convert_long_format_to_wide_format
    call_report.fca.get_fca_file_metadata
    call_report.fca.get_institutions_file_metadata
    call_report.fca.all_fca_file_metadata

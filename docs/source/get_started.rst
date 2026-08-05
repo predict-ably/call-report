@@ -204,6 +204,68 @@ backend, including ``pyarrow`` -- which has no native pivot operation, so
 ``to_wide_format`` falls back to an equivalent filter-and-join reshape for
 it automatically.
 
+Reshaping to long format
+==========================
+
+:meth:`~call_report.fca.FCACallReport.to_long_format` stacks every
+schedule the same way, but keeps a *tidy*, one-value-per-row shape
+instead of pivoting: one row per institution, period, schedule, and
+variable.
+
+.. code-block:: python
+
+   long = report.to_long_format(schedules=["RC", "RCB"])
+   sorted(long.columns)
+   # ['UNINUM', 'code_column', 'code_value', 'is_multiple', 'period',
+   #  'schedule', 'value', 'variable_name']
+
+``value`` is always ``Float64`` -- the most generic type that
+represents every schedule's measures. A plain (non-code) field has
+``is_multiple`` ``False`` and null ``code_column``/``code_value``:
+
+.. code-block:: python
+
+   row = long[
+       (long["UNINUM"] == 620000)
+       & (long["schedule"] == "RC")
+       & (long["variable_name"] == "ASSETS")
+   ].iloc[0]
+   row["value"], row["is_multiple"]
+   # (47138132.0, False)
+
+A field RCB reports once per investment code instead has ``is_multiple``
+``True``, with ``code_column``/``code_value`` naming which code that row
+belongs to -- matching :class:`~call_report.fca.layout.FCALayout`'s own
+"single"/"multiple" vocabulary:
+
+.. code-block:: python
+
+   row = long[
+       (long["UNINUM"] == 620000)
+       & (long["schedule"] == "RCB")
+       & (long["code_value"] == 81.0)
+   ].iloc[0]
+   row["code_column"], row["value"]
+   # ('INV_CODE', 9579.0)
+
+Convert between the two shapes directly with
+:func:`~call_report.fca.convert_wide_format_to_long_format` and
+:func:`~call_report.fca.convert_long_format_to_wide_format`, without
+needing a fresh :class:`~call_report.fca.FCACallReport` call:
+
+.. code-block:: python
+
+   from call_report.fca import convert_long_format_to_wide_format
+
+   wide_again = convert_long_format_to_wide_format(long=long)
+
+Converting wide format to long format can produce a few extra,
+structurally null rows compared to building long format directly --
+pivoting fills in every institution/column combination, including ones
+no institution actually reported, as an explicit null; a directly-built
+long-format frame only ever has a row for a combination that genuinely
+appeared in the source.
+
 Choosing a dataframe backend
 -----------------------------
 

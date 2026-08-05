@@ -290,31 +290,31 @@ def convert_dataframe_type(
 
 @overload
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: None
+    *, frame: FrameOrLazy, dataframe_type: None
 ) -> NativeDataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: Literal["pandas"]
+    *, frame: FrameOrLazy, dataframe_type: Literal["pandas"]
 ) -> pd.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: Literal["pyarrow_table"]
+    *, frame: FrameOrLazy, dataframe_type: Literal["pyarrow_table"]
 ) -> pa.Table:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: Literal["polars_dataframe"]
+    *, frame: FrameOrLazy, dataframe_type: Literal["polars_dataframe"]
 ) -> pl.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: Literal["polars_lazyframe"]
+    *, frame: FrameOrLazy, dataframe_type: Literal["polars_lazyframe"]
 ) -> pl.LazyFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: DataFrameType | None
+    *, frame: FrameOrLazy, dataframe_type: DataFrameType | None
 ) -> NativeDataFrame:
     """Finalize a frame and convert it to a DataFrameType, in one step.
 
@@ -325,8 +325,9 @@ def finalize_as(
 
     Parameters
     ----------
-    frame : narwhals.DataFrame
-        The eager narwhals frame to finalize.
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        The narwhals frame to finalize -- usually eager, but may already
+        be lazy (see :func:`finalize`).
     dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
 "polars_dataframe"} or None
         The dataframe type to convert the finalized result to; ``None``
@@ -399,6 +400,41 @@ def pivot(
         ) from error
 
 
+def assert_unique_grain(
+    *, frame: FrameOrLazy, columns: Sequence[str]
+) -> nw.DataFrame[Any]:
+    """Collect `frame` (if lazy) and raise unless `columns` is a unique grain.
+
+    Checking uniqueness means looking at the actual data, which isn't a
+    lazy-safe operation -- this is the one place a caller that otherwise
+    stays lazy end to end is forced to collect, in exchange for a real
+    guarantee about the data rather than a silent duplicate.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        The frame to check.
+    columns : Sequence[str]
+        The column(s) that together must identify each row uniquely.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        `frame`, collected if it was lazy.
+
+    Raises
+    ------
+    ReshapeError
+        If `columns` is not a unique grain.
+    """
+    if isinstance(frame, nw.LazyFrame):
+        frame = frame.collect()
+    columns = list(columns)
+    if frame.select(*columns).unique(subset=columns).shape[0] != frame.shape[0]:
+        raise ReshapeError(f"columns={columns!r} is not a unique grain.")
+    return frame
+
+
 def _manual_pivot(
     *, frame: nw.DataFrame[Any], on: str, index: list[str], values: str
 ) -> nw.DataFrame[Any]:
@@ -432,14 +468,12 @@ def _manual_pivot(
     ReshapeError
         If `index` + `on` is not a unique grain.
     """
-    grain_columns = [*index, on]
-    if (
-        frame.select(*grain_columns).unique(subset=grain_columns).shape[0]
-        != frame.shape[0]
-    ):
+    try:
+        frame = assert_unique_grain(frame=frame, columns=[*index, on])
+    except ReshapeError as error:
         raise ReshapeError(
             f"Could not pivot: index={index!r} + on={on!r} is not a unique grain."
-        )
+        ) from error
 
     key_rows = frame.select(on).unique(subset=[on]).sort(on).rows(named=True)
     pieces: list[nw.DataFrame[Any]] = []

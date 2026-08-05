@@ -13,6 +13,7 @@ from call_report.core._backend import (
     _dataframe_type_of,
     _join_on_index,
     _manual_pivot,
+    assert_unique_grain,
     build_frame,
     concat,
     convert_dataframe_type,
@@ -187,6 +188,68 @@ def test_pivot_collects_a_lazy_frame() -> None:
     assert rows[1]["B"] == 20
     assert rows[2]["A"] == 30
     assert rows[2]["B"] == 40
+
+
+def test_finalize_as_accepts_an_already_lazy_frame() -> None:
+    """finalize_as() finalizes-and-converts starting from an already-lazy frame."""
+    import polars as pl
+
+    lazy = _lazy_frame(data={"UNINUM": [1, 2]})
+    with config_context(dataframe_backend="polars", lazy=True):
+        result = finalize_as(frame=lazy, dataframe_type=None)
+    assert isinstance(result, pl.LazyFrame)
+    assert result.collect().to_dicts() == [{"UNINUM": 1}, {"UNINUM": 2}]
+
+
+def test_finalize_as_converts_an_already_lazy_frame_to_a_non_lazy_type() -> None:
+    """finalize_as() collects an already-lazy frame when a non-lazy type is asked."""
+    import pandas as pd
+
+    lazy = _lazy_frame(data={"UNINUM": [1, 2]})
+    with config_context(dataframe_backend="polars", lazy=True):
+        result = finalize_as(frame=lazy, dataframe_type="pandas")
+    assert isinstance(result, pd.DataFrame)
+    assert result["UNINUM"].tolist() == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# assert_unique_grain
+# ---------------------------------------------------------------------------
+
+
+def test_assert_unique_grain_returns_the_eager_frame_unchanged_when_unique() -> None:
+    """A genuinely unique grain passes through, still eager, no error."""
+    with config_context(dataframe_backend="pandas"):
+        frame = build_frame(data={"UNINUM": [1, 2], "period": ["2026-03-31"] * 2})
+    result = assert_unique_grain(frame=frame, columns=["UNINUM", "period"])
+    assert isinstance(result, nw.DataFrame)
+    assert result.shape[0] == 2
+
+
+def test_assert_unique_grain_collects_a_lazy_frame_first() -> None:
+    """A LazyFrame input is collected, then checked, returning an eager frame."""
+    frame = _lazy_frame(data={"UNINUM": [1, 2], "period": ["2026-03-31"] * 2})
+    result = assert_unique_grain(frame=frame, columns=["UNINUM", "period"])
+    assert isinstance(result, nw.DataFrame)
+    assert result.shape[0] == 2
+
+
+def test_assert_unique_grain_raises_on_a_genuine_duplicate() -> None:
+    """A duplicated grain raises ReshapeError naming the offending columns."""
+    with config_context(dataframe_backend="pandas"):
+        frame = build_frame(
+            data={"UNINUM": [1, 1], "period": ["2026-03-31", "2026-03-31"]}
+        )
+    with pytest.raises(ReshapeError, match=r"\['UNINUM', 'period'\]"):
+        assert_unique_grain(frame=frame, columns=["UNINUM", "period"])
+
+
+def test_assert_unique_grain_is_keyword_only() -> None:
+    """assert_unique_grain takes no positional arguments."""
+    with config_context(dataframe_backend="pandas"):
+        frame = build_frame(data={"UNINUM": [1]})
+    with pytest.raises(TypeError):
+        assert_unique_grain(frame, ["UNINUM"])  # type: ignore[call-arg]
 
 
 # ---------------------------------------------------------------------------
