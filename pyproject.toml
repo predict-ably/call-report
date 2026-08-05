@@ -141,3 +141,9 @@ exclude = [
 [tool.doc8]
 max-line-length = 88
 ignore_path = ["docs/_build"]
+
+[tool.codespell]
+# "SME" (subject-matter expert) reads as a typo for "some"/"same" -- a
+# real, recurring term for this project's schedule-metadata generation
+# pipeline (scripts/generate_fca_schedule_metadata.py), not a mistake.
+ignore-words-list = "sme"

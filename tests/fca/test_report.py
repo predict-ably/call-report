@@ -6,6 +6,7 @@ import math
 from datetime import date
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import narwhals as nw
 import pytest
@@ -18,9 +19,15 @@ from call_report.exceptions import (
     InvalidPeriodError,
     LayoutParseError,
     PeriodNotAvailableError,
+    ReshapeError,
     ScheduleNotFoundError,
 )
-from call_report.fca import FCACallReport, FCASchedule
+from call_report.fca import (
+    FCACallReport,
+    FCASchedule,
+    convert_long_format_to_wide_format,
+    convert_wide_format_to_long_format,
+)
 from call_report.fca.layout import FCALayout
 from call_report.fca.transport import LocalDirectoryTransport
 from tests.conftest import write_data, write_layout
@@ -748,3 +755,495 @@ def test_load_institutions_honors_dataframe_type_override(
     )
     result = report.load_institutions(dataframe_type=dataframe_type)
     assert isinstance(result, expected_type)
+
+
+# ---------------------------------------------------------------------------
+# to_wide_format
+# ---------------------------------------------------------------------------
+
+
+def test_to_wide_format_default_includes_every_discovered_schedule(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """schedules=None (the default) includes every schedule found in range."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    wide = report.to_wide_format()
+    rows = _rows(wide)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["UNINUM"] == 610000
+    assert row["period"] == date(2026, 3, 31)
+    assert row["RC__TOTASSETS"] == 1100000.0
+    assert row["RC__TOTLIAB"] == 950000.0
+    assert row["RCB__INV_CODE_10__AMOUNT"] == 120.0
+    assert row["RCB__INV_CODE_20__AMOUNT2"] == 2.70
+    assert row["RCR7__CAPCODE_10__VAL1"] == 111.0
+    assert row["RCR7__TOTAL"] == 999.0
+
+
+def test_to_wide_format_explicit_schedules_narrows_the_result(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """An explicit `schedules` includes only those schedules' columns."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    wide = report.to_wide_format(schedules=["RC"])
+    columns = _rows(wide)[0]
+    assert "RC__TOTASSETS" in columns
+    assert not any(name.startswith(("RCB__", "RCR7__")) for name in columns)
+
+
+def test_to_wide_format_accepts_schedule_enum_members(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """`schedules` accepts FCASchedule members, not just strings."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    wide = report.to_wide_format(schedules=[FCASchedule.RC])
+    assert "RC__TOTASSETS" in _rows(wide)[0]
+
+
+def test_to_wide_format_multi_period_grain_and_schema_union(
+    data_dir: Path, release_2025q3: Path, release_2025q4: Path
+) -> None:
+    """Each (UNINUM, period) is its own row; a schema_policy='union' gap is null."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    wide = report.to_wide_format(schedules=["RC"])
+    rows = {(row["UNINUM"], row["period"]): row for row in _rows(wide)}
+    assert len(rows) == 4
+    # release_2025q3's RC layout has no TOTLIAB column yet.
+    q3_row = rows[(610000, date(2025, 9, 30))]
+    assert q3_row["RC__TOTASSETS"] == 1000000.0
+    assert _is_missing(q3_row["RC__TOTLIAB"])
+    q4_row = rows[(610000, date(2025, 12, 31))]
+    assert q4_row["RC__TOTASSETS"] == 1050000.0
+    assert q4_row["RC__TOTLIAB"] == 900000.0
+
+
+def test_to_wide_format_absent_named_schedule_raises(
+    data_dir: Path, release_2025q3: Path
+) -> None:
+    """A schedule named explicitly but absent from every period raises."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-09-30",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(ScheduleNotFoundError):
+        report.to_wide_format(schedules=["RCR7"])
+
+
+def test_to_wide_format_empty_schedules_raises(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """An explicitly empty `schedules` raises rather than reshaping nothing."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(ScheduleNotFoundError, match="No schedules to reshape"):
+        report.to_wide_format(schedules=[])
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_to_wide_format_honors_dataframe_type_override(
+    data_dir: Path, release_2026q1: Path, dataframe_type: DataFrameType
+) -> None:
+    """to_wide_format() converts its result to `dataframe_type` as a final step."""
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
+
+    expected_type = {
+        "pandas": pd.DataFrame,
+        "pyarrow_table": pa.Table,
+        "polars_dataframe": pl.DataFrame,
+        "polars_lazyframe": pl.LazyFrame,
+    }[dataframe_type]
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    result = report.to_wide_format(dataframe_type=dataframe_type)
+    assert isinstance(result, expected_type)
+
+
+def test_to_wide_format_is_keyword_only(data_dir: Path, release_2026q1: Path) -> None:
+    """to_wide_format takes no positional arguments."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(TypeError):
+        report.to_wide_format(["RC"])  # type: ignore[call-overload]
+
+
+def test_to_wide_format_reshapes_a_lazy_loaded_schedule_correctly(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """lazy=True with the polars backend still reshapes correctly end to end."""
+    import polars as pl
+
+    with config_context(dataframe_backend="polars", lazy=True):
+        report = FCACallReport(
+            start="2026-03-31",
+            end="2026-03-31",
+            transport=LocalDirectoryTransport(data_dir=data_dir),
+        )
+        wide = report.to_wide_format(schedules=["RC"])
+    assert isinstance(wide, pl.LazyFrame)
+    assert wide.collect().to_dicts()[0]["RC__TOTASSETS"] == 1100000.0
+
+
+def test_to_wide_format_does_not_collect_before_reshaping(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """A lazily-loaded schedule is passed to _reshape.to_wide_format still lazy.
+
+    `_to_wide_format` used to call `.collect()` on each schedule
+    immediately after loading it, before any melt/concat/pivot work
+    started. It no longer does -- this confirms `_reshape.to_wide_format`
+    receives a genuine, uncollected `narwhals.LazyFrame` per schedule, so
+    the melt/concat/column-key steps can run as one query instead of N
+    separate eager materializations.
+    """
+    from call_report.fca import _reshape
+
+    captured_frames: dict[str, object] = {}
+    original = _reshape.to_wide_format
+
+    def spy(*, frames: dict[str, object], **kwargs: object) -> object:
+        captured_frames.update(frames)
+        return original(frames=frames, **kwargs)  # type: ignore[arg-type]
+
+    with config_context(dataframe_backend="polars", lazy=True):
+        report = FCACallReport(
+            start="2026-03-31",
+            end="2026-03-31",
+            transport=LocalDirectoryTransport(data_dir=data_dir),
+        )
+        with patch.object(_reshape, "to_wide_format", spy):
+            report.to_wide_format(schedules=["RC", "RCB"])
+
+    assert set(captured_frames) == {"RC", "RCB"}
+    for frame in captured_frames.values():
+        assert isinstance(frame, nw.LazyFrame)
+
+
+# ---------------------------------------------------------------------------
+# to_long_format
+# ---------------------------------------------------------------------------
+
+
+def test_to_long_format_default_includes_every_discovered_schedule(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """schedules=None (the default) includes every schedule found in range."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    long_ = report.to_long_format()
+    rows = _rows(long_)
+    assert len(rows) == 11
+    rc_row = next(
+        r for r in rows if r["schedule"] == "RC" and r["variable_name"] == "TOTASSETS"
+    )
+    assert rc_row["UNINUM"] == 610000
+    assert rc_row["period"] == date(2026, 3, 31)
+    assert rc_row["value"] == 1100000.0
+    assert rc_row["is_multiple"] is False
+    assert _is_missing(rc_row["code_column"])
+    rcb_row = next(
+        r
+        for r in rows
+        if r["schedule"] == "RCB"
+        and r["variable_name"] == "AMOUNT2"
+        and r["code_value"] == 20.0
+    )
+    assert rcb_row["code_column"] == "INV_CODE"
+    assert rcb_row["is_multiple"] is True
+    assert rcb_row["value"] == 2.70
+    rcr7_total = next(
+        r for r in rows if r["schedule"] == "RCR7" and r["variable_name"] == "TOTAL"
+    )
+    assert rcr7_total["is_multiple"] is False
+    assert rcr7_total["value"] == 999.0
+
+
+def test_to_long_format_explicit_schedules_narrows_the_result(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """An explicit `schedules` includes only those schedules' rows."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    long_ = report.to_long_format(schedules=["RC"])
+    rows = _rows(long_)
+    assert {row["schedule"] for row in rows} == {"RC"}
+    assert len(rows) == 2
+
+
+def test_to_long_format_accepts_schedule_enum_members(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """`schedules` accepts FCASchedule members, not just strings."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    long_ = report.to_long_format(schedules=[FCASchedule.RC])
+    assert {row["schedule"] for row in _rows(long_)} == {"RC"}
+
+
+def test_to_long_format_multi_period_grain_and_schema_union(
+    data_dir: Path, release_2025q3: Path, release_2025q4: Path
+) -> None:
+    """Each (UNINUM, period, schedule, variable) is its own row."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    long_ = report.to_long_format(schedules=["RC"])
+    rows = _rows(long_)
+    # release_2025q3's RC layout has no TOTLIAB column yet, but _load's own
+    # schema_policy="union" already null-fills it across periods before
+    # to_long_format ever melts -- so q3 still gets a (null-valued) TOTLIAB
+    # row: 2 institutions x 2 periods x (TOTASSETS + TOTLIAB) = 8 rows.
+    assert len(rows) == 8
+    q3_totliab = next(
+        r
+        for r in rows
+        if r["period"] == date(2025, 9, 30)
+        and r["variable_name"] == "TOTLIAB"
+        and r["UNINUM"] == 610000
+    )
+    assert _is_missing(q3_totliab["value"])
+    q4_totassets = next(
+        r
+        for r in rows
+        if r["period"] == date(2025, 12, 31)
+        and r["variable_name"] == "TOTASSETS"
+        and r["UNINUM"] == 610000
+    )
+    assert q4_totassets["value"] == 1050000.0
+
+
+def test_to_long_format_absent_named_schedule_raises(
+    data_dir: Path, release_2025q3: Path
+) -> None:
+    """A schedule named explicitly but absent from every period raises."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-09-30",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(ScheduleNotFoundError):
+        report.to_long_format(schedules=["RCR7"])
+
+
+def test_to_long_format_empty_schedules_raises(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """An explicitly empty `schedules` raises rather than reshaping nothing."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(ScheduleNotFoundError, match="No schedules to reshape"):
+        report.to_long_format(schedules=[])
+
+
+def test_to_long_format_duplicate_grain_raises(tmp_path: Path) -> None:
+    """A genuinely duplicated source row raises ReshapeError."""
+    directory = tmp_path / "2026March"
+    directory.mkdir()
+    write_layout(directory, root="RC", variable_lines=RC_LINES_7COL)
+    write_data(
+        directory,
+        root="RC",
+        year=2026,
+        month=3,
+        rows=[
+            "6,10,0,3,2026,610000,1000000",
+            "6,10,0,3,2026,610000,9999999",
+        ],
+    )
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    with pytest.raises(ReshapeError, match="not a unique grain"):
+        report.to_long_format(schedules=["RC"])
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_to_long_format_honors_dataframe_type_override(
+    data_dir: Path, release_2026q1: Path, dataframe_type: DataFrameType
+) -> None:
+    """to_long_format() converts its result to `dataframe_type` as a final step."""
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
+
+    expected_type = {
+        "pandas": pd.DataFrame,
+        "pyarrow_table": pa.Table,
+        "polars_dataframe": pl.DataFrame,
+        "polars_lazyframe": pl.LazyFrame,
+    }[dataframe_type]
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    result = report.to_long_format(dataframe_type=dataframe_type)
+    assert isinstance(result, expected_type)
+
+
+def test_to_long_format_is_keyword_only(data_dir: Path, release_2026q1: Path) -> None:
+    """to_long_format takes no positional arguments."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(TypeError):
+        report.to_long_format(["RC"])  # type: ignore[call-overload]
+
+
+def test_to_long_format_reshapes_a_lazy_loaded_schedule_correctly(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """lazy=True with the polars backend still reshapes correctly end to end."""
+    import polars as pl
+
+    with config_context(dataframe_backend="polars", lazy=True):
+        report = FCACallReport(
+            start="2026-03-31",
+            end="2026-03-31",
+            transport=LocalDirectoryTransport(data_dir=data_dir),
+        )
+        long_ = report.to_long_format(schedules=["RC"])
+    assert isinstance(long_, pl.LazyFrame)
+    rows = long_.collect().to_dicts()
+    row = next(r for r in rows if r["variable_name"] == "TOTASSETS")
+    assert row["value"] == 1100000.0
+
+
+def test_to_long_format_does_not_collect_before_the_grain_check(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """A lazily-loaded schedule is passed to _reshape.to_long_format still lazy.
+
+    Mirrors `test_to_wide_format_does_not_collect_before_reshaping`: the
+    melt/concat/flag steps stay lazy, with `assert_unique_grain` (inside
+    `_reshape.to_long_format`) as the one place a collect happens.
+    """
+    from call_report.fca import _reshape
+
+    captured_frames: dict[str, object] = {}
+    original = _reshape.to_long_format
+
+    def spy(*, frames: dict[str, object], **kwargs: object) -> object:
+        captured_frames.update(frames)
+        return original(frames=frames, **kwargs)  # type: ignore[arg-type]
+
+    with config_context(dataframe_backend="polars", lazy=True):
+        report = FCACallReport(
+            start="2026-03-31",
+            end="2026-03-31",
+            transport=LocalDirectoryTransport(data_dir=data_dir),
+        )
+        with patch.object(_reshape, "to_long_format", spy):
+            report.to_long_format(schedules=["RC", "RCB"])
+
+    assert set(captured_frames) == {"RC", "RCB"}
+    for frame in captured_frames.values():
+        assert isinstance(frame, nw.LazyFrame)
+
+
+# ---------------------------------------------------------------------------
+# to_wide_format / to_long_format round-trip equivalence
+# ---------------------------------------------------------------------------
+
+
+def test_wide_and_long_format_carry_the_same_information(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """to_wide_format and to_long_format, converted into each other, agree.
+
+    `release_2026q1` has no gaps (every institution has every code it
+    reports), so this fixture doesn't hit the pivot grid-completion
+    null-row case documented on `convert_wide_format_to_long_format` --
+    see `test_release_archive.py` for that with real, gappy data.
+    """
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    wide = report.to_wide_format()
+    long_ = report.to_long_format()
+
+    converted_long = nw.from_native(convert_wide_format_to_long_format(wide=wide))
+    converted_wide = nw.from_native(convert_long_format_to_wide_format(long=long_))
+    assert isinstance(converted_long, nw.DataFrame)
+    assert isinstance(converted_wide, nw.DataFrame)
+
+    long_frame = nw.from_native(long_)
+    wide_frame = nw.from_native(wide)
+    assert isinstance(long_frame, nw.DataFrame)
+    assert isinstance(wide_frame, nw.DataFrame)
+
+    long_cols = sorted(long_frame.columns)
+    converted_long_rows = (
+        converted_long.select(long_cols).sort(long_cols).rows(named=True)
+    )
+    long_rows = long_frame.select(long_cols).sort(long_cols).rows(named=True)
+    assert _normalize_rows(converted_long_rows) == _normalize_rows(long_rows)
+
+    wide_cols = sorted(wide_frame.columns)
+    converted_wide_rows = (
+        converted_wide.select(wide_cols).sort(wide_cols).rows(named=True)
+    )
+    wide_rows = wide_frame.select(wide_cols).sort(wide_cols).rows(named=True)
+    assert _normalize_rows(converted_wide_rows) == _normalize_rows(wide_rows)
+
+
+def _normalize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Replace any NaN value with None, so row-dict equality isn't NaN != NaN."""
+    return [
+        {key: (None if _is_missing(value) else value) for key, value in row.items()}
+        for row in rows
+    ]

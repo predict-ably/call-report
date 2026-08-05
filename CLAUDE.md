@@ -170,19 +170,30 @@ sphinx-build -b html docs/source docs/_build/html
 
 ## Repo layout
 
-- `src/call_report/` — the package (src layout).
+- `src/call_report/` — the package (src layout). Includes generated,
+  shipped data alongside the code: `src/call_report/fca/data/schedules/`
+  holds the canonical, authoritative FCA schedule metadata (one JSON
+  `FileMetadata` per schedule root, produced by
+  `scripts/generate_fca_schedule_metadata.py`), loaded lazily at runtime
+  by `call_report.fca.get_fca_file_metadata`.
 - `tests/` — pytest suite.
-- `data/` — real, source-published regulatory
-- archives checked into the repo,
-  one subfolder per source (e.g. `data/fca-call-report/`, so it stays
-  unambiguous once FFIEC/FDIC/NCUA equivalents are added). Not shipped in the
-  built wheel (`[tool.hatch.build.targets.wheel] packages` only includes
-  `src/call_report`); it exists so the repo itself ships ready-to-use
-  historical data (no live/Cloudflare-protected download needed) and so
-  `tests/fca/test_release_archive.py` can regression-test every real archived
-  release. Update it by dropping in each new quarter's zip as FCA publishes it.
+- `data/` — real, source-published regulatory archives checked into the
+  repo, one subfolder per source (e.g. `data/fca-call-report/`, so it
+  stays unambiguous once FFIEC/FDIC/NCUA equivalents are added). Not
+  shipped in the built wheel (`[tool.hatch.build.targets.wheel] packages`
+  only includes `src/call_report`); it exists so the repo itself ships
+  ready-to-use historical data (no live/Cloudflare-protected download
+  needed) and so `tests/fca/test_release_archive.py` can regression-test
+  every real archived release. Update it by dropping in each new
+  quarter's zip as FCA publishes it. `data/fca-schedule-metadata/base/`
+  and `data/fca-schedule-metadata/overrides/` are the same kind of
+  not-shipped, checked-in working data, specific to the schedule-metadata
+  generation pipeline above -- see that script's module docstring.
 - `docs/` — Sphinx documentation.
-- `scripts/` — maintenance/release helpers.
+- `scripts/` — maintenance/release helpers, including
+  `generate_fca_schedule_metadata.py`, the FCA schedule-metadata
+  generation pipeline (run by a maintainer, not part of CI or the
+  package's own runtime).
 - `pyproject.toml` — build, dependencies, and all tool configuration.
 - `.pre-commit-config.yaml` — lint/format/type/docstring hooks.
 

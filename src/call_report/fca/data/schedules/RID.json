@@ -1,0 +1,265 @@
+{
+  "name": "RID",
+  "periods": [
+    {
+      "start": "2000-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CAP_CODE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Capital Stock Code: 10 Beginning balance 20 Prior quarter adjustments 30 Amended beginning balance 40 Accum. adjustments acctg. change 50 Prior year's adj. 60 Net income 70 Dividents 80 Patronage dist. 90 Other income transfers 100 Retirements of cap. stock, part. cert. and surplus allocated 110 Issuance of cap. stk. and part. cert. 115 Issued pref. stk. 117 Retired pref. stk. 120 Other 130 Ending balance",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Capital Stock Code: 10 Beginning balance 25 Prior Period & Accounting Adjustments 35 Net Income 45 Other Comprehensive Income 80 Patronage Distributions 70 Dividends 75 Stock Issued 85 Stock Retired 95 Paid-in Capital Adjustments 105 Allocated Equity Retired 120 Other 130 Ending balance",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CAP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Capital Stock and Participation Certificates",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "PAIDIN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Paid-In Capital",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ALSUR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Surplus Allocated",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Allocated Surplus: Qualified",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "SURES": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Surplus Reserve",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "UALSUR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Earned Surplus Unallocated",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "TOTNW": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Net Worth",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NONALSUR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Nonqualified allocated surplus",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "OTHCOMPINCOME": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accumulated Other Comprehensive Income",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Accumulated Other Comprehensive Income",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Accumulated Other Comprehensive Income",
+          "period_start": "2008-09-30",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "CapStkPurch": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Capital Stock: Purchased",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CAPSTKALLOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Capital Stock: Allocated",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "PREFSTKPERP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Perpetual Preferred Stock Noncumulative",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "PREFSTKO": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Perpetual Preferred Stock Other",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NQASSubj2Retire": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Allocated Surplus: Nonqualified Subject To Retirement",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NQASNotSubj2Retire": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Allocated Surplus: Nonqualified Not Subject To Retirement",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNRETERN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Unallocated Retained Earnings",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ACNOCOMINC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accumulated other comprehensive income (AOCI)",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

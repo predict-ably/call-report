@@ -1,0 +1,121 @@
+{
+  "name": "RCB2",
+  "periods": [
+    {
+      "start": "2018-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AssetCodeRCB2": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Asset Code for Assets Held for Liquidity 110 Level 1: Cash 120 Level 1: Overnight money market instruments 130 Level 1: U.S. Government obligations ? 3years remaining maturity 140 Level 1: GSE senior debt ? 60 days remaining maturity 150 Level 1: Diversified investments funds comprised of Level 1 securities 160 Level 1: Subtotal 210 Level 2: U.S. Government obligations > 3 year remaining maturity 220 Level 2: MBS fully and explicitly guaranteed (both P&I) by U.S. Government 230 Level 2: Diversified investment funds comprised of Levels 1 and 2 securities 240 Level 2: Subtotal 310 Level 3: GSE senior debt > 60 days remaining maturity 320 Level 3: MBS fully guaranteed (both P&I) by a GSE 330 Level 3: Money market instruments ? 90 day remaining maturity 340 Level 3: Diversified investments funds comprised of Levels 1, 2, and 3 securities 350 Level 3: Subtotal 410 Supplemental liquidity buffer 510 Total",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AmortizedCost": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Amortized cost of Assets Held for Liquidity",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "FairValue": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Fair Value of Assets Held for Liquidity",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DiscountedFairValue": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Discounted Fair Value of Assets Held for Liquidity",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LiquidityDaysForCategory": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Days of Liquidity For Category",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

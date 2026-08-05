@@ -1,0 +1,181 @@
+{
+  "name": "RCI1",
+  "periods": [
+    {
+      "start": "2018-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UnusedCommitUncondCancel": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Unused Commitments: Retail loans to borrowers - unconditionally cancellable",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UnusedCommitLE14Month": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Unused Commitments: Retail loans to borrowers \u2013 14 months or less (excludes unconditionally cancellable)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UnusedCommitGT14Month": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Unused Commitments: Retail loans to borrowers \u2013 greater than 14 months (excludes unconditionally cancellable)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UnusedCommitDirectLoan": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Unused Commitments: Direct loans to associations/OFIs (bank only)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LetterCrdtFinclStandby": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Letters of Credit: Financial standby letters of credit",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LetterCrdtPerfStandby": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Letters of Credit: Performance standby letters of credit",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LetterCrdtCommercial": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Letters of Credit: Commercial and other similar letters of credit",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "Commit2PurchWhenIssuedTBA": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Commitments to purchase \u201cwhen issued\u201d or \u201cto-be announced\u201d securities",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AssetServBalance": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Assets Serviced for Others: Total principal outstanding",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AssetServTotCommit": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Assets Serviced for Others: Total commitment",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OtherOBSCommitContingency": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other Material Off-Balance Sheet Commitments and Contingencies (include only if greater than $10 million or 10% of net worth \u2013 whichever is less)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

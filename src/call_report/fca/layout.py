@@ -24,6 +24,24 @@ LayoutScenario = Literal["single", "single_multiple", "single_multiple_single"]
 ENCODING = "windows-1252"
 """str: The encoding used by every FCA Call Report file, layout or data."""
 
+FIXED_IDENTIFIER_COLUMNS: tuple[str, ...] = (
+    "SYSTEM",
+    "DIST",
+    "ASSOC",
+    "MONTH",
+    "YEAR",
+    "UNINUM",
+)
+"""tuple[str, ...]: The fixed institution/period-identifying column prefix.
+
+Verified present, in this exact order, as the start of `leading_columns`
+for every schedule across FCA's entire published history (2000-present),
+including the institution roster. For a ``"single"``-scenario schedule,
+`leading_columns` also contains every measure field after this prefix
+(there is no multi/trailing split at all); for a code-bearing scenario,
+`leading_columns` is narrowly just this prefix.
+"""
+
 _TYPE_LOOKAHEAD = r"(?=(\s+Alphanum\.|\s+Numeric))"
 _TOKEN_RE = re.compile(rf"(\*\*)?\b(\w+){_TYPE_LOOKAHEAD}")
 _NOTE_STRIP_RE = re.compile(r"\*\*\s+NOTE.*$")
@@ -33,6 +51,45 @@ _WHITESPACE_RE = re.compile(r"\s+")
 # the whitespace-then-digit decimal position), not an incidental occurrence
 # of the word elsewhere in a variable's definition text.
 _LOWERCASE_NUMERIC_KEYWORD_RE = re.compile(r"\bnumeric(?=\s+\d)")
+
+
+def infer_field_dtype(
+    *, var_type: Literal["Numeric", "Alphanum."], decimal_position: int
+) -> nw.dtypes.DType:
+    """Translate an FCA layout variable's declared type into a narwhals dtype.
+
+    FCA's own vocabulary is just ``"Numeric"``/``"Alphanum."`` plus a
+    decimal position; this maps that onto the narwhals dtype vocabulary
+    `call_report.core.FieldVersion` expects, following the same
+    ``"Numeric"``-specific check `fca.reader`'s value-level casting
+    already uses -- anything other than ``"Numeric"`` is treated as text.
+
+    Parameters
+    ----------
+    var_type : {"Numeric", "Alphanum."}
+        The variable's declared type, from its layout.
+    decimal_position : int
+        The variable's declared decimal position, from its layout.
+
+    Returns
+    -------
+    narwhals.dtypes.DType
+        `narwhals.Int64` for ``"Numeric"`` with `decimal_position` ``0``;
+        `narwhals.Float64` for ``"Numeric"`` with any other
+        `decimal_position`; `narwhals.String` for ``"Alphanum."``.
+
+    Examples
+    --------
+    >>> infer_field_dtype(var_type="Numeric", decimal_position=0)
+    Int64
+    >>> infer_field_dtype(var_type="Numeric", decimal_position=2)
+    Float64
+    >>> infer_field_dtype(var_type="Alphanum.", decimal_position=0)
+    String
+    """
+    if var_type == "Numeric":
+        return nw.Int64() if decimal_position == 0 else nw.Float64()
+    return nw.String()
 
 
 @dataclass(frozen=True, kw_only=True)

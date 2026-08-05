@@ -1,0 +1,111 @@
+{
+  "name": "RCI2B",
+  "periods": [
+    {
+      "start": "2018-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DerivCode": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Code Derivative Contracts (exclude credit derivatives): 10 Cleared Derivatives (Notional): Swap contracts 20 Cleared Derivatives (Notional): Option contracts \u2013 purchased 30 Cleared Derivatives (Notional): Option contracts \u2013 written (sold) 40 Cleared Derivatives (Notional): Futures contracts 50 Cleared Derivatives (Notional): Total cleared derivative contracts 60 Non-cleared Derivatives (Notional): Swap contracts 70 Non-cleared Derivatives (Notional): Option contracts \u2013 purchased 80 Non-cleared Derivatives (Notional): Option contracts \u2013 written (sold) 90 Non-cleared Derivatives (Notional): Forward contracts 100 Non-cleared Derivatives (Notional): Total non-cleared derivative contracts 110 Total Derivative Contracts (Notional) (sum of 3(e)and 4(e) 120 Derivatives included in Line 5 that are on behalf of customers (Notional) 130 Cleared Derivatives (Fair Value): Swap contracts 140 Cleared Derivatives (Fair Value): Option contracts \u2013 purchased 150 Cleared Derivatives (Fair Value): Option contracts \u2013 written (sold) 160 Cleared Derivatives (Fair Value): Futures contracts 170 Cleared Derivatives (Fair Value): Total cleared derivative contracts 180 Non-cleared Derivatives (Fair Value): Swap contracts 190 Non-cleared Derivatives (Fair Value): Option contracts \u2013 purchased 200 Non-cleared Derivatives (Fair Value): Option contracts \u2013 written (sold) 210 Non-cleared Derivatives (Fair Value): Forward contracts 220 Non-cleared Derivatives (Fair Value): Total non-cleared derivative contracts 230 Total derivative contracts (Fair Value \u2013 sum of 7(e) and 8(e)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DerivIntRate": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest Rate",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DerivFX": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Foreign Exchange",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DerivOther": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

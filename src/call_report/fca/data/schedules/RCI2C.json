@@ -1,0 +1,101 @@
+{
+  "name": "RCI2C",
+  "periods": [
+    {
+      "start": "2018-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ExposureCode": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Code for Fair Value Counterparty Exposures (Including Impact of Netting Agreements): 10 Institution\u2019s Exposure to Counterparties after netting: Derivative contracts in a gain position 20 Institution\u2019s Exposure to Counterparties after netting: Initial margin posted by counterparties - Cash 30 Institution\u2019s Exposure to Counterparties after netting: Initial margin posted by counterparties - Securities 40 Institution\u2019s Exposure to Counterparties after netting: Variation margin or settlement payments posted by counterparties - Cash 50 Institution\u2019s Exposure to Counterparties after netting: Variation margin or settlement payments posted by counterparties - Securities 70 Institution\u2019s Exposure to Counterparties after netting: Institution\u2019s exposure to counterparties (item 10(a) minus (items 10(b) through 10(e)) 80 Counterparties\u2019 Exposure to Institution after netting: Derivative contracts in a loss position 90 Counterparties\u2019 Exposure to Institution after netting: Initial margin posted by counterparties - Cash 100 Counterparties\u2019 Exposure to Institution after netting: Initial margin posted by counterparties - Securities 110 Counterparties\u2019 Exposure to Institution after netting: Variation margin or settlement payments posted by counterparties - Cash 120 Counterparties\u2019 Exposure to Institution after netting: Variation margin or settlement payments posted by counterparties - Securities 140 Counterparties\u2019 Exposure to Institution after netting: Counterparty exposure to institution (item 11(a) minus (items 11(b) through 11(e))",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ExposureCleared": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Cleared",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ExposureNonCleared": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Non-cleared",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

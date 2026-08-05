@@ -36,7 +36,11 @@ import pytest
 from call_report.config import config_context
 from call_report.core import PeriodRange, ReportingPeriod
 from call_report.exceptions import LayoutParseError, ScheduleNotFoundError
-from call_report.fca import FCACallReport
+from call_report.fca import (
+    FCACallReport,
+    convert_long_format_to_wide_format,
+    convert_wide_format_to_long_format,
+)
 from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
 from call_report.fca.institutions import INSTITUTIONS_ROOT, read_institutions
 from call_report.fca.layout import FCALayout
@@ -391,3 +395,193 @@ def test_release_schedules_match_across_backends(
             _assert_rows_equal(
                 reference=reference[root], other=other[root], label=f"{backend}:{root}"
             )
+
+
+def _to_wide_format_rows(
+    *, period: ReportingPeriod, backend: str
+) -> list[dict[str, Any]]:
+    """Build to_wide_format() for one real release under one backend, as rows.
+
+    Scoped to a single-period `FCACallReport` (rather than reusing the
+    full-history `archive_report` fixture) since `to_wide_format()`
+    reshapes every period an instance was fetched for -- comparing across
+    backends only needs one release at a time. Rows are sorted by UNINUM
+    (unique within a single period) so backends whose pivot doesn't
+    preserve a particular row order can still be compared position-by-position.
+
+    Parameters
+    ----------
+    period : ReportingPeriod
+        The release to build the wide-format frame for.
+    backend : str
+        The dataframe backend to configure while building it.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        The wide-format frame's rows, sorted by UNINUM.
+    """
+    with config_context(dataframe_backend=backend):
+        report = FCACallReport(
+            start=period.period_end,
+            end=period.period_end,
+            transport=PackagedArchiveTransport(),
+        )
+        wide = report.to_wide_format()
+    rows = _native_rows(wide)
+    return sorted(rows, key=lambda row: row["UNINUM"])
+
+
+@pytest.mark.parametrize(
+    "period",
+    EQUALITY_CHECK_PERIODS,
+    ids=[period.label for period in EQUALITY_CHECK_PERIODS],
+)
+def test_wide_format_matches_across_backends(period: ReportingPeriod) -> None:
+    """to_wide_format()'s schema and data agree no matter which backend built it.
+
+    Builds the full wide-format frame for one real release, once per
+    backend -- including pyarrow, which has no native pivot and instead
+    goes through the manual filter-and-join fallback (see
+    `call_report.core._backend.pivot`) -- and asserts pandas, polars, and
+    pyarrow all produced the exact same columns and values.
+    """
+    reference = _to_wide_format_rows(period=period, backend="pandas")
+    for backend in ("polars", "pyarrow"):
+        other = _to_wide_format_rows(period=period, backend=backend)
+        _assert_rows_equal(
+            reference=reference, other=other, label=f"{backend}:{period.label}"
+        )
+
+
+def _long_format_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    """Build a total-order sort key for a long-format row, tolerant of null codes.
+
+    `code_column`/`code_value` are null for a non-coded variable, and
+    ``None``/``nan`` can't be compared against real values when sorting
+    -- substitutes a low sentinel for either, purely to get a stable,
+    backend-independent row order to compare position-by-position.
+    """
+    code_column = row["code_column"]
+    if _is_missing(code_column):
+        code_column = ""
+    code_value = row["code_value"]
+    if _is_missing(code_value):
+        code_value = -1.0
+    return (
+        row["UNINUM"],
+        row["schedule"],
+        code_column,
+        code_value,
+        row["variable_name"],
+    )
+
+
+def _to_long_format_rows(
+    *, period: ReportingPeriod, backend: str
+) -> list[dict[str, Any]]:
+    """Build to_long_format() for one real release under one backend, as rows.
+
+    Mirrors `_to_wide_format_rows`; sorted by `_long_format_sort_key`
+    since UNINUM alone isn't unique at the long-format grain.
+
+    Parameters
+    ----------
+    period : ReportingPeriod
+        The release to build the long-format frame for.
+    backend : str
+        The dataframe backend to configure while building it.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        The long-format frame's rows, sorted by `_long_format_sort_key`.
+    """
+    with config_context(dataframe_backend=backend):
+        report = FCACallReport(
+            start=period.period_end,
+            end=period.period_end,
+            transport=PackagedArchiveTransport(),
+        )
+        long_ = report.to_long_format()
+    rows = _native_rows(long_)
+    return sorted(rows, key=_long_format_sort_key)
+
+
+@pytest.mark.parametrize(
+    "period",
+    EQUALITY_CHECK_PERIODS,
+    ids=[period.label for period in EQUALITY_CHECK_PERIODS],
+)
+def test_long_format_matches_across_backends(period: ReportingPeriod) -> None:
+    """to_long_format()'s schema and data agree no matter which backend built it.
+
+    Mirrors `test_wide_format_matches_across_backends` for the long-format
+    path -- pandas, polars, and pyarrow must all produce the exact same
+    rows for the same real release.
+    """
+    reference = _to_long_format_rows(period=period, backend="pandas")
+    for backend in ("polars", "pyarrow"):
+        other = _to_long_format_rows(period=period, backend=backend)
+        _assert_rows_equal(
+            reference=reference, other=other, label=f"{backend}:{period.label}"
+        )
+
+
+@pytest.mark.parametrize(
+    "period",
+    EQUALITY_CHECK_PERIODS,
+    ids=[period.label for period in EQUALITY_CHECK_PERIODS],
+)
+def test_wide_and_long_format_round_trip_agree_on_real_data(
+    period: ReportingPeriod,
+) -> None:
+    """to_wide_format/to_long_format, converted into each other, carry the same data.
+
+    Real archived data genuinely has gaps (one institution reports a code
+    another never does), so wide -> long -> wide is expected to match
+    exactly, while long -> wide -> long picks up extra, structurally null
+    rows from pivot's grid-completion -- see
+    `convert_wide_format_to_long_format`'s docstring. This is the
+    real-data proof of both the hermetic tests in test_reshape.py and
+    test_report.py's small-fixture version.
+    """
+    report = FCACallReport(
+        start=period.period_end,
+        end=period.period_end,
+        transport=PackagedArchiveTransport(),
+    )
+    wide = report.to_wide_format()
+    long_ = report.to_long_format()
+
+    converted_long_rows = _native_rows(convert_wide_format_to_long_format(wide=wide))
+    converted_wide_rows = _native_rows(convert_long_format_to_wide_format(long=long_))
+    long_rows = _native_rows(long_)
+    wide_rows = _native_rows(wide)
+
+    # wide -> long -> wide: exact match, no grid-completion gaps to create.
+    _assert_rows_equal(
+        reference=sorted(wide_rows, key=lambda row: row["UNINUM"]),
+        other=sorted(converted_wide_rows, key=lambda row: row["UNINUM"]),
+        label=f"wide-round-trip:{period.label}",
+    )
+
+    # long -> wide -> long: every non-null-value row must still match. The
+    # round trip may have extra, structurally null rows beyond that (pivot
+    # grid-completion) -- and the original long_rows can itself already
+    # contain real null-value rows (a genuinely blank source field), so
+    # both sides are filtered to non-null before comparing.
+    non_null_long = [row for row in long_rows if not _is_missing(row["value"])]
+    non_null_converted_long = [
+        row for row in converted_long_rows if not _is_missing(row["value"])
+    ]
+    assert len(non_null_converted_long) == len(non_null_long), (
+        f"{period.label}: round-tripped non-null row count "
+        f"({len(non_null_converted_long)}) != original non-null long-format "
+        f"row count ({len(non_null_long)})."
+    )
+    _assert_rows_equal(
+        reference=sorted(non_null_long, key=_long_format_sort_key),
+        other=sorted(non_null_converted_long, key=_long_format_sort_key),
+        label=f"long-round-trip:{period.label}",
+    )

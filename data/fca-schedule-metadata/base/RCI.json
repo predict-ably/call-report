@@ -1,0 +1,375 @@
+{
+  "name": "RCI",
+  "periods": [
+    {
+      "start": "2000-03-31",
+      "end": "2017-12-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "STANDBYUS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Standby Letters of Credit: U.S. Addresses",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "STANDBYNUS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Standby Letters of Credit: Non-U.S. Addresses",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "LETTERCRDT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Commercial and Other Letters of Credit",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSNAMTDERFUT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross (notional amounts) of derivatives: Futures contracts",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSNAMTDERFOR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross (notional amounts) of derivatives: Forward contracts",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSDERXCTWRO": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross (notional amounts) of derivatives: Exchange traded option contracts - Written options",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSDERXCTPURO": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross (notional amounts) of derivatives: Exchange traded option contracts - Purchased options",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSDEROTCWRO": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross (notional amounts) of derivatives: Over the counter option contracts - Written options",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSDEROTCPURO": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross (notional amounts) of derivatives: Over the counter option contracts - Purchased options",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSDERCCURSWP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross (notional amounts) of derivatives: Cross-currency swaps",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSDEROSWP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross (notional amounts) of derivatives: Other swaps",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSDERTAMT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross (notional amounts) of derivatives: Total notional amount of contracts",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSDERSTCOLL": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross (notional amounts) of derivatives: Amount of GROBSDERTAMT subject to collateral agreements",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSDERPOSFV": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross fair values of derivatives contracts: Gross positive fair values",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSDERNEGFV": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross fair values of derivatives contracts: Gross negative fair values",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "URLFAC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Unrecorded Liability for Obligations of the Financial Assistance Corporation",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "URLPEB": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Unrecorded Liability for Obligations of Other Postretirement benefits",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "COMMEXTLN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Commitments to Extend Credit or to Participate in arrangements to Extend Credit on Existing Loans",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "COMMEXNYB": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Commitments to Extend Credit or to Participate in arrangements to Extend Credit on Loans Not Yet Booked",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "COMLITIG": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other material commitments and contingencies: (only if the aggregate amounts exceed the greater of $10 million or 10% of total net worth) - Lawsuits/Litigation",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "OCOMLITIG": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other material commitments and contingencies: (only if the aggregate amounts exceed the greater of $10 million or 10% of total net worth) - Other",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "GROBSDERINTSWP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gross (notional amounts) of derivatives: Interest rate swaps",
+          "period_start": "2000-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "SERVASSETBAL": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Outstanding principal balance",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Outstanding principal balance",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Outstanding principal balance",
+          "period_start": "2008-09-30",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "SERVASSETCOMMIT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Commitment",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Total Commitment",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Total Commitment",
+          "period_start": "2008-09-30",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "CommitRetailLoanCancellable": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "On existing retail loans (excludes direct loans) that are: Unconditionally cancellable",
+          "period_start": "2013-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "CommitRetailLoanLE14Month": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "On existing retail loans (excludes direct loans) that are: 14 months or less",
+          "period_start": "2013-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "CommitRetailLoanGT14Month": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "On existing retail loans (excludes direct loans) that are: Greather than 14 months",
+          "period_start": "2013-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    },
+    "CommitDirectLoan": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "On existing direct loans",
+          "period_start": "2013-03-31",
+          "period_end": "2017-12-31"
+        }
+      ]
+    }
+  }
+}

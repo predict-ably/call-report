@@ -86,3 +86,5 @@ jobs:
 
       - name: Codespell
         uses: codespell-project/actions-codespell@v2
+        with:
+          skip: "data/fca-schedule-metadata/base/*"

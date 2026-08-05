@@ -102,6 +102,170 @@ Load the institution roster:
 
    institutions = report.load_institutions()
 
+Schedule metadata
+==================
+
+Alongside the data itself, ``call-report`` ships canonical, cross-time
+metadata for every FCA schedule: field names, narwhals dtypes,
+human-readable definitions, and the exact periods each field has
+actually been present for -- generated from FCA's own published
+archives, not hand-maintained. Look a schedule's metadata up with
+:func:`~call_report.fca.get_fca_file_metadata`:
+
+.. code-block:: python
+
+   from call_report.fca import FCASchedule, get_fca_file_metadata
+
+   metadata = get_fca_file_metadata(schedule=FCASchedule.RCF1)
+   metadata.file_schema.names
+   # ('SYSTEM', 'DIST', 'ASSOC', 'MONTH', 'YEAR', 'UNINUM', 'LOANSTATUS',
+   #  'ACCR', 'ACCRPDUE', 'FRMREST', 'NONCSH', 'NONOTH', 'TOTPERF')
+
+These are exactly the columns you get back from ``report.load(schedule=...)``
+-- the loader adds one column of its own, ``period``, identifying which
+quarter each row came from; it isn't part of the schedule's own field
+metadata:
+
+.. code-block:: python
+
+   report = FCACallReport(
+       start="2025-03-31", end="2025-03-31", transport=PackagedArchiveTransport()
+   )
+   rcf1 = report.load(schedule="RCF1")
+   list(rcf1.columns)
+   # ['SYSTEM', 'DIST', 'ASSOC', 'MONTH', 'YEAR', 'UNINUM', 'LOANSTATUS',
+   #  'ACCR', 'ACCRPDUE', 'FRMREST', 'NONCSH', 'NONOTH', 'TOTPERF', 'period']
+
+A field's metadata is more than just its name. ``LOANSTATUS`` holds a
+numeric code identifying each row's loan-performance category (its actual
+values in ``rcf1`` are plain integers, e.g. ``100``, ``105``, ``155``);
+the metadata's `definition` documents what those codes mean, and its
+`dtype` matches the column's real, loaded type:
+
+.. code-block:: python
+
+   loanstatus = metadata.file_schema["LOANSTATUS"]
+   loanstatus.versions[-1].dtype
+   # Int64
+   rcf1["LOANSTATUS"].dtype
+   # dtype('int64')
+
+A field's metadata can also carry more than one version: FCA revised
+``LOANSTATUS``'s own code list in 2015 (splitting code ``155`` into a new
+``152``/``155`` pair), with no gap in the field's presence -- `as_of`
+recovers whichever definition applied at a given quarter:
+
+.. code-block:: python
+
+   len(loanstatus.versions)
+   # 2
+   metadata.file_schema.as_of(period="2010-03-31")["LOANSTATUS"].versions[0].definition
+   # "...150 Discounted loans to OFIs 155 Other loans 160 Total"
+   metadata.file_schema.as_of(period="2020-03-31")["LOANSTATUS"].versions[0].definition
+   # "...150 Discounted loans to OFIs 152 Other loans 155 Total"
+
+Reshaping to wide format
+==========================
+
+``report.load(schedule=...)`` returns one row per institution per period,
+per *schedule*. :meth:`~call_report.fca.FCACallReport.to_wide_format`
+goes a step further, stacking every schedule together into a single
+frame with one row per ``(UNINUM, period)`` and one column per variable:
+
+.. code-block:: python
+
+   report = FCACallReport(
+       start="2025-03-31", end="2025-03-31", transport=PackagedArchiveTransport()
+   )
+   wide = report.to_wide_format(schedules=["RC", "RCB"])
+   wide.shape
+   # (64, 194)
+
+A plain (non-code) field is named ``{schedule}__{variable}``:
+
+.. code-block:: python
+
+   row = wide[wide["UNINUM"] == 620000].iloc[0]
+   row["RC__ASSETS"]
+   # 47138132.0
+
+A field that RCB reports once per investment code instead becomes
+``{schedule}__{code_column}_{code_value}__{variable}`` -- one column per
+code actually reported:
+
+.. code-block:: python
+
+   row["RCB__INV_CODE_81__BKVAL"]
+   # 9579.0
+
+Leave ``schedules`` unset to include every schedule discovered across the
+requested range. This works the same way on every configured dataframe
+backend, including ``pyarrow`` -- which has no native pivot operation, so
+``to_wide_format`` falls back to an equivalent filter-and-join reshape for
+it automatically.
+
+Reshaping to long format
+==========================
+
+:meth:`~call_report.fca.FCACallReport.to_long_format` stacks every
+schedule the same way, but keeps a *tidy*, one-value-per-row shape
+instead of pivoting: one row per institution, period, schedule, and
+variable.
+
+.. code-block:: python
+
+   long = report.to_long_format(schedules=["RC", "RCB"])
+   sorted(long.columns)
+   # ['UNINUM', 'code_column', 'code_value', 'is_multiple', 'period',
+   #  'schedule', 'value', 'variable_name']
+
+``value`` is always ``Float64`` -- the most generic type that
+represents every schedule's measures. A plain (non-code) field has
+``is_multiple`` ``False`` and null ``code_column``/``code_value``:
+
+.. code-block:: python
+
+   row = long[
+       (long["UNINUM"] == 620000)
+       & (long["schedule"] == "RC")
+       & (long["variable_name"] == "ASSETS")
+   ].iloc[0]
+   row["value"], row["is_multiple"]
+   # (47138132.0, False)
+
+A field RCB reports once per investment code instead has ``is_multiple``
+``True``, with ``code_column``/``code_value`` naming which code that row
+belongs to -- matching :class:`~call_report.fca.layout.FCALayout`'s own
+"single"/"multiple" vocabulary:
+
+.. code-block:: python
+
+   row = long[
+       (long["UNINUM"] == 620000)
+       & (long["schedule"] == "RCB")
+       & (long["code_value"] == 81.0)
+   ].iloc[0]
+   row["code_column"], row["value"]
+   # ('INV_CODE', 9579.0)
+
+Convert between the two shapes directly with
+:func:`~call_report.fca.convert_wide_format_to_long_format` and
+:func:`~call_report.fca.convert_long_format_to_wide_format`, without
+needing a fresh :class:`~call_report.fca.FCACallReport` call:
+
+.. code-block:: python
+
+   from call_report.fca import convert_long_format_to_wide_format
+
+   wide_again = convert_long_format_to_wide_format(long=long)
+
+Converting wide format to long format can produce a few extra,
+structurally null rows compared to building long format directly --
+pivoting fills in every institution/column combination, including ones
+no institution actually reported, as an explicit null; a directly-built
+long-format frame only ever has a row for a combination that genuinely
+appeared in the source.
+
 Choosing a dataframe backend
 -----------------------------
 

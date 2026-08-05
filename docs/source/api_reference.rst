@@ -25,8 +25,8 @@ Core
 ====
 
 Shared, source-agnostic building blocks: the quarter-end reporting-period
-vocabulary, the cross-source enums, and the abstract base every
-source-specific entry point implements.
+vocabulary, the cross-time schema vocabulary, the cross-source enums, and
+the abstract base every source-specific entry point implements.
 
 .. autosummary::
    :toctree: generated
@@ -38,6 +38,13 @@ source-specific entry point implements.
    call_report.core.Source
    call_report.core.FileType
    call_report.core.BaseCallReport
+   call_report.core.FieldVersion
+   call_report.core.FieldAttributes
+   call_report.core.FieldSchema
+   call_report.core.FieldChange
+   call_report.core.FieldSchemaDiff
+   call_report.core.FileMetadata
+   call_report.core.FileMetadataDiff
 
 Exceptions
 ==========
@@ -54,6 +61,7 @@ The exception hierarchy shared across sources.
    call_report.exceptions.ScheduleNotFoundError
    call_report.exceptions.LayoutParseError
    call_report.exceptions.DownloadError
+   call_report.exceptions.ReshapeError
 
 FCA Call Report
 ================
@@ -68,9 +76,15 @@ parsing an individual layout or data file.
 
    call_report.fca.FCACallReport
    call_report.fca.FCASchedule
+   call_report.fca.convert_wide_format_to_long_format
+   call_report.fca.convert_long_format_to_wide_format
+   call_report.fca.get_fca_file_metadata
+   call_report.fca.get_institutions_file_metadata
+   call_report.fca.all_fca_file_metadata
    call_report.fca.catalog.construct_fca_download_url
    call_report.fca.layout.parse_layout
    call_report.fca.layout.FCALayout
+   call_report.fca.layout.infer_field_dtype
    call_report.fca.reader.read_schedule_file
    call_report.fca.institutions.read_institutions
    call_report.fca.transport.FCATransport

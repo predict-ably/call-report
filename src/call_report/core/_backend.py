@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar, overload
 import narwhals as nw
 
 from call_report.config import get_config
-from call_report.exceptions import LayoutParseError
+from call_report.exceptions import LayoutParseError, ReshapeError
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -28,6 +28,15 @@ if TYPE_CHECKING:
     """
 
 DataFrameT = TypeVar("DataFrameT", bound="NativeDataFrame")
+
+FrameOrLazy: TypeAlias = "nw.DataFrame[Any] | nw.LazyFrame[Any]"
+"""A narwhals frame that may be eager or lazy, depending on config/backend.
+
+Used throughout this module and `call_report.fca._reshape` for
+intermediate reshaping steps that stay lazy when their input already is,
+so a `polars.LazyFrame` source isn't collected until an operation that
+genuinely requires it (e.g. `pivot`) forces the issue.
+"""
 
 SchemaPolicy = Literal["union", "intersection", "strict"]
 DataFrameType = Literal[
@@ -61,17 +70,22 @@ def build_frame(*, data: dict[str, list[Any]]) -> nw.DataFrame[Any]:
     return nw.from_dict(data, backend=backend)
 
 
-def finalize(*, frame: nw.DataFrame[Any]) -> NativeDataFrame:
+def finalize(*, frame: FrameOrLazy) -> NativeDataFrame:
     """Apply the configured laziness and unwrap to a native frame.
 
     This is the single point where every public, frame-returning function
-    in this package converts its internal, always-eager narwhals frame
-    into the native object callers actually receive.
+    in this package converts its internal narwhals frame into the native
+    object callers actually receive. `frame` is usually eager, but may
+    already be lazy if it was built from another already-lazy source
+    (e.g. `call_report.core._schema.FileMetadata.to_dataframe` combining
+    a fresh frame with one that came from a call that was itself already
+    finalized) -- `nw.LazyFrame.lazy()` is a no-op on an already-lazy
+    frame, so this handles both without needing to know which it got.
 
     Parameters
     ----------
-    frame : narwhals.DataFrame
-        The eager narwhals frame to finalize.
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        The narwhals frame to finalize.
 
     Returns
     -------
@@ -80,24 +94,40 @@ def finalize(*, frame: nw.DataFrame[Any]) -> NativeDataFrame:
         ``lazy=True`` is configured (e.g. a ``polars.LazyFrame``).
     """
     config = get_config()
-    result: nw.DataFrame[Any] | nw.LazyFrame[Any] = (
-        frame.lazy() if config["lazy"] else frame
-    )
+    result: FrameOrLazy = frame.lazy() if config["lazy"] else frame
     return result.to_native()
 
 
+@overload
 def concat(
     *, frames: Sequence[nw.DataFrame[Any]], how: SchemaPolicy
-) -> nw.DataFrame[Any]:
-    """Stack multiple eager narwhals frames according to a schema policy.
+) -> nw.DataFrame[Any]:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def concat(
+    *, frames: Sequence[nw.LazyFrame[Any]], how: SchemaPolicy
+) -> nw.LazyFrame[Any]:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def concat(
+    *, frames: Sequence[FrameOrLazy], how: SchemaPolicy
+) -> FrameOrLazy:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+def concat(*, frames: Sequence[FrameOrLazy], how: SchemaPolicy) -> FrameOrLazy:
+    """Stack multiple narwhals frames according to a schema policy.
 
     Used to combine one dataframe per requested period into a single
     result, reconciling any schema differences between periods (e.g. a
-    column added in a later quarter) according to `how`.
+    column added in a later quarter) according to `how`. `frames` must
+    be either all eager or all lazy -- narwhals (like polars) cannot
+    concatenate a mix of the two. Column names are read via
+    `narwhals.DataFrame.collect_schema`/`narwhals.LazyFrame.collect_schema`
+    rather than `.columns`, since the latter emits a `PerformanceWarning`
+    when called on a `LazyFrame`.
 
     Parameters
     ----------
-    frames : Sequence[narwhals.DataFrame]
+    frames : Sequence[narwhals.DataFrame or narwhals.LazyFrame]
         The per-period frames to stack, in the order they should appear.
     how : {"union", "intersection", "strict"}
         ``"union"`` outer-joins columns, nulling out any column a given
@@ -107,35 +137,42 @@ def concat(
 
     Returns
     -------
-    narwhals.DataFrame
-        The stacked frame.
+    narwhals.DataFrame or narwhals.LazyFrame
+        The stacked frame -- lazy if `frames` were lazy, eager otherwise.
 
     Raises
     ------
     LayoutParseError
         If `how` is ``"strict"`` and the frames' columns are not identical.
     """
+    # nw.concat's own signature binds a single FrameT, so it can't statically
+    # express "homogeneously eager or homogeneously lazy, whichever `frames`
+    # happens to be" -- every caller in this codebase only ever passes
+    # frames sharing one call's laziness state (see FrameOrLazy), so this
+    # is a real runtime invariant the type system just can't see.
     if how == "union":
-        return nw.concat(list(frames), how="diagonal")
+        return nw.concat(list(frames), how="diagonal")  # type: ignore[type-var]
 
     if how == "intersection":
-        common = set(frames[0].columns)
-        for frame in frames[1:]:
-            common &= set(frame.columns)
-        ordered = [name for name in frames[0].columns if name in common]
+        schemas = [frame.collect_schema().names() for frame in frames]
+        common = set(schemas[0])
+        for names in schemas[1:]:
+            common &= set(names)
+        ordered = [name for name in schemas[0] if name in common]
         selected = [frame.select(ordered) for frame in frames]
-        return nw.concat(selected, how="vertical")
+        return nw.concat(selected, how="vertical")  # type: ignore[type-var]
 
     if how == "strict":
-        first_columns = set(frames[0].columns)
-        for frame in frames[1:]:
-            if set(frame.columns) != first_columns:
+        column_sets = [set(frame.collect_schema().names()) for frame in frames]
+        first_columns = column_sets[0]
+        for columns in column_sets[1:]:
+            if columns != first_columns:
                 raise LayoutParseError(
                     "schema_policy='strict' requires every stacked period to share "
                     "the exact same columns, but they differ; use 'union' or "
                     "'intersection' to reconcile schema differences across periods."
                 )
-        return nw.concat(list(frames), how="vertical")
+        return nw.concat(list(frames), how="vertical")  # type: ignore[type-var]
 
     raise ValueError(
         f"Unknown schema policy {how!r}; expected 'union', 'intersection', or 'strict'."
@@ -253,31 +290,31 @@ def convert_dataframe_type(
 
 @overload
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: None
+    *, frame: FrameOrLazy, dataframe_type: None
 ) -> NativeDataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: Literal["pandas"]
+    *, frame: FrameOrLazy, dataframe_type: Literal["pandas"]
 ) -> pd.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: Literal["pyarrow_table"]
+    *, frame: FrameOrLazy, dataframe_type: Literal["pyarrow_table"]
 ) -> pa.Table:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: Literal["polars_dataframe"]
+    *, frame: FrameOrLazy, dataframe_type: Literal["polars_dataframe"]
 ) -> pl.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: Literal["polars_lazyframe"]
+    *, frame: FrameOrLazy, dataframe_type: Literal["polars_lazyframe"]
 ) -> pl.LazyFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 def finalize_as(
-    *, frame: nw.DataFrame[Any], dataframe_type: DataFrameType | None
+    *, frame: FrameOrLazy, dataframe_type: DataFrameType | None
 ) -> NativeDataFrame:
     """Finalize a frame and convert it to a DataFrameType, in one step.
 
@@ -288,8 +325,9 @@ def finalize_as(
 
     Parameters
     ----------
-    frame : narwhals.DataFrame
-        The eager narwhals frame to finalize.
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        The narwhals frame to finalize -- usually eager, but may already
+        be lazy (see :func:`finalize`).
     dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
 "polars_dataframe"} or None
         The dataframe type to convert the finalized result to; ``None``
@@ -303,3 +341,188 @@ def finalize_as(
     return convert_dataframe_type(
         data=finalize(frame=frame), dataframe_type=dataframe_type
     )
+
+
+def pivot(
+    *, frame: FrameOrLazy, on: str, index: list[str], values: str
+) -> nw.DataFrame[Any]:
+    """Pivot a long-shaped frame wide, working around a real pyarrow gap.
+
+    Pivoting fundamentally requires eager data -- the output schema
+    depends on `on`'s distinct values, which can't be known without
+    materializing -- so this is the one place a lazy `frame` (e.g. a
+    `polars.LazyFrame`-backed pipeline built by
+    `call_report.fca._reshape`) is finally collected; every operation
+    before this point (melt, concat, column-key computation) stays lazy
+    for as long as `frame` lets it.
+
+    narwhals' native ``pivot`` is not implemented for the pyarrow backend
+    (confirmed: it raises ``NotImplementedError`` outright); for that one
+    backend this falls back to `_manual_pivot`, a filter-and-join reshape
+    verified to produce identical results to the native path on every
+    other backend. `index` + `on` must be a unique grain -- a genuine
+    duplicate raises `ReshapeError` on every backend rather than silently
+    aggregating, whether that's narwhals' own native error (translated
+    here) or `_manual_pivot`'s own explicit check.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        The long-shaped frame to pivot.
+    on : str
+        The column whose distinct values become new column names.
+    index : list[str]
+        The column(s) that stay fixed, identifying each output row.
+    values : str
+        The column supplying each new column's values.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        The pivoted, wide-shaped frame, with columns in a deterministic
+        (sorted) order.
+
+    Raises
+    ------
+    ReshapeError
+        If `index` + `on` is not a unique grain, or the pivot otherwise
+        fails.
+    """
+    if isinstance(frame, nw.LazyFrame):
+        frame = frame.collect()
+    if frame.implementation is nw.Implementation.PYARROW:
+        return _manual_pivot(frame=frame, on=on, index=index, values=values)
+    try:
+        return frame.pivot(on=on, index=index, values=values, sort_columns=True)
+    except Exception as error:
+        raise ReshapeError(
+            f"Could not pivot on={on!r}, index={index!r}, values={values!r}: {error}"
+        ) from error
+
+
+def assert_unique_grain(
+    *, frame: FrameOrLazy, columns: Sequence[str]
+) -> nw.DataFrame[Any]:
+    """Collect `frame` (if lazy) and raise unless `columns` is a unique grain.
+
+    Checking uniqueness means looking at the actual data, which isn't a
+    lazy-safe operation -- this is the one place a caller that otherwise
+    stays lazy end to end is forced to collect, in exchange for a real
+    guarantee about the data rather than a silent duplicate.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        The frame to check.
+    columns : Sequence[str]
+        The column(s) that together must identify each row uniquely.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        `frame`, collected if it was lazy.
+
+    Raises
+    ------
+    ReshapeError
+        If `columns` is not a unique grain.
+    """
+    if isinstance(frame, nw.LazyFrame):
+        frame = frame.collect()
+    columns = list(columns)
+    if frame.select(*columns).unique(subset=columns).shape[0] != frame.shape[0]:
+        raise ReshapeError(f"columns={columns!r} is not a unique grain.")
+    return frame
+
+
+def _manual_pivot(
+    *, frame: nw.DataFrame[Any], on: str, index: list[str], values: str
+) -> nw.DataFrame[Any]:
+    """Pivot `frame` wide using filter-and-join, for backends without native pivot.
+
+    One filter+join per distinct `on` value, so this is O(number of
+    distinct columns) rather than native ``pivot``'s single pass -- the
+    honest cost of a backend (pyarrow) lacking the primitive, not a
+    hidden inefficiency. Verified to produce output identical to
+    narwhals' native `nw.DataFrame.pivot` for the same input.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame
+        The long-shaped frame to pivot.
+    on : str
+        The column whose distinct values become new column names.
+    index : list[str]
+        The column(s) that stay fixed, identifying each output row.
+    values : str
+        The column supplying each new column's values.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        The pivoted, wide-shaped frame, with columns in a deterministic
+        (sorted) order.
+
+    Raises
+    ------
+    ReshapeError
+        If `index` + `on` is not a unique grain.
+    """
+    try:
+        frame = assert_unique_grain(frame=frame, columns=[*index, on])
+    except ReshapeError as error:
+        raise ReshapeError(
+            f"Could not pivot: index={index!r} + on={on!r} is not a unique grain."
+        ) from error
+
+    key_rows = frame.select(on).unique(subset=[on]).sort(on).rows(named=True)
+    pieces: list[nw.DataFrame[Any]] = []
+    for row in key_rows:
+        key_value = row[on]
+        column_name = str(key_value)
+        piece = (
+            frame.filter(nw.col(on) == key_value)
+            .select(*index, values)
+            .rename({values: column_name})
+        )
+        pieces.append(piece)
+
+    result = pieces[0]
+    for piece in pieces[1:]:
+        result = _join_on_index(left=result, right=piece, index=index)
+    return result.sort(index)
+
+
+def _join_on_index(
+    *, left: nw.DataFrame[Any], right: nw.DataFrame[Any], index: list[str]
+) -> nw.DataFrame[Any]:
+    """Full-join two frames on `index`, coalescing the duplicated join-key columns.
+
+    narwhals' ``"full"`` join does not coalesce the join keys -- it
+    produces a ``{col}_right`` counterpart for each `index` column
+    instead of merging them (confirmed on every backend this package
+    supports). This fills each `index` column from its ``_right``
+    counterpart wherever the left side is null, then drops the
+    ``_right`` columns.
+
+    Parameters
+    ----------
+    left : narwhals.DataFrame
+        The left side of the join.
+    right : narwhals.DataFrame
+        The right side of the join.
+    index : list[str]
+        The shared column(s) to join and coalesce on.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        The joined frame, with exactly one copy of each `index` column.
+    """
+    joined = left.join(right, on=index, how="full")
+    for column in index:
+        right_column = f"{column}_right"
+        joined = joined.with_columns(
+            nw.col(column).fill_null(nw.col(right_column)).alias(column)
+        ).drop(right_column)
+    return joined

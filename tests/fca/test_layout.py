@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import narwhals as nw
 import pytest
 
 from call_report.exceptions import LayoutParseError
-from call_report.fca.layout import parse_layout
+from call_report.fca.layout import (
+    FIXED_IDENTIFIER_COLUMNS,
+    infer_field_dtype,
+    parse_layout,
+)
 from tests.conftest import write_layout
 from tests.fca.conftest import INST_LINES, RC_LINES_7COL, RCB_LINES, RCR7_LINES
 
@@ -142,3 +147,49 @@ def test_parse_layout_skips_incomplete_variable_line(tmp_path: Path) -> None:
     names = [row["name"] for row in layout.variables_as_dicts()]
     assert "BAZ" not in names
     assert layout.scenario == "single"
+
+
+def test_infer_field_dtype_numeric_whole_number_is_int64() -> None:
+    """Numeric with decimal_position 0 maps to Int64."""
+    assert infer_field_dtype(var_type="Numeric", decimal_position=0) == nw.Int64()
+
+
+def test_infer_field_dtype_numeric_with_decimals_is_float64() -> None:
+    """Numeric with a nonzero decimal_position maps to Float64."""
+    assert infer_field_dtype(var_type="Numeric", decimal_position=2) == nw.Float64()
+
+
+def test_infer_field_dtype_alphanum_is_string() -> None:
+    """Alphanum. maps to String, regardless of decimal_position."""
+    assert infer_field_dtype(var_type="Alphanum.", decimal_position=0) == nw.String()
+
+
+def test_infer_field_dtype_is_keyword_only() -> None:
+    """infer_field_dtype takes no positional arguments."""
+    with pytest.raises(TypeError):
+        infer_field_dtype("Numeric", 0)  # type: ignore[call-arg]
+
+
+def test_fixed_identifier_columns_matches_a_single_scenario_layout(
+    tmp_path: Path,
+) -> None:
+    """The fixed prefix is the start of leading_columns for a 'single' schedule."""
+    path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    layout = parse_layout(path=path)
+    assert layout.leading_columns[: len(FIXED_IDENTIFIER_COLUMNS)] == (
+        FIXED_IDENTIFIER_COLUMNS
+    )
+
+
+def test_fixed_identifier_columns_matches_a_code_bearing_layout(
+    tmp_path: Path,
+) -> None:
+    """The fixed prefix is exactly leading_columns for a code-bearing schedule."""
+    path = write_layout(
+        tmp_path,
+        root="RCB",
+        variable_lines=RCB_LINES,
+        note="THE RECORD CONTAINS MULTIPLE OCCURRENCES OF THESE VARIABLES.",
+    )
+    layout = parse_layout(path=path)
+    assert layout.leading_columns == FIXED_IDENTIFIER_COLUMNS

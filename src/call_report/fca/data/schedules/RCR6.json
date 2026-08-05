@@ -1,0 +1,261 @@
+{
+  "name": "RCR6",
+  "periods": [
+    {
+      "start": "2017-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyTotCCEPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "CCEs included in Permanent Capital",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyPaidInCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Additions to Permanent Capital Paid-in Capital (includes APIC)",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyURE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Additions To Permanent Capital URE (Sch. RC-R.4 item 3)",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyPrefStkAT1": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Additions To Permanent Capital Capital items previously approved by FCA Noncumulative perpetual preferred stock",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyTotPrefStkSubDebt": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Additions To Permanent Capital Capital items previously approved by FCA Other preferred stock and subordinated debt",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyOtherPerpPrefStk": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Additions To Permanent Capital Capital items previously approved by FCA Other perpetual preferred stock",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyTotAprvdPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Additions To Permanent Capital Capital items previously approved by FCA Total capital items previously approved by FCA",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyOtherAddPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Additions To Permanent Capital Additional items approved by FCA",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyTotAddPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Additions To Permanent Capital Total Additions to Permanent Capital",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyPermCapBfrDed": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Permanent Capital before deductions",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyGoodwill": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Deductions to Permanent Capital Less: Goodwill \u2013 net of associated DTLs",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyDTACarryFwd": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Deductions To Permanent Capital Less: DTAs",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyAllocInvPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Deductions To Permanent Capital Less: Amount of allocated investments allotted to other System institutions per \u00a7 615.5208",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyPurcInvFCSIPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Deductions to Permanent Capital Less: Amount of purchased investments in other System institutions",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyTermStkSubDebtPO": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Deductions to Permanent Capital Less: Phased-out amount of limited life preferred stock and subordinated debt",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyExcessPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Deductions to Permanent Capital Less: Excess above third\u2013party capital limits",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyOtherDedPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Deductions to Permanent Capital Less: Other deductions required by FCA",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyTotDedPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Deductions to Permanent Capital Total Deductions",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVPRMCAP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Permanent Capital",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

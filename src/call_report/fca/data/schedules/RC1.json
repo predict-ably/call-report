@@ -1,0 +1,865 @@
+{
+  "name": "RC1",
+  "periods": [
+    {
+      "start": "2000-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and association codes concatenated",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPRE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans - Production agriculture Real estate mortgages",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPPROINT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans - Production agriculture Production and intermediate term",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPCOOP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans - Agibusiness - Loans to cooperatives",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPPROCMKT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans - Agibusiness - Processing and Marketing",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPFARMREL": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans - Agibusiness - Farm related business",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPCOMM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans - Communications",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPENERG": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans - Energy",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPWATW": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans - Water/waste disposal",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPRURRE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans - Rural residence real estate",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPINTNL": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans - International",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPLESREC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans - Lease receivables",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DLNASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Direct loans to associations",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OFIAMTLN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Discounted loans to OFIs",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPTOTAL": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "FINLEASES": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Finance leases",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OPLEASES": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Operating receivables leases",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OPLEASESASST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Operating assets leases",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LNSYN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loan syndications to eligible borrowers (excluding similiar entity transactions)",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "GUARFED": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Guarantees: Federal",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "GUARSTATLOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Guarantees: State and local",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "GUARFAMC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Guarantees: Farmer Mac",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "GUAROTHER": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Guarantees: Other",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OFINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Number of Other Financial Institutions (OFIs)",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OFINUMLN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Number of loans to OFIs",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LSANUMOS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association loans outsite its chartered territory: Number of loans outstanding",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LSANUMNEW": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association loans outsite its chartered territory: Number of loans made",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LSAAMTOS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association loans outsite its chartered territory: Amount of loans outstanding",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LSAAMTNEW": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association loans outsite its chartered territory: Amount of loans made",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AMTLNBKRUPTCY": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total amount of loans in bankruptcy",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AMTLNFORECLOSUR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total amount of loans in foreclosure",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TAMTBANKFORE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total amount of loans in both bankruptcy and foreclosure",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "INFCIPUR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association investment in FCS district bank - purchased",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "INFCIALLOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association investment in FCS district bank - allocated",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "FCIEQAMTCPRMC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association investment in FCS district bank - Allocation counted as association permanent capital",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "FCIBKINDASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Bank investment in district associations",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "FCIINVOBK": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment in other FCBs and ACBs",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "FCIINVOFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment in other Farm Credit institutions",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "NETASSOCINVBK": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net association investment in district bank",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "FCIINVNONFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity investments in non Farm Credit institutions",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "FCIBONDS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Farm Credit investment bonds outstanding",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TERMPERFSTK": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Term preferred stock",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "INVFARMNOTE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investments in farmers' notes",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NPDIRLNTBK": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Notes payable/direct loan to district bank",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "FCSICPREMPAY": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Farm Credit System Insurance Corporation premium payable",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "PERMCAPA": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Permanent capital amount (outstanding)",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "CORESURPAMT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Core surplus amount",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "TOTSURPAMT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total surplus amount",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "PERMCAPD": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "Permanent capital ratio",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "CORESURPRATIO": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "Core surplus ratio",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "TOTSURPRATIO": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "Total surplus ratio",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "NETCOLLRATIO": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "Net collateral ratio",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "TYPOTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other loans",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LMPRIN90": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Deprecated",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Principal portion of obligations maturing within 90 days",
+          "period_start": "2004-03-31",
+          "period_end": "2004-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Deprecated",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Principal portion of obligations maturing within 90 days",
+          "period_start": "2006-03-31",
+          "period_end": "2011-09-30"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Deprecated",
+          "period_start": "2011-12-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LMAMT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Deprecated",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Dollar amount of liquidity at quarter-end",
+          "period_start": "2004-03-31",
+          "period_end": "2004-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Deprecated",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Dollar amount of liquidity at quarter-end",
+          "period_start": "2006-03-31",
+          "period_end": "2011-09-30"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Deprecated",
+          "period_start": "2011-12-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LMNO": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Deprecated",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Number of days liquidity at quarter-end",
+          "period_start": "2004-03-31",
+          "period_end": "2004-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Deprecated",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Number of days liquidity at quarter-end",
+          "period_start": "2006-03-31",
+          "period_end": "2011-09-30"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Deprecated",
+          "period_start": "2011-12-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPPROCMKT12": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Processing and Marketing Loans: Loans made under 613.3010(a)(1) and (a)(2)",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPPROCMKT3": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Processing and Marketing Loans: Loans made under 613.3010(a)(3)",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPPROCMKT4": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Processing and Marketing Loans: Loans made under 613.3010(a)(4)",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TYPPROCMKT5": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Processing and Marketing Loans: Loans made under 613.3010(a)(5)",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TOP10LOANS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Aggregate amount of institution\u2019s 10 largest loan commitments",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NUMLOANSFRMFDIC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Number of loans outstanding pur chased from the FDIC",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Number of loans outstanding pur chased from the FDIC",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Number of loans outstanding pur chased from the FDIC",
+          "period_start": "2008-09-30",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AMTLOANSFRMFDIC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Amount of loans outstanding purchased from the FDIC",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Amount of loans outstanding purchased from the FDIC",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Amount of loans outstanding purchased from the FDIC",
+          "period_start": "2008-09-30",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LLLIMITBASE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Lending and Leasing Limit Base",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Lending and Leasing Limit Base",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Lending and Leasing Limit Base",
+          "period_start": "2011-12-31",
+          "period_end": "2016-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Lending and Leasing Limit Base (Stops collecting as of March 2022)",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LoanLeaseHeldAmortizedCost": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans and Leases Held for Sale: Amortized cost",
+          "period_start": "2013-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LoanLeaseHeldFairValue": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans and Leases Held for Sale: Fair value",
+          "period_start": "2013-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TotRegCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Lending and Leasing Limit Base: Total regulatory capital (Sch. RC-R.1, item 5b.)",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "Excess3rdPartyCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Lending and Leasing Limit Base: Eligible excess third-party capital above regulatory capital limits",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LendLeaseLimitBaseTRC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Lending and Leasing Limit Base: Lending and Leasing Limit Base (sum of items 5a. and 5b.)",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

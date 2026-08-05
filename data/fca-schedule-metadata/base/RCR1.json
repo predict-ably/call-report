@@ -1,0 +1,291 @@
+{
+  "name": "RCR1",
+  "periods": [
+    {
+      "start": "2017-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyCET1": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Common Equity Tier 1 Capital (CET1) Quarterly Average Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CET1": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Common Equity Tier 1 Capital (CET1) Quarter-End Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyAT1": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Additional Tier 1 Capital (AT1) Quarterly Average Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AT1": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Additional Tier 1 Capital (AT1) Quarter-End Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyTier1": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Tier 1 Capital Quarterly Average Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "Tier1": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Tier 1 Capital Quarter-End Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyTier2": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Tier 2 Capital Quarterly Average Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "Tier2": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Tier 2 Capital Quarter-End Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyTotRegCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Regulatory Capital Quarterly Average Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TotRegCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Regulatory Capital Quarter-End Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AVPRMCAP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Permanent Capital Quarterly Average Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "PERMCAPA": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Permanent Capital Quarter-End Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyRWARegCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Risk-weighted assets (RWAs) used for Tier 1/Tier 2 capital ratios Quarterly Average Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RWARegCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Risk-weighted assets (RWAs) used for Tier 1/Tier 2 capital ratios Quarter-End Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyRWAPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Risk-weighted assets (RWAs) used for permanent capital Quarterly Average Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "RWAPermCap": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Risk-weighted assets (RWAs) used for permanent capital Quarter-End Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyUREandEquiv": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Unallocated retained earnings (URE) and URE equivalents Quarterly Average Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UREandEquiv": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Unallocated retained earnings (URE) and URE equivalents Quarter-End Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyAssetsLvrg": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Adjusted Assets for the Leverage Ratio Quarterly Average Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AssetsLvrg": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Adjusted Assets for the Leverage Ratio Quarter-End Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyAllowRsrvNotTier2": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Amount of Adjusted Allowances for Credit Losses Not Included in Tier 2 Capital Quarterly Average Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AllowRsrvNotTier2": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Amount of Adjusted Allowances for Credit Losses Not Included in Tier 2 Capital Quarter-End Amount",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}
