@@ -3,10 +3,10 @@
 Source-specific functionality lives in its own sub-module (e.g.
 ``call_report.fca``). Shared building blocks used across every source
 (configuration, the period vocabulary, enums, exceptions, the base
-interface) live in their own top-level modules -- import them from there
-(e.g. ``from call_report.config import get_config``,
-``from call_report.core import ReportingPeriod``) rather than from this
-package root.
+interface) live in their own top-level modules. Import them from there
+rather than from this package root, e.g.
+``from call_report.config import get_config`` or
+``from call_report.core import ReportingPeriod``.
 """
 
 from __future__ import annotations

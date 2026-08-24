@@ -1,8 +1,9 @@
-"""Source-agnostic reporting-period vocabulary: ReportingPeriod and PeriodRange.
+"""Source-agnostic reporting-period vocabulary.
 
 Every call report source is keyed by calendar quarter. Callers work with
-plain quarter-end dates (``"2026-03-31"``); :class:`ReportingPeriod` is the
-validated, internal vocabulary those dates are converted into.
+plain quarter-end dates such as ``"2026-03-31"``. :class:`ReportingPeriod`
+is the validated, internal vocabulary those dates are converted into, and
+:class:`PeriodRange` is an inclusive run of consecutive quarters.
 """
 
 from __future__ import annotations
@@ -25,9 +26,8 @@ _VALID_ENDINGS = "03-31, 06-30, 09-30, or 12-31"
 def _last_day_of_month(*, year: int, month: int) -> int:
     """Return the actual last day of a given month.
 
-    Delegates to :func:`calendar.monthrange` so leap-year Februaries are
-    handled correctly, even though none of this module's quarter-end months
-    (3, 6, 9, 12) are ever affected by that.
+    Delegates to :func:`calendar.monthrange`, so leap-year Februaries are
+    handled correctly for any month passed in.
 
     Parameters
     ----------
@@ -149,7 +149,7 @@ class ReportingPeriod:
     def label(self) -> str:
         """Return a short, human-readable label for this period.
 
-        Intended for log messages, error text, and reprs -- not for parsing.
+        Intended for log messages, error text, and reprs, not for parsing.
 
         Returns
         -------
@@ -211,9 +211,9 @@ class ReportingPeriod:
 def _parse_period_end(value: str | date) -> date:
     """Parse a quarter-end value into a plain `datetime.date`.
 
-    This only parses the value into a date; it does not check that the
-    date actually falls on a calendar quarter end (see
-    :meth:`ReportingPeriod.from_period_end` for that check).
+    This only parses the value into a date. It does not check that the
+    date actually falls on a calendar quarter end. See
+    :meth:`ReportingPeriod.from_period_end` for that check.
 
     Parameters
     ----------
@@ -257,7 +257,7 @@ def _shift(period: ReportingPeriod, delta_quarters: int) -> ReportingPeriod:
     period : ReportingPeriod
         The period to shift from.
     delta_quarters : int
-        Number of quarters to shift by; negative shifts backward.
+        Number of quarters to shift by. A negative value shifts backward.
 
     Returns
     -------
@@ -272,9 +272,8 @@ def _shift(period: ReportingPeriod, delta_quarters: int) -> ReportingPeriod:
 class PeriodRange(Sequence[ReportingPeriod]):
     """An inclusive, contiguous sequence of quarterly ReportingPeriods.
 
-    Both `start` and `end` must always be supplied explicitly -- unlike the
-    estimator-style entry points, there is no single-quarter convenience
-    default, so a range's bounds are never ambiguous.
+    Both `start` and `end` must always be supplied explicitly. There is no
+    single-quarter default, so a range's bounds are never ambiguous.
 
     Parameters
     ----------
@@ -359,9 +358,9 @@ class PeriodRange(Sequence[ReportingPeriod]):
     ) -> ReportingPeriod | Sequence[ReportingPeriod]:
         """Return the period at an index, or a sub-range/tuple for a slice.
 
-        A contiguous, step-1 slice returns a new `PeriodRange`; any other
-        slice (e.g. with a step) returns a plain tuple, since a stepped
-        selection of periods is not itself a contiguous range.
+        A contiguous, step-1 slice returns a new `PeriodRange`. Any other
+        slice, such as one with a step, returns a plain tuple, since a
+        stepped selection of periods is not itself a contiguous range.
 
         Parameters
         ----------
@@ -371,8 +370,8 @@ class PeriodRange(Sequence[ReportingPeriod]):
         Returns
         -------
         ReportingPeriod or Sequence[ReportingPeriod]
-            A single period for an int index; a `PeriodRange` for a
-            contiguous slice; a plain tuple for any other slice.
+            A single period for an int index, a `PeriodRange` for a
+            contiguous slice, or a plain tuple for any other slice.
 
         Examples
         --------
@@ -440,8 +439,8 @@ class PeriodRange(Sequence[ReportingPeriod]):
         """Return whether another object is a PeriodRange over the same periods.
 
         Two ranges are equal only if their fully-derived period sequences
-        match; `NotImplemented` is returned for non-`PeriodRange` operands
-        so Python can fall back to the other object's comparison logic.
+        match. A non-`PeriodRange` operand returns `NotImplemented`, so
+        Python can fall back to the other object's comparison logic.
 
         Parameters
         ----------

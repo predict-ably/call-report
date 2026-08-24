@@ -1,17 +1,21 @@
 """Shared, source-agnostic building blocks for working with call report data.
 
 This package collects the small vocabulary every call report source shares:
-the calendar-quarter enum and reporting-period objects
-(:class:`ReportingPeriod`, :class:`PeriodRange`), the cross-time schema
-vocabulary (:class:`FieldVersion`, :class:`FieldAttributes`,
-:class:`FieldSchema`, :class:`FileMetadata`, and their comparison-result
-types :class:`FieldChange`, :class:`FieldSchemaDiff`,
-:class:`FileMetadataDiff`), the cross-source :class:`Source` and
-:class:`FileType` enums, and :class:`BaseCallReport`, the abstract interface
-every source-specific entry point implements. Import them directly from
-``call_report.core`` (e.g. ``from call_report.core import ReportingPeriod``);
-the concrete definitions live in private sub-modules and are re-exported
-here.
+
+- Reporting periods: :class:`Quarter`, :class:`ReportingPeriod`, and
+  :class:`PeriodRange`.
+- Cross-time schema metadata: :class:`FieldVersion`,
+  :class:`FieldAttributes`, :class:`FieldSchema`, and
+  :class:`FileMetadata`, plus their comparison results
+  :class:`FieldChange`, :class:`FieldSchemaDiff`, and
+  :class:`FileMetadataDiff`.
+- Cross-source enums: :class:`Source` and :class:`FileType`.
+- :class:`BaseCallReport`, the abstract interface every source-specific
+  entry point implements.
+
+The concrete definitions live in private sub-modules and are re-exported
+here, so import them directly from ``call_report.core``, e.g.
+``from call_report.core import ReportingPeriod``.
 """
 
 from __future__ import annotations

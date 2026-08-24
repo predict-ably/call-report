@@ -1,9 +1,9 @@
 """Parse the FCA institution roster (the ``INST`` root) from a release.
 
 The roster is handled as its own module rather than through
-:mod:`call_report.fca.enums`'s `FCASchedule` since it describes
-institutions themselves, not a financial schedule -- but under the hood
-it's parsed the same way as any other ``"single"``-scenario schedule.
+:mod:`call_report.fca.enums`'s `FCASchedule`, since it describes
+institutions themselves rather than a financial schedule. It is parsed the
+same way as any other ``"single"``-scenario schedule.
 """
 
 from __future__ import annotations
@@ -71,13 +71,10 @@ def read_institutions(
 "polars_dataframe"}, optional
         The dataframe type to convert the result to as a final step.
         Leave this ``None`` (the default) to get back whatever backend
-        `call_report.config.get_config` currently has configured; set it
-        when the next step in your own code needs a specific type -- e.g.
-        this package is configured to use polars, but the code after this
-        call expects a pandas DataFrame. Converted via
-        `call_report.core._backend`'s narwhals-backed
-        `convert_dataframe_type`, which is zero-copy when the requested
-        type already matches.
+        `call_report.config.get_config` currently has configured. Set it
+        when the code that consumes this result needs a specific type, for
+        example a pandas DataFrame while the package is configured to use
+        polars.
 
     Returns
     -------

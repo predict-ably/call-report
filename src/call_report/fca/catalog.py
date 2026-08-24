@@ -33,8 +33,8 @@ EARLIEST_PERIOD = ReportingPeriod.from_period_end(value="2000-03-31")
 LATEST_KNOWN_PERIOD = ReportingPeriod.from_period_end(value="2026-03-31")
 """ReportingPeriod: The latest quarter confirmed available as of this release.
 
-This is a point-in-time snapshot, not a live lookup -- it will need bumping
-as FCA publishes new quarters, until a future release adds live discovery.
+This is a point-in-time snapshot, not a live lookup. It needs bumping as
+FCA publishes new quarters, until a future release adds live discovery.
 """
 
 
@@ -42,8 +42,8 @@ def construct_fca_download_url(*, period: ReportingPeriod) -> str:
     """Construct the FCA download URL for a period's Call Report zip archive.
 
     FCA changed its URL and filename convention between the legacy and
-    modern eras: periods from 2000 through 2014 use an abbreviated month
-    name under ``/template-fca/download/CallReportData/``; periods from
+    modern eras. Periods from 2000 through 2014 use an abbreviated month
+    name under ``/template-fca/download/CallReportData/``. Periods from
     2015 onward use the full month name under ``/template-fca/bank/``.
 
     Parameters

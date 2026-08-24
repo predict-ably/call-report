@@ -1,7 +1,7 @@
 """Package-level, sklearn-style configuration for the dataframe backend.
 
 Every reader in this package builds frames through narwhals and returns a
-*native* frame of whichever backend is configured here -- a real
+*native* frame of whichever backend is configured here. That means a real
 ``pandas.DataFrame``, ``polars.DataFrame``/``polars.LazyFrame``, or
 ``pyarrow.Table``, never a narwhals wrapper.
 """
@@ -25,8 +25,8 @@ _local = threading.local()
 def _current_config() -> dict[str, Any]:
     """Return this thread's mutable config dict, creating it on first use.
 
-    The returned dict is the live, mutable store for the calling thread --
-    callers that want an isolated snapshot should use `get_config` instead.
+    The returned dict is the live, mutable store for the calling thread.
+    Callers that want an isolated snapshot should use `get_config` instead.
 
     Returns
     -------
@@ -64,7 +64,7 @@ def set_config(
 ) -> None:
     """Update the current thread's package configuration.
 
-    Only the keys explicitly passed are changed; omitted keys keep their
+    Only the keys explicitly passed are changed. Omitted keys keep their
     current value. The change is thread-local, so it never affects other
     threads.
 
@@ -128,7 +128,8 @@ def config_context(**kwargs: Any) -> Iterator[None]:
     Yields
     ------
     None
-        Nothing; the block runs with the updated configuration active.
+        Nothing is yielded. The block runs with the updated configuration
+        active.
 
     Examples
     --------

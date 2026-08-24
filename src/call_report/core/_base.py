@@ -111,11 +111,11 @@ class BaseCallReport(ABC):
     def _load(self, *, schedule: Any) -> NativeDataFrame:
         """Load a single schedule, stacked across every requested period.
 
-        The internal counterpart of `load`, which every concrete source
-        implements instead of `load` itself: return an already-finalized
-        native dataframe of the configured backend, without applying any
-        `dataframe_type` conversion -- `load` does that centrally, once,
-        after calling this method.
+        Every concrete source implements this method instead of `load`
+        itself. It returns an already-finalized native dataframe of the
+        configured backend and applies no `dataframe_type` conversion.
+        `load` applies that conversion centrally, once, after calling
+        this method.
 
         Parameters
         ----------
@@ -160,9 +160,9 @@ class BaseCallReport(ABC):
     ) -> NativeDataFrame:
         """Load a single schedule, stacked across every requested period.
 
-        Concrete sources implement `_load` rather than this method; `load`
-        itself cannot be overridden, so every source applies `dataframe_type`
-        the same way, in one place.
+        Concrete sources implement `_load` rather than this method. `load`
+        itself cannot be overridden, so every source applies
+        `dataframe_type` the same way, in one place.
 
         Parameters
         ----------
@@ -173,8 +173,10 @@ class BaseCallReport(ABC):
 "polars_dataframe"}, optional
             The dataframe type to convert the result to as a final step.
             Leave this ``None`` (the default) to get back whatever backend
-            `call_report.config.get_config` currently has configured; set
-            it when the next step in your own code needs a specific type.
+            `call_report.config.get_config` currently has configured. Set
+            it when the code that consumes this result needs a specific
+            type, for example a pandas DataFrame while the package is
+            configured to use polars.
 
         Returns
         -------
@@ -203,12 +205,12 @@ class BaseCallReport(ABC):
     def _load_all(self) -> dict[Any, NativeDataFrame]:
         """Load every schedule discovered across the requested periods.
 
-        The internal counterpart of `load_all`, which every concrete
-        source implements instead of `load_all` itself: return a mapping
-        from schedule to an already-finalized native dataframe (typically
-        built by calling `_load` per schedule), without applying any
-        `dataframe_type` conversion -- `load_all` does that centrally,
-        once per value, after calling this method.
+        Every concrete source implements this method instead of
+        `load_all` itself. It returns a mapping from schedule to an
+        already-finalized native dataframe, typically built by calling
+        `_load` per schedule, and applies no `dataframe_type` conversion.
+        `load_all` applies that conversion centrally, once per value,
+        after calling this method.
 
         Returns
         -------
@@ -249,7 +251,7 @@ class BaseCallReport(ABC):
 
         Equivalent to calling `load` once per schedule returned by
         `available_schedules` that is actually present in range. Concrete
-        sources implement `_load_all` rather than this method; `load_all`
+        sources implement `_load_all` rather than this method. `load_all`
         itself cannot be overridden, so every source applies
         `dataframe_type` the same way, in one place.
 
@@ -288,12 +290,11 @@ class BaseCallReport(ABC):
     def _load_institutions(self) -> NativeDataFrame:
         """Load the institution roster, stacked across every requested period.
 
-        The internal counterpart of `load_institutions`, which every
-        concrete source implements instead of `load_institutions` itself:
-        return an already-finalized native dataframe of the configured
-        backend, without applying any `dataframe_type` conversion --
-        `load_institutions` does that centrally, once, after calling this
-        method.
+        Every concrete source implements this method instead of
+        `load_institutions` itself. It returns an already-finalized
+        native dataframe of the configured backend and applies no
+        `dataframe_type` conversion. `load_institutions` applies that
+        conversion centrally, once, after calling this method.
 
         Returns
         -------
@@ -334,7 +335,7 @@ class BaseCallReport(ABC):
 
         The roster is handled separately from `load` since it describes
         institutions themselves rather than a financial schedule. Concrete
-        sources implement `_load_institutions` rather than this method;
+        sources implement `_load_institutions` rather than this method.
         `load_institutions` itself cannot be overridden, so every source
         applies `dataframe_type` the same way, in one place.
 
@@ -344,8 +345,10 @@ class BaseCallReport(ABC):
 "polars_dataframe"}, optional
             The dataframe type to convert the result to as a final step.
             Leave this ``None`` (the default) to get back whatever backend
-            `call_report.config.get_config` currently has configured; set
-            it when the next step in your own code needs a specific type.
+            `call_report.config.get_config` currently has configured. Set
+            it when the code that consumes this result needs a specific
+            type, for example a pandas DataFrame while the package is
+            configured to use polars.
 
         Returns
         -------
@@ -470,7 +473,7 @@ class BaseCallReport(ABC):
         ----------
         deep : bool, default True
             Reserved for future nested-estimator composition, matching the
-            sklearn convention; it has no effect for the sources currently
+            sklearn convention. It has no effect for the sources currently
             in this package.
 
         Returns
@@ -500,13 +503,13 @@ class BaseCallReport(ABC):
     def set_params(self, **params: Any) -> Self:
         """Update one or more constructor parameters in place.
 
-        This does not re-run `fetch`; any previously fetched state becomes
-        stale until `fetch` is called again.
+        This does not re-run `fetch`, so any previously fetched state
+        becomes stale until `fetch` is called again.
 
         Parameters
         ----------
         **params : Any
-            Parameter name/value pairs; each name must be one of this
+            Parameter name/value pairs. Each name must be one of this
             instance's constructor parameters.
 
         Returns
