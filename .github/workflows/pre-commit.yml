@@ -88,15 +88,17 @@ jobs:
         uses: codespell-project/actions-codespell@v2
         with:
           # This action interpolates `skip` unquoted into a shell command, so
-          # any glob that actually matches real files (e.g. a full path like
-          # "data/fca-schedule-metadata/base/*") gets expanded by the shell
-          # before codespell ever sees it -- only the first expanded filename
-          # ends up skipped, and the rest become explicit scan targets. A
-          # bare directory name has no glob metacharacters for the shell to
-          # expand, and codespell prunes matching directory names (by
-          # basename) from its walk, so this reliably skips whole
-          # directories of FCA-sourced text that isn't ours to fix: the raw
-          # data/fca-schedule-metadata/base/ archive, and
+          # any pattern containing a glob metacharacter (*, ?, []) that
+          # actually matches real files (e.g. "data/fca-schedule-metadata/base/*")
+          # gets expanded by the shell before codespell ever sees it -- only
+          # the first expanded filename ends up skipped, and the rest become
+          # explicit scan targets. A literal path with no glob
+          # metacharacters can't be touched by the shell, and codespell
+          # matches skip patterns against each directory's full accumulated
+          # path (as its own walk constructs it, with a leading "./"), not
+          # just the pattern's own basename -- so this skips exactly these
+          # two directories of FCA-sourced text that isn't ours to fix: the
+          # raw data/fca-schedule-metadata/base/ archive, and
           # src/call_report/fca/data/schedules/, the shipped schedule
           # metadata generated from it.
-          skip: "base,schedules"
+          skip: "./data/fca-schedule-metadata/base,./src/call_report/fca/data/schedules"
