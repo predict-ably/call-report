@@ -1,7 +1,7 @@
 """Parse FCA ``D_<ROOT>.TXT`` layout files into typed variable metadata.
 
 FCA layout files are free-text, windows-1252-encoded, and mix three
-structural scenarios in one shared regex-based grammar: fields are always
+structural scenarios in one shared regex-based grammar. A field is always
 ``NAME  Numeric|Alphanum.  DECIMAL_POSITION  Definition text...``, and a
 ``**`` prefix on a name marks it as a *multiple-occurrence* column that
 repeats once per reported code, in a contiguous run.
@@ -34,12 +34,12 @@ FIXED_IDENTIFIER_COLUMNS: tuple[str, ...] = (
 )
 """tuple[str, ...]: The fixed institution/period-identifying column prefix.
 
-Verified present, in this exact order, as the start of `leading_columns`
-for every schedule across FCA's entire published history (2000-present),
-including the institution roster. For a ``"single"``-scenario schedule,
-`leading_columns` also contains every measure field after this prefix
-(there is no multi/trailing split at all); for a code-bearing scenario,
-`leading_columns` is narrowly just this prefix.
+These appear in this exact order at the start of `leading_columns` for
+every schedule across FCA's published history (2000 onward), including the
+institution roster. For a ``"single"``-scenario schedule, `leading_columns`
+also contains every measure field after this prefix, since there is no
+multi or trailing split at all. For a code-bearing scenario,
+`leading_columns` is just this prefix.
 """
 
 _TYPE_LOOKAHEAD = r"(?=(\s+Alphanum\.|\s+Numeric))"
@@ -58,11 +58,11 @@ def infer_field_dtype(
 ) -> nw.dtypes.DType:
     """Translate an FCA layout variable's declared type into a narwhals dtype.
 
-    FCA's own vocabulary is just ``"Numeric"``/``"Alphanum."`` plus a
-    decimal position; this maps that onto the narwhals dtype vocabulary
-    `call_report.core.FieldVersion` expects, following the same
-    ``"Numeric"``-specific check `fca.reader`'s value-level casting
-    already uses -- anything other than ``"Numeric"`` is treated as text.
+    FCA's own vocabulary is just ``"Numeric"`` or ``"Alphanum."`` plus a
+    decimal position. This maps that onto the narwhals dtype vocabulary
+    `call_report.core.FieldVersion` expects, using the same
+    ``"Numeric"``-specific check that `fca.reader`'s value-level casting
+    applies. Anything other than ``"Numeric"`` is treated as text.
 
     Parameters
     ----------
@@ -74,9 +74,9 @@ def infer_field_dtype(
     Returns
     -------
     narwhals.dtypes.DType
-        `narwhals.Int64` for ``"Numeric"`` with `decimal_position` ``0``;
+        `narwhals.Int64` for ``"Numeric"`` with `decimal_position` ``0``,
         `narwhals.Float64` for ``"Numeric"`` with any other
-        `decimal_position`; `narwhals.String` for ``"Alphanum."``.
+        `decimal_position`, and `narwhals.String` for ``"Alphanum."``.
 
     Examples
     --------
@@ -94,10 +94,11 @@ def infer_field_dtype(
 
 @dataclass(frozen=True, kw_only=True)
 class FCALayout:
-    """A parsed FCA layout: its scenario, variable metadata, and column groups.
+    """A parsed FCA layout, with its scenario, variables, and column groups.
 
-    Returned by `parse_layout`; the column groups tell :mod:`call_report.fca.reader`
-    how to split each data row into its single- and multiple-occurrence parts.
+    Returned by `parse_layout`. The column groups tell
+    :mod:`call_report.fca.reader` how to split each data row into its
+    single- and multiple-occurrence parts.
 
     Attributes
     ----------
@@ -111,8 +112,9 @@ class FCALayout:
         Single-occurrence column names appearing before the multi-occurrence
         run, if any.
     multi_columns : tuple[str, ...]
-        Multiple-occurrence column names, in layout order; the first entry
-        is always the code column. Empty for the ``"single"`` scenario.
+        Multiple-occurrence column names, in layout order. The first
+        entry is always the code column. Empty for the ``"single"``
+        scenario.
     trailing_columns : tuple[str, ...]
         Single-occurrence column names appearing after the multi-occurrence
         run. Only ever non-empty for ``"single_multiple_single"``.
@@ -144,10 +146,10 @@ class FCALayout:
 def parse_layout(*, path: Path) -> FCALayout:
     """Parse a ``D_<ROOT>.TXT`` layout file into an FCALayout.
 
-    Handles the real-world quirks confirmed against FCA's published
-    releases: windows-1252 encoding, a literal tab before at least one
-    field, one file's lowercase ``"numeric"`` keyword, and a trailing
-    ``** NOTE ...`` block describing the multi-occurrence columns.
+    Handles the quirks that appear in FCA's published releases:
+    windows-1252 encoding, a literal tab before a field, a lowercase
+    ``"numeric"`` keyword, and a trailing ``** NOTE ...`` block describing
+    the multi-occurrence columns.
 
     Parameters
     ----------
@@ -231,9 +233,9 @@ def _classify_scenario(
     """Classify a layout's parsed rows into a scenario and column groups.
 
     The scenario is determined by the run-length encoding of each row's
-    ``is_multi`` flag: one run means every column is single-occurrence, two
-    runs means a single-occurrence prefix followed by a multi-occurrence
-    run, and three runs means a multi-occurrence run sandwiched between two
+    ``is_multi`` flag. One run means every column is single-occurrence, two
+    runs mean a single-occurrence prefix followed by a multi-occurrence
+    run, and three runs mean a multi-occurrence run between two
     single-occurrence runs.
 
     Parameters

@@ -206,7 +206,7 @@ def import_optional(
     err_suffix : str, optional
         Text placed after the module name in the not-installed message.
     min_version : str or tuple of int, optional
-        Minimum acceptable version; when given, the installed version is
+        Minimum acceptable version. When given, the installed version is
         checked against it.
     min_err_prefix : str, optional
         Text placed before the module name in the too-old message.

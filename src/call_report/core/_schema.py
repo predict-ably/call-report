@@ -3,11 +3,12 @@
 A call report file (schedule) and the fields within it can both change shape
 over time: fields get added, dropped, or occasionally retired and later
 reintroduced as a source's forms evolve. A field can also be redefined in
-place -- its dtype or definition can change while the field never actually
-disappears (e.g. a field whose embedded code list grows over time).
-:class:`FieldVersion` captures one span of a field's history where its
-dtype/definition held constant; :class:`FieldAttributes` is one or more of
-them. :class:`FieldAttributes` and :class:`FileMetadata` capture this history
+place, meaning its dtype or definition changes while the field never
+actually disappears (e.g. a field whose embedded code list grows over
+time). :class:`FieldVersion` captures one span of a field's history where
+its dtype and definition held constant, and :class:`FieldAttributes` is one
+or more of them. :class:`FieldAttributes` and :class:`FileMetadata` capture
+this history
 uniformly across sources, in terms of the periods each field or file is
 actually present for, so a single object can answer "what did this look like
 across every period" rather than one period at a time.
@@ -117,9 +118,9 @@ def _dtype_from_repr(text: str) -> nw.dtypes.DType:
     The inverse of ``repr(dtype)`` for any narwhals `DType` (e.g.
     ``"Int64"``, ``"Datetime(time_unit='us', time_zone='UTC')"``, or a
     deeply nested ``"Array(List(Struct({'a': Int64})), shape=(2,))"``).
-    Parses `text` as an AST rather than calling `eval`, so no arbitrary
-    code -- or even an arbitrary narwhals API call -- is reachable
-    regardless of what `text` contains.
+    Parses `text` as an AST rather than calling `eval`, so neither
+    arbitrary code nor an arbitrary narwhals API call is reachable,
+    whatever `text` contains.
 
     Parameters
     ----------
@@ -262,10 +263,10 @@ class FieldVersion:
     """One span of a field's history where its dtype and definition held constant.
 
     A `FieldAttributes`'s `versions` is one or more of these: most fields
-    have exactly one (their dtype/definition never changed across their
-    whole known history), but a field whose definition was revised in
-    place -- without ever disappearing -- has one version per revision,
-    with adjacent (non-gapped) `periods`.
+    have exactly one, meaning their dtype and definition never changed
+    across their whole known history. A field whose definition was revised
+    in place, without ever disappearing, has one version per revision, with
+    adjacent (non-gapped) `periods`.
 
     Attributes
     ----------
@@ -274,7 +275,7 @@ class FieldVersion:
         narwhals dtype (e.g. `narwhals.Int64()`, `narwhals.String()`).
         Translating a source's own vocabulary (e.g. FCA's
         ``"Numeric"``/``"Alphanum."``) into a narwhals dtype is that
-        source's own responsibility -- this class is shared across every
+        source's own responsibility. This class is shared across every
         source, so it only ever deals in narwhals' vocabulary.
     definition : str
         The field's human-readable definition during this version, taken
@@ -304,7 +305,7 @@ def _validate_field_versions(versions: tuple[FieldVersion, ...], label: str) -> 
     """Validate that field versions are non-empty, ordered, and non-overlapping.
 
     Unlike `_validate_period_spans`, adjacent versions are allowed when
-    their `dtype`/`definition` differ -- that represents an in-place
+    their `dtype`/`definition` differ, which represents an in-place
     redefinition (e.g. a field's embedded code list growing over time with
     no presence gap). Adjacent versions with identical `dtype`/`definition`
     are still rejected, since those should have been expressed as a single
@@ -353,7 +354,7 @@ def _coalesced_presence(versions: tuple[FieldVersion, ...]) -> tuple[PeriodRange
     """Merge a field's versions into presence spans, ignoring content changes.
 
     Adjacent versions (regardless of whether their `dtype`/`definition`
-    differ) are merged into one span; a span only breaks where a real gap
+    differ) are merged into one span. A span only breaks where a real gap
     exists. Used by `FileMetadata.changed` to compare a field's overall
     presence against the file's own `periods`, independent of any
     in-place redefinitions the field underwent while present.
@@ -399,9 +400,9 @@ class FieldAttributes:
         objects describing this field's dtype/definition over time. More
         than one version means the field's dtype or definition changed at
         some point, was dropped and later reintroduced, or both. Adjacent
-        versions always differ in `dtype`/`definition` -- identical
-        adjacent content is rejected, since it should have been expressed
-        as a single version.
+        versions always differ in `dtype`/`definition`, since identical
+        adjacent content is rejected as something that should have been
+        expressed as a single version.
 
     Raises
     ------
@@ -518,15 +519,15 @@ class FieldAttributes:
 class _ReadOnlySchema(nw.Schema):
     """A narwhals Schema that rejects in-place mutation after construction.
 
-    Backs `FieldSchema.schema`: a plain `@property` only stops the
+    Backs `FieldSchema.schema`. A plain `@property` only stops the
     *attribute* from being reassigned, but `narwhals.Schema` is itself a
     mutable `OrderedDict` subclass, so without this a caller could still
     mutate the stored schema in place (e.g. ``field_schema.schema["X"] =
-    ...``). Every dict/`OrderedDict` mutation entry point is overridden to
-    raise, so the returned instance is genuinely read-only -- and since
-    that's enforced by the object's own class rather than by copying on
-    each access, `FieldSchema.schema` can return the same stored instance
-    every time.
+    ...``). Every dict and `OrderedDict` mutation entry point is overridden
+    to raise, so the returned instance is genuinely read-only. Because that
+    is enforced by the object's own class rather than by copying on each
+    access, `FieldSchema.schema` can return the same stored instance every
+    time.
 
     Parameters
     ----------
@@ -560,11 +561,11 @@ narwhals.dtypes.DType]], optional
         return f"Schema({dict(self)!r})"
 
     def __setitem__(self, key: str, value: nw.dtypes.DType) -> None:
-        """Raise, once frozen; populate normally during construction otherwise.
+        """Raise once frozen, but populate normally during construction.
 
         `OrderedDict.__init__` populates entries by calling this method, so
-        it cannot unconditionally raise -- `_frozen` is only set once
-        `__init__` finishes, distinguishing initial population from any
+        it cannot unconditionally raise. `_frozen` is only set once
+        `__init__` finishes, which distinguishes initial population from any
         later mutation attempt.
 
         Parameters
@@ -584,7 +585,7 @@ narwhals.dtypes.DType]], optional
         super().__setitem__(key, value)
 
     def __delitem__(self, key: str) -> None:
-        """Raise; deleting a column would mutate a read-only schema.
+        """Raise, since deleting a column would mutate a read-only schema.
 
         Implements the ``del schema[key]`` statement.
 
@@ -601,7 +602,7 @@ narwhals.dtypes.DType]], optional
         raise TypeError("FieldSchema.schema is read-only.")
 
     def clear(self) -> None:
-        """Raise; clearing would mutate a read-only schema.
+        """Raise, since clearing would mutate a read-only schema.
 
         Implements the ``dict.clear`` method.
 
@@ -613,7 +614,7 @@ narwhals.dtypes.DType]], optional
         raise TypeError("FieldSchema.schema is read-only.")
 
     def pop(self, *args: Any, **kwargs: Any) -> Any:
-        """Raise; popping a column would mutate a read-only schema.
+        """Raise, since popping a column would mutate a read-only schema.
 
         Implements the ``dict.pop`` method.
 
@@ -637,7 +638,7 @@ narwhals.dtypes.DType]], optional
         raise TypeError("FieldSchema.schema is read-only.")
 
     def popitem(self, *args: Any, **kwargs: Any) -> Any:
-        """Raise; popping a column would mutate a read-only schema.
+        """Raise, since popping a column would mutate a read-only schema.
 
         Implements the ``dict.popitem`` method.
 
@@ -661,7 +662,7 @@ narwhals.dtypes.DType]], optional
         raise TypeError("FieldSchema.schema is read-only.")
 
     def setdefault(self, *args: Any, **kwargs: Any) -> Any:
-        """Raise; inserting a default would mutate a read-only schema.
+        """Raise, since inserting a default would mutate a read-only schema.
 
         Implements the ``dict.setdefault`` method.
 
@@ -685,7 +686,7 @@ narwhals.dtypes.DType]], optional
         raise TypeError("FieldSchema.schema is read-only.")
 
     def update(self, *args: Any, **kwargs: Any) -> None:
-        """Raise; updating would mutate a read-only schema.
+        """Raise, since updating would mutate a read-only schema.
 
         Implements the ``dict.update`` method.
 
@@ -704,7 +705,7 @@ narwhals.dtypes.DType]], optional
         raise TypeError("FieldSchema.schema is read-only.")
 
     def move_to_end(self, *args: Any, **kwargs: Any) -> None:
-        """Raise; reordering would mutate a read-only schema.
+        """Raise, since reordering would mutate a read-only schema.
 
         Implements the ``OrderedDict.move_to_end`` method.
 
@@ -725,7 +726,7 @@ narwhals.dtypes.DType]], optional
     # __or__ is inherited, not redefined here, which trips a known mypy
     # false positive comparing it against __ior__: python/mypy#11941.
     def __ior__(self, other: Any) -> NoReturn:  # type: ignore[misc]
-        """Raise; merging in place would mutate a read-only schema.
+        """Raise, since merging in place would mutate a read-only schema.
 
         Implements the ``|=`` operator.
 
@@ -746,8 +747,8 @@ narwhals.dtypes.DType]], optional
 class FieldChange:
     """One field's before/after metadata between two FieldSchema snapshots.
 
-    Only appears in `FieldSchemaDiff.changed` -- a field present in only
-    one of the two compared schemas shows up in `FieldSchemaDiff.added`/
+    Only appears in `FieldSchemaDiff.changed`. A field present in only one
+    of the two compared schemas shows up in `FieldSchemaDiff.added` or
     `FieldSchemaDiff.removed` instead, as a plain name.
 
     Attributes
@@ -932,12 +933,12 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         """Return this schema's fields as a narwhals Schema.
 
         Built once at construction from each field's `name` and its
-        *latest* version's `dtype`, so `subset`, `add_fields`, `as_of`, and
-        `from_dataframe` all get an up to date narwhals Schema for free --
-        they construct their result via `FieldSchema(fields=...)`, which
-        runs this same construction logic. Read-only: the returned object
-        rejects in-place mutation (e.g. item assignment), so it cannot be
-        used to change this schema's fields.
+        *latest* version's `dtype`. `subset`, `add_fields`, `as_of`, and
+        `from_dataframe` construct their result via
+        `FieldSchema(fields=...)`, which runs this same logic, so they all
+        get an up to date narwhals Schema for free. The returned object is
+        read-only: it rejects in-place mutation such as item assignment, so
+        it cannot be used to change this schema's fields.
 
         Returns
         -------
@@ -966,7 +967,7 @@ class FieldSchema(Mapping[str, FieldAttributes]):
     def subset(self, *, names: Iterable[str]) -> FieldSchema:
         """Return a new FieldSchema containing only the named fields.
 
-        The result preserves this schema's existing field order; it does
+        The result preserves this schema's existing field order. It does
         not reorder fields to match the order of `names`.
 
         Parameters
@@ -1023,7 +1024,7 @@ class FieldSchema(Mapping[str, FieldAttributes]):
     ) -> FieldSchema:
         """Return a new FieldSchema with one or more fields inserted.
 
-        This schema is left unmodified; the caller receives a new instance.
+        This schema is left unmodified. The caller receives a new instance.
 
         Parameters
         ----------
@@ -1083,9 +1084,9 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 
         Each surviving field is narrowed to a single version covering the
         quarter `period`, using whichever of that field's versions was
-        actually active at that date -- not always its most recent one.
-        This is what makes the snapshot historically accurate: a field
-        whose definition was later revised still shows the definition that
+        actually active at that date rather than its most recent one. That
+        is what makes the snapshot historically accurate: a field whose
+        definition was later revised still shows the definition that
         applied at `period`, not today's.
 
         Parameters
@@ -1209,8 +1210,9 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         """Compare this schema against `other`, field by field.
 
         Unlike `is_equal`, this returns the actual differences rather than
-        a single bool -- useful for reviewing what changed between two
-        point-in-time snapshots, or auditing a metadata regeneration run.
+        a single bool, which is useful for reviewing what changed between
+        two point-in-time snapshots or auditing a metadata regeneration
+        run.
 
         Parameters
         ----------
@@ -1335,12 +1337,11 @@ class FieldSchema(Mapping[str, FieldAttributes]):
 "polars_dataframe"}, optional
             The dataframe type to convert the result to as a final step,
             regardless of `backend`. Leave this ``None`` (the default) to
-            get back whatever `backend` produced; set it when the next step
-            in your own code needs a specific type -- e.g. this package is
-            configured to use polars, but the code after this call expects
-            a pandas DataFrame. Converted via `call_report.core._backend`'s
-            narwhals-backed `convert_dataframe_type`, which is zero-copy
-            when the requested type already matches.
+            get back whatever `backend` produced. Set it when the code that
+            consumes this result needs a specific type, for example a
+            pandas DataFrame while the package is configured to use polars.
+            The conversion is zero-copy when the requested type already
+            matches.
 
         Returns
         -------
@@ -1349,10 +1350,10 @@ class FieldSchema(Mapping[str, FieldAttributes]):
             ``definition``, ``period_start``, and ``period_end`` (the last
             two as ISO ``YYYY-MM-DD`` strings). ``dtype`` holds each
             version's narwhals dtype as its `repr` (e.g. ``"Int64"``,
-            ``"Datetime(time_unit='us', time_zone='UTC')"``) -- a plain
-            string, so it round-trips through every backend, including
-            pyarrow, which cannot hold arbitrary Python objects as column
-            values.
+            ``"Datetime(time_unit='us', time_zone='UTC')"``). Storing it
+            as a plain string lets it round-trip through every backend,
+            including pyarrow, which cannot hold arbitrary Python objects
+            as column values.
 
         Examples
         --------
@@ -1448,14 +1449,14 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         """Return this schema as a JSON string.
 
         The format this package ships canonical schedule metadata in (see
-        `call_report.fca.get_fca_file_metadata`) -- chosen over a flat
-        dataframe because a field's versions nest naturally under its
-        name.
+        `call_report.fca.get_fca_file_metadata`). It is used in preference
+        to a flat dataframe because a field's versions nest naturally under
+        its name.
 
         Parameters
         ----------
         indent : int, optional
-            Passed through to `json.dumps`; the default (``2``) produces
+            Passed through to `json.dumps`. The default of ``2`` produces
             human-readable, diffable output, matching the shipped metadata
             files. Pass ``None`` for the most compact representation.
 
@@ -1489,7 +1490,7 @@ class FieldSchema(Mapping[str, FieldAttributes]):
     def from_json(cls, *, text: str) -> FieldSchema:
         """Reconstruct a FieldSchema from JSON built by `to_json`.
 
-        The inverse of `to_json`; round-tripping a schema through both
+        The inverse of `to_json`. Round-tripping a schema through both
         reconstructs an equal `FieldSchema`.
 
         Parameters
@@ -1700,8 +1701,8 @@ def _field_schema_to_dict(schema: FieldSchema) -> dict[str, Any]:
 def _field_schema_from_dict(data: Mapping[str, Any]) -> FieldSchema:
     """Reconstruct a FieldSchema from the dict shape `_field_schema_to_dict` produces.
 
-    The inverse of `_field_schema_to_dict`; shared by `FieldSchema.from_json`
-    and `FileMetadata.from_json`.
+    The inverse of `_field_schema_to_dict`, shared by
+    `FieldSchema.from_json` and `FileMetadata.from_json`.
 
     Parameters
     ----------
@@ -1745,8 +1746,9 @@ def _field_schema_from_dict(data: Mapping[str, Any]) -> FieldSchema:
 class FileMetadataDiff:
     """The result of comparing two FileMetadata via `FileMetadata.compare`.
 
-    `name`/`periods` are compared directly; field-level differences are
-    delegated entirely to `FieldSchema.compare` (see `file_schema_diff`).
+    `name` and `periods` are compared directly. Field-level differences
+    are delegated entirely to `FieldSchema.compare` (see
+    `file_schema_diff`).
 
     Attributes
     ----------
@@ -1922,11 +1924,11 @@ class FileMetadata:
         A field whose overall presence (its versions' periods, merged
         across any in-place redefinitions) does not exactly match this
         file's `periods` was added after the file's first period, dropped
-        before its last, or has a gap the file itself does not have -- in
-        every case, the file's column schema was not identical across its
-        whole history. A field that was purely redefined in place (its
-        dtype/definition changed but it was always present) does *not*
-        count as `changed` on its own.
+        before its last, or has a gap the file itself does not have. In
+        every one of those cases the file's column schema was not identical
+        across its whole history. A field that was purely redefined in
+        place, meaning its dtype or definition changed but it was always
+        present, does *not* count as `changed` on its own.
 
         Returns
         -------
@@ -1963,7 +1965,7 @@ class FileMetadata:
     def as_of(self, *, period: str | date | ReportingPeriod) -> FileMetadata:
         """Return a new FileMetadata snapshot as of `period`.
 
-        Delegates field selection to `FieldSchema.as_of`; the result's own
+        Delegates field selection to `FieldSchema.as_of`. The result's own
         `periods` is likewise narrowed to the single quarter `period`.
 
         Parameters
@@ -2072,8 +2074,8 @@ class FileMetadata:
     ) -> FileMetadataDiff:
         """Compare this file's metadata against `other`.
 
-        `name`/`periods` are compared directly; the field-level comparison
-        is delegated entirely to `FieldSchema.compare`.
+        `name` and `periods` are compared directly. The field-level
+        comparison is delegated entirely to `FieldSchema.compare`.
 
         Parameters
         ----------
@@ -2195,12 +2197,11 @@ class FileMetadata:
 "polars_dataframe"}, optional
             The dataframe type to convert the result to as a final step,
             regardless of `backend`. Leave this ``None`` (the default) to
-            get back whatever `backend` produced; set it when the next step
-            in your own code needs a specific type -- e.g. this package is
-            configured to use polars, but the code after this call expects
-            a pandas DataFrame. Converted via `call_report.core._backend`'s
-            narwhals-backed `convert_dataframe_type`, which is zero-copy
-            when the requested type already matches.
+            get back whatever `backend` produced. Set it when the code that
+            consumes this result needs a specific type, for example a
+            pandas DataFrame while the package is configured to use polars.
+            The conversion is zero-copy when the requested type already
+            matches.
 
         Returns
         -------
@@ -2257,8 +2258,9 @@ class FileMetadata:
     def from_dataframe(cls, *, data: Any) -> FileMetadata:
         """Reconstruct a FileMetadata from a dataframe built by `to_dataframe`.
 
-        Rows with an empty ``field_name`` are this file's own period spans;
-        every other row is delegated to `FieldSchema.from_dataframe`.
+        Rows with an empty ``field_name`` are this file's own period
+        spans. Every other row is delegated to
+        `FieldSchema.from_dataframe`.
 
         Parameters
         ----------
@@ -2335,13 +2337,13 @@ class FileMetadata:
         Parameters
         ----------
         indent : int, optional
-            Passed through to `json.dumps`; see `FieldSchema.to_json`.
+            Passed through to `json.dumps`. See `FieldSchema.to_json`.
 
         Returns
         -------
         str
-            A JSON object with ``name``, ``periods``, and ``fields`` keys
-            -- the latter built via the same shape `FieldSchema.to_json`
+            A JSON object with ``name``, ``periods``, and ``fields``
+            keys. ``fields`` uses the same shape `FieldSchema.to_json`
             produces.
 
         Examples
@@ -2382,7 +2384,7 @@ class FileMetadata:
     def from_json(cls, *, text: str) -> FileMetadata:
         """Reconstruct a FileMetadata from JSON built by `to_json`.
 
-        The inverse of `to_json`; round-tripping metadata through both
+        The inverse of `to_json`. Round-tripping metadata through both
         reconstructs an equal `FileMetadata`.
 
         Parameters

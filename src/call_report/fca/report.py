@@ -1,4 +1,4 @@
-"""The FCA Call Report estimator-style entry point: FCACallReport."""
+"""The estimator-style entry point for FCA Call Report data."""
 
 from __future__ import annotations
 
@@ -94,10 +94,11 @@ class FCAIssue:
 class FCACallReport(BaseCallReport):
     """The estimator-style entry point for FCA Call Report data.
 
-    Follows the sklearn convention: ``__init__`` only stores its
-    parameters, doing no validation or I/O; `fetch` validates parameters
-    and resolves release files, populating trailing-underscore attributes;
-    `load`-family methods call `fetch` automatically if it hasn't run.
+    Follows the sklearn convention. ``__init__`` only stores its
+    parameters, doing no validation or I/O. `fetch` validates those
+    parameters and resolves release files, populating trailing-underscore
+    attributes. The `load`-family methods call `fetch` automatically if it
+    has not run yet.
 
     Parameters
     ----------
@@ -105,7 +106,7 @@ class FCACallReport(BaseCallReport):
         The first quarter-end in the requested range.
     end : str or datetime.date, optional
         The last quarter-end in the requested range (inclusive). Must be
-        supplied explicitly -- there is no single-quarter default, so a
+        supplied explicitly. There is no single-quarter default, so a
         request's bounds are never ambiguous.
     schema_policy : {"union", "intersection", "strict"}, default "union"
         How to reconcile schema differences when stacking multiple
@@ -148,9 +149,9 @@ class FCACallReport(BaseCallReport):
 
         Populates `periods_`, `releases_`, `schedules_`, and `errors_`. A
         period that is within FCA's catalog bounds but whose local files
-        can't be resolved is skipped and recorded in `errors_` rather than
-        aborting the whole call; an out-of-bounds request, or one missing
-        `end`, is a hard, immediate error since it isn't a partial-data
+        cannot be resolved is skipped and recorded in `errors_` rather than
+        aborting the whole call. An out-of-bounds request, or one missing
+        `end`, is an immediate error, since neither is a partial-data
         situation.
 
         Returns
@@ -258,17 +259,17 @@ class FCACallReport(BaseCallReport):
     def _load(self, *, schedule: FCASchedule | str) -> Any:
         """Load one schedule, stacked across every period that has it.
 
-        The `BaseCallReport._load` implementation backing the public,
-        `dataframe_type`-handling `load`; does not apply any conversion
-        itself.
+        The `BaseCallReport._load` implementation backing the public
+        `load`, which is where `dataframe_type` is handled. This method
+        applies no conversion itself.
 
-        A period+schedule combination that fails to parse is skipped and
-        recorded in `errors_` rather than aborting the whole call.
+        A period and schedule combination that fails to parse is skipped
+        and recorded in `errors_` rather than aborting the whole call.
 
         Parameters
         ----------
         schedule : FCASchedule or str
-            The schedule to load; a string is matched case-insensitively.
+            The schedule to load. A string is matched case-insensitively.
 
         Returns
         -------
@@ -309,12 +310,12 @@ class FCACallReport(BaseCallReport):
     def _load_all(self) -> dict[FCASchedule, Any]:
         """Load every schedule discovered across the requested periods.
 
-        The `BaseCallReport._load_all` implementation backing the public,
-        `dataframe_type`-handling `load_all`; does not apply any
-        conversion itself.
+        The `BaseCallReport._load_all` implementation backing the public
+        `load_all`, which is where `dataframe_type` is handled. This method
+        applies no conversion itself.
 
         A schedule that fails to load entirely (see `_load`) is omitted
-        from the result rather than aborting the whole call; `errors_`
+        from the result rather than aborting the whole call, and `errors_`
         still records why.
 
         Returns
@@ -335,8 +336,8 @@ class FCACallReport(BaseCallReport):
         """Load the institution roster, stacked across every requested period.
 
         The `BaseCallReport._load_institutions` implementation backing the
-        public, `dataframe_type`-handling `load_institutions`; does not
-        apply any conversion itself.
+        public `load_institutions`, which is where `dataframe_type` is
+        handled. This method applies no conversion itself.
 
         A period whose roster fails to parse is skipped and recorded in
         `errors_` rather than aborting the whole call.
@@ -385,7 +386,8 @@ class FCACallReport(BaseCallReport):
         Parameters
         ----------
         schedule : FCASchedule or str
-            The schedule to describe; a string is matched case-insensitively.
+            The schedule to describe. A string is matched
+            case-insensitively.
         period : str, datetime.date, ReportingPeriod, optional
             A specific period to describe. If omitted, returns the layout
             for every period in the requested range that has `schedule`.
@@ -393,7 +395,7 @@ class FCACallReport(BaseCallReport):
         Returns
         -------
         FCALayout or dict[ReportingPeriod, FCALayout]
-            A single layout if `period` was supplied; otherwise a mapping
+            A single layout if `period` was supplied, otherwise a mapping
             from period to layout.
 
         Raises
@@ -455,8 +457,8 @@ class FCACallReport(BaseCallReport):
         """Return every period FCA is known to publish.
 
         Reflects FCA's overall catalog (`call_report.fca.catalog`),
-        independent of this instance's `start`/`end`; does not require
-        `fetch` to have run.
+        independent of this instance's `start` and `end`. It does not
+        require `fetch` to have run.
 
         Returns
         -------
@@ -517,7 +519,8 @@ class FCACallReport(BaseCallReport):
         Parameters
         ----------
         schedule : FCASchedule or str
-            The schedule to check; a string is matched case-insensitively.
+            The schedule to check. A string is matched
+            case-insensitively.
 
         Returns
         -------
@@ -549,7 +552,8 @@ class FCACallReport(BaseCallReport):
         Parameters
         ----------
         schedule : FCASchedule or str
-            The schedule to check; a string is matched case-insensitively.
+            The schedule to check. A string is matched
+            case-insensitively.
 
         Returns
         -------
@@ -619,26 +623,28 @@ class FCACallReport(BaseCallReport):
     ) -> NativeDataFrame:
         """Stack every loaded schedule into one wide, (UNINUM, period)-grain frame.
 
-        One row per institution per period; one column per schedule
-        variable. A plain (non-code) field becomes ``{schedule}__
-        {variable}``; a field that repeats once per reported code becomes
-        ``{schedule}__{code_column}_{code_value}__{variable}`` (e.g.
-        ``RCB__INV_CODE_15__BKVAL``). Works on every configured dataframe
-        backend, including pyarrow, which lacks a native pivot -- see
-        `call_report.core._backend.pivot`.
+        Produces one row per institution per period and one column per
+        schedule variable. A plain (non-code) field becomes
+        ``{schedule}__{variable}``. A field that repeats once per reported
+        code becomes ``{schedule}__{code_column}_{code_value}__{variable}``
+        (e.g. ``RCB__INV_CODE_15__BKVAL``). Works on every configured
+        dataframe backend, including pyarrow, which lacks a native pivot
+        (see `call_report.core._backend.pivot`).
 
         Parameters
         ----------
         schedules : Iterable[FCASchedule or str], optional
-            The schedules to include; each is matched case-insensitively.
+            The schedules to include. Each is matched case-insensitively.
             Leave this ``None`` (the default) to include every schedule
             discovered across the requested periods.
         dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
 "polars_dataframe"}, optional
             The dataframe type to convert the result to as a final step.
             Leave this ``None`` (the default) to get back whatever backend
-            `call_report.config.get_config` currently has configured; set
-            it when the next step in your own code needs a specific type.
+            `call_report.config.get_config` currently has configured. Set
+            it when the code that consumes this result needs a specific
+            type, for example a pandas DataFrame while the package is
+            configured to use polars.
 
         Returns
         -------
@@ -654,7 +660,8 @@ class FCACallReport(BaseCallReport):
         ReshapeError
             If, after melting every included schedule, the same
             ``(UNINUM, period, column)`` combination has more than one
-            value -- e.g. a genuinely duplicated row in the source data.
+            value, for example because of a duplicated row in the source
+            data.
 
         Examples
         --------
@@ -676,16 +683,15 @@ class FCACallReport(BaseCallReport):
     def _to_wide_format(
         self, *, schedules: Iterable[FCASchedule | str] | None
     ) -> nw.DataFrame[Any]:
-        """Build the wide-format frame; the private hook behind `to_wide_format`.
+        """Build the wide-format frame, the private hook behind `to_wide_format`.
 
         Loads each resolved schedule via `_load_reshape_inputs`, then
-        delegates the melt/concat/pivot work to
-        `call_report.fca._reshape.to_wide_format`. A schedule loaded lazy
-        (``lazy=True`` configured, polars backend) is passed through as
-        a `narwhals.LazyFrame` rather than collected here -- the melt and
+        delegates the melt, concat, and pivot work to
+        `call_report.fca._reshape.to_wide_format`. A schedule loaded lazily
+        (``lazy=True`` configured, polars backend) is passed through as a
+        `narwhals.LazyFrame` rather than collected here. The melt and
         concat steps stay lazy too, and only `to_wide_format`'s final
-        `call_report.core._backend.pivot` call actually needs to
-        materialize it.
+        `call_report.core._backend.pivot` call needs to materialize it.
 
         Parameters
         ----------
@@ -758,30 +764,32 @@ class FCACallReport(BaseCallReport):
     ) -> NativeDataFrame:
         """Stack every loaded schedule into one long, tidy-shaped frame.
 
-        One row per ``(UNINUM, period, schedule, code_column, code_value,
-        variable_name)``. A plain (non-code) field has ``code_column``/
-        ``code_value`` null and ``is_multiple`` ``False``; a field that
-        repeats once per reported code has them set to the code's field
-        name and value, with ``is_multiple`` ``True`` -- matching
-        `~call_report.fca.layout.FCALayout`'s own "single"/"multiple"
-        scenario vocabulary. `value` (and `code_value`, when present) is
-        always ``Float64``, the most generic type that represents every
-        schedule's measures. See
-        `~call_report.fca.convert_long_format_to_wide_format` to pivot
-        this back to `to_wide_format`'s shape.
+        Produces one row per ``(UNINUM, period, schedule, code_column,
+        code_value, variable_name)``. A plain (non-code) field has
+        ``code_column`` and ``code_value`` null and ``is_multiple``
+        ``False``. A field that repeats once per reported code has them set
+        to the code's field name and value, with ``is_multiple`` ``True``,
+        matching `~call_report.fca.layout.FCALayout`'s own
+        "single"/"multiple" scenario vocabulary. `value`, and `code_value`
+        when present, is always ``Float64``, the most generic type that
+        represents every schedule's measures. See
+        `~call_report.fca.convert_long_format_to_wide_format` to pivot this
+        back to `to_wide_format`'s shape.
 
         Parameters
         ----------
         schedules : Iterable[FCASchedule or str], optional
-            The schedules to include; each is matched case-insensitively.
+            The schedules to include. Each is matched case-insensitively.
             Leave this ``None`` (the default) to include every schedule
             discovered across the requested periods.
         dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
 "polars_dataframe"}, optional
             The dataframe type to convert the result to as a final step.
             Leave this ``None`` (the default) to get back whatever backend
-            `call_report.config.get_config` currently has configured; set
-            it when the next step in your own code needs a specific type.
+            `call_report.config.get_config` currently has configured. Set
+            it when the code that consumes this result needs a specific
+            type, for example a pandas DataFrame while the package is
+            configured to use polars.
 
         Returns
         -------
@@ -796,8 +804,8 @@ class FCACallReport(BaseCallReport):
             named schedule has zero surviving periods.
         ReshapeError
             If ``(UNINUM, period, schedule, code_column, code_value,
-            variable_name)`` is not a unique grain -- e.g. a genuinely
-            duplicated row in the source data.
+            variable_name)`` is not a unique grain, for example because of
+            a duplicated row in the source data.
 
         Examples
         --------
@@ -820,14 +828,14 @@ class FCACallReport(BaseCallReport):
     def _to_long_format(
         self, *, schedules: Iterable[FCASchedule | str] | None
     ) -> nw.DataFrame[Any]:
-        """Build the long-format frame; the private hook behind `to_long_format`.
+        """Build the long-format frame, the private hook behind `to_long_format`.
 
         Loads each resolved schedule via `_load_reshape_inputs`, then
         delegates to `call_report.fca._reshape.to_long_format`. Unlike
-        `_to_wide_format`, there's no pivot -- the melt/concat/flag steps
-        all stay lazy if a schedule was loaded lazy; the one place this
-        collects is `to_long_format`'s own grain-uniqueness check
-        (verifying data isn't a lazy-safe question either), so the result
+        `_to_wide_format`, there is no pivot, so the melt, concat, and flag
+        steps all stay lazy if a schedule was loaded lazily. The one place
+        this collects is `to_long_format`'s own grain-uniqueness check,
+        since checking the data is not a lazy-safe operation, so the result
         here is always eager, the same as `_to_wide_format`'s.
 
         Parameters
@@ -864,7 +872,7 @@ class FCACallReport(BaseCallReport):
 
         Shared by `_to_wide_format` and `_to_long_format`, which differ
         only in which `call_report.fca._reshape` function they hand this
-        to. A schedule loaded lazy (``lazy=True`` configured, polars
+        to. A schedule loaded lazily (``lazy=True`` configured, polars
         backend) is passed through as a `narwhals.LazyFrame` rather than
         collected here.
 
@@ -890,7 +898,7 @@ dict[str, tuple[str, ...]]]
         if not resolved:
             raise ScheduleNotFoundError(
                 "No schedules to reshape: `schedules` resolved to an empty "
-                "selection -- either an empty `schedules` was passed, or "
+                "selection. Either an empty `schedules` was passed, or "
                 "this instance has no schedules discovered across its "
                 "requested periods; see errors_ for details."
             )
@@ -912,11 +920,11 @@ dict[str, tuple[str, ...]]]
     ) -> tuple[FCASchedule, ...]:
         """Resolve `to_wide_format`/`to_long_format`'s `schedules` to a concrete tuple.
 
-        ``None`` mirrors `_load_all`'s lenient behavior: every schedule
-        discovered across the requested periods. An explicit iterable is
-        coerced and used as-is -- a named schedule with zero surviving
-        periods then surfaces naturally as `ScheduleNotFoundError` from
-        `_load`, matching `load`'s existing strict behavior.
+        ``None`` mirrors `_load_all`'s lenient behavior and selects every
+        schedule discovered across the requested periods. An explicit
+        iterable is coerced and used as-is, so a named schedule with zero
+        surviving periods surfaces as `ScheduleNotFoundError` from `_load`,
+        matching `load`'s stricter behavior.
 
         Parameters
         ----------
@@ -939,9 +947,9 @@ dict[str, tuple[str, ...]]]
 
         Used by `_to_wide_format` to determine a schedule's code and
         trailing columns. Whether a schedule has a code column, and its
-        overall scenario, is stable across periods in practice (only a
-        code list's own contents drift over time, e.g. RCF1's 2015
-        meaning change), so the first period is representative.
+        overall scenario, is stable across periods. Only a code list's own
+        contents drift over time, as with RCF1's 2015 meaning change, so
+        the first period is representative.
 
         Parameters
         ----------
@@ -987,9 +995,8 @@ def _build_schedule_presence_map(
 ) -> dict[FCASchedule, tuple[ReportingPeriod, ...]]:
     """Build a schedule-to-periods presence map from resolved releases.
 
-    Unrecognized root names (present in a release but not in
-    `FCASchedule`) are silently ignored; this has not been observed in any
-    real FCA release.
+    A root name that is present in a release but not in `FCASchedule` is
+    ignored rather than raising.
 
     Parameters
     ----------

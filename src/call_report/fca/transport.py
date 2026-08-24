@@ -1,9 +1,9 @@
 """The injectable FCA transport interface and its local implementations.
 
-`FCATransport` is the seam a future network-based transport (handling
-FCA's Cloudflare-protected downloads) will slot in behind, without changing
+`FCATransport` is the seam a future network-based transport, handling
+FCA's Cloudflare-protected downloads, will slot in behind without changing
 any public signature on `call_report.fca.report.FCACallReport`. Every
-`FCACallReport` requires one explicitly -- there is no implicit default --
+`FCACallReport` requires a transport explicitly, with no implicit default,
 so it is always clear which files a given instance will read.
 """
 
@@ -28,18 +28,18 @@ class FCATransport(Protocol):
     """The interface FCACallReport uses to resolve a period's local files.
 
     Any object implementing `resolve` can be passed as an
-    `FCACallReport`'s ``transport=`` argument. Two implementations are
-    shipped so far: `LocalDirectoryTransport`, for a user-supplied directory
-    of already-extracted releases, and `PackagedArchiveTransport`, for the
-    historical release zips checked into this repository.
+    `FCACallReport`'s ``transport=`` argument. Two implementations ship
+    with the package: `LocalDirectoryTransport`, for a user-supplied
+    directory of already-extracted releases, and `PackagedArchiveTransport`,
+    for the historical release zips checked into this repository.
     """  # numpydoc ignore=PR01
 
     def resolve(self, *, period: ReportingPeriod) -> Path:
         """Return a local directory containing a period's extracted files.
 
-        Implementations may resolve this however they like -- reading from
-        an already-extracted local directory, downloading and extracting a
-        zip archive on demand, etc.
+        Implementations may resolve this however they like, for instance
+        by reading an already-extracted local directory or by downloading
+        and extracting a zip archive on demand.
 
         Parameters
         ----------
@@ -63,8 +63,8 @@ class FCATransport(Protocol):
 def _default_dirname(period: ReportingPeriod) -> str:
     """Return the default per-period directory name: the FCA zip's stem.
 
-    Matches how most users will have named the directory after manually
-    downloading and unzipping FCA's own archive for that period.
+    Matches the name produced by downloading and unzipping FCA's own
+    archive for that period.
 
     Parameters
     ----------
@@ -85,11 +85,9 @@ def _default_dirname(period: ReportingPeriod) -> str:
 class LocalDirectoryTransport:
     """A transport that resolves periods to pre-extracted local directories.
 
-    Expects `data_dir` to contain one subdirectory per period, each holding
-    that period's already-downloaded-and-unzipped FCA release files. A
-    future release can add a network-based transport implementing the same
-    `FCATransport` interface without changing `FCACallReport`'s public
-    signature.
+    Expects `data_dir` to contain one subdirectory per period, each
+    holding that period's already-downloaded and unzipped FCA release
+    files.
 
     Attributes
     ----------
@@ -98,8 +96,8 @@ class LocalDirectoryTransport:
     dirname_for : Callable[[ReportingPeriod], str]
         A function mapping a period to its subdirectory name under
         `data_dir`. Defaults to the FCA download zip's filename stem (e.g.
-        ``"2026March"``), matching how most users will have named the
-        directory after manually unzipping it.
+        ``"2026March"``), which is the name produced by unzipping that
+        archive.
 
     Examples
     --------
@@ -154,19 +152,19 @@ class PackagedArchiveTransport:
     """A transport that resolves periods to the release zips shipped in ``data/``.
 
     By default, resolves against this repository's own
-    ``data/fca-call-report/`` archive -- one zip per period, named after
-    FCA's own download filename (e.g. ``"2026March.zip"``) -- so a checkout
-    of this repository has ready-to-use historical data with no network
-    access required. Each zip is extracted, once per period, into a private
-    temporary directory that is cleaned up when this transport is garbage
-    collected.
+    ``data/fca-call-report/`` archive, which holds one zip per period named
+    after FCA's own download filename (e.g. ``"2026March.zip"``). A
+    checkout of this repository therefore has ready-to-use historical data
+    with no network access required. Each zip is extracted, once per
+    period, into a private temporary directory that is cleaned up when this
+    transport is garbage collected.
 
     That archive is not included in the distributed wheel (see
     ``pyproject.toml``'s ``[tool.hatch.build.targets.wheel]``), so this
-    transport is only useful when running from a source checkout; a
-    `pip`-installed package should pass `archive_root` pointing at its own
-    directory of FCA release zips, or use `LocalDirectoryTransport` with
-    already-extracted releases instead.
+    transport is only useful when running from a source checkout. From a
+    `pip`-installed package, either pass `archive_root` pointing at your
+    own directory of FCA release zips, or use `LocalDirectoryTransport`
+    with already-extracted releases instead.
 
     Attributes
     ----------

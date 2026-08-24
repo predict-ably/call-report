@@ -1,10 +1,10 @@
 """Match layout/data file pairs within an extracted FCA release directory.
 
 FCA releases pair a ``D_<ROOT>[_<YEAR>].TXT`` layout file with a data file
-sharing the same root name, but the data filename convention itself
-differs by era: modern releases (2015+) use
-``<ROOT>_Q<YYYYMM>_G<YYYYMMDD>.TXT``; legacy releases (2000-2014) use
-``<ROOT><MM><YY>.TXT`` with no separator at all.
+sharing the same root name, but the data filename convention itself differs
+by era. Modern releases (2015 onward) use
+``<ROOT>_Q<YYYYMM>_G<YYYYMMDD>.TXT``, while legacy releases (2000 to 2014)
+use ``<ROOT><MM><YY>.TXT`` with no separator at all.
 """
 
 from __future__ import annotations
@@ -67,10 +67,9 @@ class ReleaseFiles:
 def scan_release(*, release_dir: Path) -> dict[str, ReleaseFiles]:
     """Scan a release directory and pair each layout file with its data file.
 
-    Roots whose layout file has no matching data file are silently omitted
-    -- this has not been observed in any real FCA release, but a missing
-    pairing is treated the same as the root simply not being part of that
-    release rather than as an error.
+    A root whose layout file has no matching data file is omitted rather
+    than raising. A missing pairing is treated the same as the root simply
+    not being part of that release.
 
     Parameters
     ----------
@@ -124,9 +123,10 @@ def _match_data_file(*, root: str, candidates: list[Path]) -> Path | None:
     """Find a root's data file among candidates, trying both eras' naming.
 
     The modern convention (``<ROOT>_...``) is tried first since it is
-    unambiguous; the legacy convention (``<ROOT><MMYY>.TXT``, no separator)
-    is matched by exact fixed-width suffix rather than by prefix, since a
-    prefix match alone cannot distinguish e.g. root ``"RC"`` from ``"RC1"``.
+    unambiguous. The legacy convention (``<ROOT><MMYY>.TXT``, with no
+    separator) is matched by exact fixed-width suffix rather than by
+    prefix, because a prefix match alone cannot distinguish a root such as
+    ``"RC"`` from ``"RC1"``.
 
     Parameters
     ----------

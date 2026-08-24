@@ -1,13 +1,12 @@
 """Parse FCA schedule data files using their layout.
 
-The parsing strategy here is deliberately data-driven rather than
-positional: real FCA releases contain rows with a variable number of
-multiple-occurrence groups per institution (banks vs. associations
-reporting different code sets, and at least one whole quarter where this
-was unusually pronounced). Rather than trusting a fixed count of codes per
-row, each occurrence group is identified by the code value embedded in the
-row itself, so ragged rows and line-wrapped records both parse correctly
-without needing to know how many groups "should" be present.
+The parsing strategy here is data-driven rather than positional. Real FCA
+releases contain rows with a variable number of multiple-occurrence groups
+per institution, because banks and associations report different code sets.
+Rather than trusting a fixed count of codes per row, each occurrence group
+is identified by the code value embedded in the row itself, so ragged rows
+and line-wrapped records both parse correctly without needing to know how
+many groups "should" be present.
 """
 
 from __future__ import annotations
@@ -60,8 +59,8 @@ def read_schedule_file(
 ) -> NativeDataFrame:
     """Parse a schedule's data file into a tidy native dataframe.
 
-    The row shape depends on `layout`'s scenario: a ``"single"`` layout
-    produces one row per institution; the two multi-occurrence scenarios
+    The row shape depends on `layout`'s scenario. A ``"single"`` layout
+    produces one row per institution. The two multi-occurrence scenarios
     produce one row per (institution, reported code), with the code itself
     taken from the data rather than assumed from a fixed count.
 
@@ -76,13 +75,10 @@ def read_schedule_file(
 "polars_dataframe"}, optional
         The dataframe type to convert the result to as a final step.
         Leave this ``None`` (the default) to get back whatever backend
-        `call_report.config.get_config` currently has configured; set it
-        when the next step in your own code needs a specific type -- e.g.
-        this package is configured to use polars, but the code after this
-        call expects a pandas DataFrame. Converted via
-        `call_report.core._backend`'s narwhals-backed
-        `convert_dataframe_type`, which is zero-copy when the requested
-        type already matches.
+        `call_report.config.get_config` currently has configured. Set it
+        when the code that consumes this result needs a specific type, for
+        example a pandas DataFrame while the package is configured to use
+        polars.
 
     Returns
     -------
@@ -188,8 +184,8 @@ def _cast(*, raw: str, var_type: str) -> Any:
     Returns
     -------
     Any
-        ``None`` for an empty value; an `int` or `float` for a numeric
-        value; otherwise the stripped string unchanged.
+        ``None`` for an empty value, an `int` or `float` for a numeric
+        value, and otherwise the stripped string unchanged.
     """
     value = raw.strip()
     if value == "":
@@ -208,11 +204,11 @@ def _read_single(
     """Parse a ``"single"``-scenario file into one row dict per institution.
 
     A row with fewer fields than the layout describes is padded with nulls
-    for the missing trailing columns (FCA regenerates layout files against
+    for the missing trailing columns. FCA regenerates layout files against
     the *current* schema, so an older quarter's data can be missing columns
-    added in a later revision); a row with more fields than expected is a
-    hard error, except for dangling trailing-comma artifacts (see below),
-    which are trimmed rather than rejected.
+    added in a later revision. A row with more fields than expected is a
+    hard error, except for dangling trailing-comma artifacts, which are
+    trimmed rather than rejected.
 
     Parameters
     ----------
@@ -240,10 +236,10 @@ def _read_single(
     rows: list[dict[str, Any]] = []
     for line in lines:
         fields = _parse_csv_line(line=line)
-        # Trailing dangling empty fields are a trailing-comma artifact, not
-        # genuinely extra columns -- confirmed on several legacy (2004-2008)
-        # single-scenario schedules (e.g. RC1, RCH, RCI, RI, RIB), some with
-        # more than one trailing comma.
+        # Trailing dangling empty fields are a trailing-comma artifact,
+        # not genuinely extra columns. They appear on several legacy
+        # (2004-2008) single-scenario schedules such as RC1, RCH, RCI, RI,
+        # and RIB, some with more than one trailing comma.
         while len(fields) > expected and fields[-1] == "":
             fields = fields[:-1]
         if len(fields) < expected:
@@ -267,10 +263,10 @@ def _read_single_multiple(
 ) -> list[dict[str, Any]]:
     """Parse a ``"single_multiple"``-scenario file into one row per (row, code).
 
-    Each occurrence group's own first value (the code column) is used to
-    key that group, rather than assuming a fixed number of groups per row
-    -- real releases contain rows with fewer groups than others (e.g. an
-    association that doesn't report every bank-only code).
+    Each occurrence group's own first value (the code column) keys that
+    group, rather than assuming a fixed number of groups per row. Real
+    releases contain rows with fewer groups than others, such as an
+    association that does not report every bank-only code.
 
     Parameters
     ----------
@@ -330,11 +326,11 @@ def _reconstruct_records(*, lines: list[str]) -> list[str]:
     """Reassemble physical lines into logical, comma-delimited records.
 
     FCA's ``single_multiple_single`` data files wrap one logical CSV row
-    across an irregular number of physical lines: every line except a
-    record's last ends with a trailing comma (a continuation marker), so
-    concatenating lines up to and including the first one that does *not*
-    end with a comma reconstructs the original flat row -- without needing
-    to know in advance how many lines a given record spans.
+    across an irregular number of physical lines. Every line except a
+    record's last ends with a trailing comma, which acts as a continuation
+    marker. Concatenating lines up to and including the first one that does
+    *not* end with a comma reconstructs the original flat row, without
+    needing to know in advance how many lines a record spans.
 
     Parameters
     ----------
@@ -379,8 +375,9 @@ def _read_single_multiple_single(
     Returns
     -------
     list[dict[str, Any]]
-        One row dict per (logical record, reported code); the trailing
-        columns' values are repeated across every code row within a record.
+        One row dict per (logical record, reported code). The trailing
+        columns' values are repeated across every code row within a
+        record.
 
     Raises
     ------

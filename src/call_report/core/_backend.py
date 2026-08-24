@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     NativeDataFrame: TypeAlias = pd.DataFrame | pa.Table | pl.DataFrame | pl.LazyFrame
     """The closed set of native dataframe types this package converts between.
 
-    Type-checking only -- never imported at runtime, so referencing it here
-    does not make pandas/polars/pyarrow hard dependencies.
+    Type-checking only. It is never imported at runtime, so referencing it
+    here does not make pandas, polars, or pyarrow hard dependencies.
     """
 
 DataFrameT = TypeVar("DataFrameT", bound="NativeDataFrame")
@@ -34,8 +34,8 @@ FrameOrLazy: TypeAlias = "nw.DataFrame[Any] | nw.LazyFrame[Any]"
 
 Used throughout this module and `call_report.fca._reshape` for
 intermediate reshaping steps that stay lazy when their input already is,
-so a `polars.LazyFrame` source isn't collected until an operation that
-genuinely requires it (e.g. `pivot`) forces the issue.
+so a `polars.LazyFrame` source is not collected until an operation that
+genuinely requires it, such as `pivot`.
 """
 
 SchemaPolicy = Literal["union", "intersection", "strict"]
@@ -52,9 +52,9 @@ def build_frame(*, data: dict[str, list[Any]]) -> nw.DataFrame[Any]:
     """Build an eager narwhals DataFrame from columnar data.
 
     Uses the dataframe library named by the current
-    :func:`~call_report.config.get_config` (never lazy, regardless of the
-    ``"lazy"`` setting) -- laziness is applied once, at the public return
-    boundary, by :func:`finalize`.
+    :func:`~call_report.config.get_config`. The result is never lazy,
+    regardless of the ``"lazy"`` setting, because laziness is applied
+    once, at the public return boundary, by :func:`finalize`.
 
     Parameters
     ----------
@@ -76,11 +76,9 @@ def finalize(*, frame: FrameOrLazy) -> NativeDataFrame:
     This is the single point where every public, frame-returning function
     in this package converts its internal narwhals frame into the native
     object callers actually receive. `frame` is usually eager, but may
-    already be lazy if it was built from another already-lazy source
-    (e.g. `call_report.core._schema.FileMetadata.to_dataframe` combining
-    a fresh frame with one that came from a call that was itself already
-    finalized) -- `nw.LazyFrame.lazy()` is a no-op on an already-lazy
-    frame, so this handles both without needing to know which it got.
+    already be lazy if it was built from another already-lazy source.
+    `nw.LazyFrame.lazy()` is a no-op on an already-lazy frame, so this
+    handles both cases without needing to know which it got.
 
     Parameters
     ----------
@@ -90,8 +88,9 @@ def finalize(*, frame: FrameOrLazy) -> NativeDataFrame:
     Returns
     -------
     NativeDataFrame
-        A native frame of the configured backend -- eager, or lazy if
-        ``lazy=True`` is configured (e.g. a ``polars.LazyFrame``).
+        A native frame of the configured backend. It is eager unless
+        ``lazy=True`` is configured, in which case it is lazy (e.g. a
+        ``polars.LazyFrame``).
     """
     config = get_config()
     result: FrameOrLazy = frame.lazy() if config["lazy"] else frame
@@ -118,12 +117,9 @@ def concat(*, frames: Sequence[FrameOrLazy], how: SchemaPolicy) -> FrameOrLazy:
 
     Used to combine one dataframe per requested period into a single
     result, reconciling any schema differences between periods (e.g. a
-    column added in a later quarter) according to `how`. `frames` must
-    be either all eager or all lazy -- narwhals (like polars) cannot
-    concatenate a mix of the two. Column names are read via
-    `narwhals.DataFrame.collect_schema`/`narwhals.LazyFrame.collect_schema`
-    rather than `.columns`, since the latter emits a `PerformanceWarning`
-    when called on a `LazyFrame`.
+    column added in a later quarter) according to `how`. `frames` must be
+    either all eager or all lazy, since narwhals, like polars, cannot
+    concatenate a mix of the two.
 
     Parameters
     ----------
@@ -138,18 +134,21 @@ def concat(*, frames: Sequence[FrameOrLazy], how: SchemaPolicy) -> FrameOrLazy:
     Returns
     -------
     narwhals.DataFrame or narwhals.LazyFrame
-        The stacked frame -- lazy if `frames` were lazy, eager otherwise.
+        The stacked frame, lazy if `frames` were lazy and eager otherwise.
 
     Raises
     ------
     LayoutParseError
         If `how` is ``"strict"`` and the frames' columns are not identical.
     """
+    # Column names are read via `collect_schema()` rather than `.columns`,
+    # since the latter emits a `PerformanceWarning` on a `LazyFrame`.
+    #
     # nw.concat's own signature binds a single FrameT, so it can't statically
     # express "homogeneously eager or homogeneously lazy, whichever `frames`
-    # happens to be" -- every caller in this codebase only ever passes
-    # frames sharing one call's laziness state (see FrameOrLazy), so this
-    # is a real runtime invariant the type system just can't see.
+    # happens to be". Every caller in this codebase only ever passes frames
+    # sharing one call's laziness state (see FrameOrLazy), so this is a real
+    # runtime invariant the type system just can't see.
     if how == "union":
         return nw.concat(list(frames), how="diagonal")  # type: ignore[type-var]
 
@@ -242,7 +241,7 @@ def convert_dataframe_type(
     that supports a `dataframe_type` override applies it, as the last step
     before returning. Conversion goes through narwhals'
     ``to_pandas``/``to_polars``/``to_arrow`` methods, which are already as
-    close to zero-copy as each backend allows; a `data` that is already the
+    close to zero-copy as each backend allows. A `data` that is already the
     requested type is returned unchanged.
 
     Parameters
@@ -326,11 +325,11 @@ def finalize_as(
     Parameters
     ----------
     frame : narwhals.DataFrame or narwhals.LazyFrame
-        The narwhals frame to finalize -- usually eager, but may already
-        be lazy (see :func:`finalize`).
+        The narwhals frame to finalize. Usually eager, but may already be
+        lazy (see :func:`finalize`).
     dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
 "polars_dataframe"} or None
-        The dataframe type to convert the finalized result to; ``None``
+        The dataframe type to convert the finalized result to. ``None``
         leaves it as whatever `finalize` produced.
 
     Returns
@@ -346,24 +345,23 @@ def finalize_as(
 def pivot(
     *, frame: FrameOrLazy, on: str, index: list[str], values: str
 ) -> nw.DataFrame[Any]:
-    """Pivot a long-shaped frame wide, working around a real pyarrow gap.
+    """Pivot a long-shaped frame wide, including on the pyarrow backend.
 
-    Pivoting fundamentally requires eager data -- the output schema
-    depends on `on`'s distinct values, which can't be known without
-    materializing -- so this is the one place a lazy `frame` (e.g. a
+    Pivoting requires eager data, because the output schema depends on
+    `on`'s distinct values and those cannot be known without
+    materializing. This is therefore the one place a lazy `frame` (e.g. a
     `polars.LazyFrame`-backed pipeline built by
-    `call_report.fca._reshape`) is finally collected; every operation
+    `call_report.fca._reshape`) is finally collected. Every operation
     before this point (melt, concat, column-key computation) stays lazy
     for as long as `frame` lets it.
 
-    narwhals' native ``pivot`` is not implemented for the pyarrow backend
-    (confirmed: it raises ``NotImplementedError`` outright); for that one
-    backend this falls back to `_manual_pivot`, a filter-and-join reshape
-    verified to produce identical results to the native path on every
-    other backend. `index` + `on` must be a unique grain -- a genuine
-    duplicate raises `ReshapeError` on every backend rather than silently
-    aggregating, whether that's narwhals' own native error (translated
-    here) or `_manual_pivot`'s own explicit check.
+    narwhals' native ``pivot`` raises ``NotImplementedError`` on the
+    pyarrow backend, so for that backend this falls back to
+    `_manual_pivot`, a filter-and-join reshape producing the same result.
+    `index` plus `on` must be a unique grain. A duplicate raises
+    `ReshapeError` on every backend rather than silently aggregating,
+    either from narwhals' own error (translated here) or from
+    `_manual_pivot`'s explicit check.
 
     Parameters
     ----------
@@ -405,10 +403,9 @@ def assert_unique_grain(
 ) -> nw.DataFrame[Any]:
     """Collect `frame` (if lazy) and raise unless `columns` is a unique grain.
 
-    Checking uniqueness means looking at the actual data, which isn't a
-    lazy-safe operation -- this is the one place a caller that otherwise
-    stays lazy end to end is forced to collect, in exchange for a real
-    guarantee about the data rather than a silent duplicate.
+    Checking uniqueness means looking at the actual data, which is not a
+    lazy-safe operation. This is the one place a caller that otherwise
+    stays lazy end to end is forced to collect.
 
     Parameters
     ----------
@@ -440,11 +437,10 @@ def _manual_pivot(
 ) -> nw.DataFrame[Any]:
     """Pivot `frame` wide using filter-and-join, for backends without native pivot.
 
-    One filter+join per distinct `on` value, so this is O(number of
-    distinct columns) rather than native ``pivot``'s single pass -- the
-    honest cost of a backend (pyarrow) lacking the primitive, not a
-    hidden inefficiency. Verified to produce output identical to
-    narwhals' native `nw.DataFrame.pivot` for the same input.
+    Runs one filter and join per distinct `on` value, so it costs
+    O(number of distinct columns) rather than native ``pivot``'s single
+    pass. It produces the same output as `nw.DataFrame.pivot` for the
+    same input, and exists only for backends without a native pivot.
 
     Parameters
     ----------
@@ -498,12 +494,11 @@ def _join_on_index(
 ) -> nw.DataFrame[Any]:
     """Full-join two frames on `index`, coalescing the duplicated join-key columns.
 
-    narwhals' ``"full"`` join does not coalesce the join keys -- it
-    produces a ``{col}_right`` counterpart for each `index` column
-    instead of merging them (confirmed on every backend this package
-    supports). This fills each `index` column from its ``_right``
-    counterpart wherever the left side is null, then drops the
-    ``_right`` columns.
+    narwhals' ``"full"`` join does not coalesce the join keys. On every
+    backend this package supports it produces a ``{col}_right``
+    counterpart for each `index` column instead of merging them. This
+    fills each `index` column from its ``_right`` counterpart wherever
+    the left side is null, then drops the ``_right`` columns.
 
     Parameters
     ----------

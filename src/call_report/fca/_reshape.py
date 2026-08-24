@@ -1,22 +1,20 @@
 """Private wide- and long-format reshaping logic behind ``FCACallReport``.
 
-Not a public module -- sized exactly for what `to_wide_format`,
-`to_long_format`, and the standalone `convert_wide_format_to_long_format`/
-`convert_long_format_to_wide_format` functions need: melt each
-already-loaded schedule's frame into a long-shaped intermediate (tagging
-a code-bearing schedule's code column distinctly from a plain variable),
-stack every schedule together, then either compute each row's wide
-column name and pivot, or tag single-vs-coded rows directly as the
+This module is private and covers exactly what `to_wide_format`,
+`to_long_format`, and the standalone `convert_wide_format_to_long_format`
+and `convert_long_format_to_wide_format` functions need. It melts each
+already-loaded schedule's frame into a long-shaped intermediate, tagging a
+code-bearing schedule's code column distinctly from a plain variable, and
+stacks every schedule together. From there it either computes each row's
+wide column name and pivots, or tags single and coded rows directly as the
 long-format result.
 
-Every function here accepts and returns `FrameOrLazy`: if a schedule's
-frame is already a `polars.LazyFrame` (``lazy=True`` configured), the
-melt/concat/column-key steps all stay lazy too. `to_wide_format` collects
-once, at `pivot` (a pivoted result's schema depends on data values, so
-there's no lazy implementation at all); `to_long_format` collects once,
-at its own grain-uniqueness check (verifying data is inherently not a
-lazy-safe operation either) -- both are one unavoidable collect, not
-several avoidable ones.
+Every function here accepts and returns `FrameOrLazy`. If a schedule's
+frame is already a `polars.LazyFrame` (``lazy=True`` configured), the melt,
+concat, and column-key steps all stay lazy too. Each entry point collects
+exactly once: `to_wide_format` at `pivot`, since a pivoted result's schema
+depends on data values, and `to_long_format` at its own grain-uniqueness
+check, since checking the data is likewise not a lazy-safe operation.
 """
 
 from __future__ import annotations
@@ -65,22 +63,20 @@ def _cast_unknown_dtype(
 ) -> FrameOrLazy:
     """Cast `column` to `target` if narwhals couldn't infer any concrete dtype.
 
-    A schedule with zero rows for a period (confirmed real: e.g. RCO at
-    2000Q1), or a field that's entirely null even though rows exist
-    (confirmed real: e.g. RCF1's own `value` at 2000Q1), leaves narwhals
-    unable to infer any concrete dtype at all for a column -- every
-    column, not just numeric ones (confirmed real: RCO's own `UNINUM`,
-    an identifier, is `narwhals.Unknown` too when RCO has zero rows).
-    Left alone, an `Unknown` column reaches the same cross-piece concat
-    as a real typed one and can raise ``polars.exceptions.SchemaError:
-    type Int64 is incompatible with expected type Null`` depending on the
-    installed polars version (confirmed to vary -- silently tolerated by
-    some, not others) and concat order (itself filesystem-iteration-order
-    dependent, so this surfaced in CI on a platform this project's own
-    dev environment doesn't cover, and even reproducing it locally
-    depended on which of two frames was listed first). A column that
-    already has a concrete dtype is left as-is, whatever it is -- this
-    only ever resolves the specific ambiguity of no data to infer from.
+    Two real cases leave narwhals unable to infer any concrete dtype for
+    a column: a schedule with zero rows for a period, such as RCO at
+    2000Q1, and a field that is entirely null even though rows exist, such
+    as RCF1's `value` at 2000Q1. This affects every column, not just
+    numeric ones, so RCO's `UNINUM` identifier is also `narwhals.Unknown`
+    when RCO has zero rows.
+
+    Left alone, an `Unknown` column reaches the same cross-piece concat as
+    a real typed one and can raise ``polars.exceptions.SchemaError: type
+    Int64 is incompatible with expected type Null``. Whether it does
+    depends on the installed polars version and on concat order, so the
+    failure is intermittent across platforms. A column that already has a
+    concrete dtype is left as-is. This helper only resolves the specific
+    ambiguity of having no data to infer from.
 
     Parameters
     ----------
@@ -102,27 +98,26 @@ def _cast_unknown_dtype(
 
 
 def _cast_numeric_to_float64(frame: FrameOrLazy, *, column: str) -> FrameOrLazy:
-    """Cast `column` to a consistent Float64 if it's numeric -- or unknown.
+    """Cast `column` to a consistent Float64 if it is numeric or unknown.
 
     Different fields carry different declared decimal positions, so two
-    independently melted pieces -- two different schedules, or (for a
-    ``single_multiple_single`` schedule) the coded-vs-trailing split
-    within one schedule -- can each infer a different numeric dtype
-    (Int64 vs Float64) for the same column. Concatenating pieces with
+    independently melted pieces can each infer a different numeric dtype
+    (Int64 or Float64) for the same column. Those pieces are either two
+    different schedules, or the coded and trailing split within one
+    ``single_multiple_single`` schedule. Concatenating pieces with
     mismatched numeric dtypes raises ``polars.exceptions.SchemaError``
-    depending on which piece happens to concatenate first; normalizing
-    every numeric occurrence of `column` to Float64 up front removes that
-    order-dependence. Used for both `"value"` (every schedule's measures)
-    and `"code_value"` (every code-bearing schedule's own code, always
-    observed as Int64 in practice, but normalized defensively for the
-    same reason). Also resolves `column` being `Unknown` (see
-    `_cast_unknown_dtype`) -- `"value"`/`"code_value"` are domain-verified
-    to always be numeric when populated (no non-identifier `FCASchedule`
-    field is ever Alphanum), so `Unknown` is safe to treat as Float64
-    here specifically. A genuinely non-numeric (``Alphanum.``) column
-    with real data is left as-is. Reads the dtype via `collect_schema`
-    rather than the `.schema` property, which emits a
-    `PerformanceWarning` when `frame` is a `LazyFrame`.
+    depending on which piece concatenates first, so normalizing every
+    numeric occurrence of `column` to Float64 up front removes that
+    order-dependence.
+
+    Used for both `"value"`, holding every schedule's measures, and
+    `"code_value"`, holding every code-bearing schedule's own code. A code
+    is always Int64 in practice, but is normalized for the same reason.
+    This also resolves `column` being `Unknown` (see `_cast_unknown_dtype`).
+    `"value"` and `"code_value"` are always numeric when populated, since
+    no non-identifier `FCASchedule` field is ever ``Alphanum.``, so
+    `Unknown` is safe to treat as Float64 here. A genuinely non-numeric
+    column with real data is left as-is.
 
     Parameters
     ----------
@@ -137,6 +132,8 @@ def _cast_numeric_to_float64(frame: FrameOrLazy, *, column: str) -> FrameOrLazy:
         `frame`, with `column` cast to Float64 if it was numeric or of
         unknown (empty/all-null) type.
     """
+    # `collect_schema()` rather than the `.schema` property, which emits a
+    # `PerformanceWarning` when `frame` is a `LazyFrame`.
     if frame.collect_schema()[column].is_numeric():
         return frame.with_columns(nw.col(column).cast(nw.Float64))
     return _cast_unknown_dtype(frame, column=column, target=nw.Float64())
@@ -159,19 +156,20 @@ def melt_schedule_frame(
 
     A ``single_multiple_single``-scenario schedule's `trailing_columns`
     (e.g. RCR7's ``AvgDailyRWARegCap``) are single-occurrence fields that
-    the loader nonetheless repeats identically on every one of a
-    UNINUM/period's code-rows -- melting them the same way as a coded
-    field would produce one redundant, identical-valued wide column per
-    code instead of one clean column. They're melted separately here,
-    from a frame first deduplicated down to one row per `RESHAPE_INDEX`
-    grain, and tagged with no code column at all (relying on the same
-    union-concat null-fill used for a schedule with no code column at
-    all) so they key as plain ``{schedule}__{variable}`` columns.
+    the loader repeats identically on every code-row of a UNINUM and
+    period. Melting them the same way as a coded field would produce one
+    redundant, identical-valued wide column per code instead of one clean
+    column. They are melted separately here, from a frame first
+    deduplicated down to one row per `RESHAPE_INDEX` grain, and tagged with
+    no code column, so they key as plain ``{schedule}__{variable}``
+    columns. That relies on the same union-concat null-fill used for a
+    schedule that has no code column.
 
-    `UNINUM` is cast to Int64 up front if it's `Unknown` (a schedule with
-    zero rows for this period -- see `_cast_unknown_dtype`), since it
-    isn't touched by `_cast_numeric_to_float64`'s later `"value"`/
-    `"code_value"` calls but is just as real a cross-piece concat risk.
+    `UNINUM` is cast to Int64 up front if it is `Unknown`, which happens
+    when a schedule has zero rows for this period (see
+    `_cast_unknown_dtype`). It is not touched by
+    `_cast_numeric_to_float64`'s later `"value"` and `"code_value"` calls,
+    but carries the same cross-piece concat risk.
 
     Parameters
     ----------
@@ -242,16 +240,17 @@ def melt_schedule_frame(
 def _with_column_key(frame: FrameOrLazy) -> FrameOrLazy:
     """Compute the wide-format column name for every melted row.
 
-    ``{schedule}__{variable_name}`` for a row with no code column;
-    ``{schedule}__{code_column}_{code_value}__{variable_name}`` for one
-    with a code column. Built with `narwhals.concat_str` rather than
-    ``+`` -- pyarrow's `Series.__add__` has no string-concatenation
-    kernel, only numeric addition. `code_value`'s cast to a string goes
-    through `fill_null` first -- casting a `Float64`-with-null column
-    (the normal shape here once code- and non-code schedules are
-    concatenated together) straight to `Int64` raises on the pandas
-    backend. Checks for `code_column` via `collect_schema` rather than
-    `.columns`, which emits a `PerformanceWarning` on a `LazyFrame`.
+    A row with no code column keys as ``{schedule}__{variable_name}``. A
+    row with a code column keys as
+    ``{schedule}__{code_column}_{code_value}__{variable_name}``.
+
+    The key is built with `narwhals.concat_str` rather than ``+``, because
+    pyarrow's `Series.__add__` has no string-concatenation kernel, only
+    numeric addition. `code_value`'s cast to a string goes through
+    `fill_null` first, because casting a `Float64`-with-null column
+    straight to `Int64` raises on the pandas backend, and that is the
+    normal shape here once code and non-code schedules are concatenated
+    together.
 
     Parameters
     ----------
@@ -264,6 +263,8 @@ def _with_column_key(frame: FrameOrLazy) -> FrameOrLazy:
     narwhals.DataFrame or narwhals.LazyFrame
         `frame` with an added `column_key` string column.
     """
+    # `collect_schema()` rather than `.columns`, which emits a
+    # `PerformanceWarning` on a `LazyFrame`.
     if "code_column" not in frame.collect_schema():
         return frame.with_columns(
             nw.concat_str(
@@ -300,11 +301,11 @@ def to_wide_format(
     """Build the wide-format frame from a set of already-loaded schedules.
 
     Melts and tags every schedule via `melt_schedule_frame`, concatenates
-    them (schedules with no code column naturally get null
-    `code_column`/`code_value` once unioned against ones that have it),
-    computes each row's `column_key`, then pivots on it. Everything before
-    `pivot` stays lazy if `frames`' values are -- `pivot` is the one
-    step that must collect, since a pivoted result's schema depends on
+    them, computes each row's `column_key`, then pivots on it. A schedule
+    with no code column gets null `code_column` and `code_value` once
+    unioned against schedules that have them. Everything before `pivot`
+    stays lazy if `frames`' values are lazy. `pivot` is the one step that
+    must collect, since a pivoted result's schema depends on
     `column_key`'s distinct values.
 
     Parameters
@@ -313,11 +314,12 @@ def to_wide_format(
         Each schedule's already-loaded, already-stacked frame, keyed by
         schedule root name.
     code_columns : dict[str, str or None]
-        Each schedule's code column name, keyed the same way as `frames`
-        -- ``None`` for a schedule with no code column.
+        Each schedule's code column name, keyed the same way as `frames`.
+        Use ``None`` for a schedule with no code column.
     trailing_columns : dict[str, tuple[str, ...]]
         Each schedule's trailing single-occurrence columns, keyed the
-        same way as `frames` -- an empty tuple for a schedule with none.
+        same way as `frames`. Use an empty tuple for a schedule with
+        none.
 
     Returns
     -------
@@ -343,19 +345,18 @@ def to_wide_format(
 def _with_is_multiple_flag(frame: FrameOrLazy) -> FrameOrLazy:
     """Add `is_multiple`: True for a coded (multi-occurrence) variable's row.
 
-    `code_column`/`code_value` are already null for a single-occurrence
-    variable (via the same union-concat null-fill `to_wide_format` relies
-    on) -- `is_multiple` is an explicit, filterable flag for that same
-    fact, matching `FCALayout.scenario`'s own "single"/"multiple"
-    vocabulary, rather than requiring callers to check
+    `code_column` and `code_value` are already null for a
+    single-occurrence variable, via the same union-concat null-fill
+    `to_wide_format` relies on. `is_multiple` is an explicit, filterable
+    flag for that same fact, matching `FCALayout.scenario`'s own
+    "single"/"multiple" vocabulary, so callers do not have to check
     `code_column.is_null()` themselves.
 
-    If every requested schedule is non-coded, `code_column`/`code_value`
-    are absent from the schema entirely (not just null) -- they're added
-    here as all-null columns of the long format's declared types, so the
-    long-format schema is always complete regardless of which schedules
-    were requested. Checks for `code_column` via `collect_schema` rather
-    than `.columns`, which emits a `PerformanceWarning` on a `LazyFrame`.
+    If every requested schedule is non-coded, `code_column` and
+    `code_value` are absent from the schema entirely rather than merely
+    null. They are added here as all-null columns of the long format's
+    declared types, so the long-format schema is always complete whichever
+    schedules were requested.
 
     Parameters
     ----------
@@ -368,6 +369,8 @@ def _with_is_multiple_flag(frame: FrameOrLazy) -> FrameOrLazy:
         `frame` with `code_column`/`code_value` guaranteed present, plus
         an added `is_multiple` boolean column.
     """
+    # `collect_schema()` rather than `.columns`, which emits a
+    # `PerformanceWarning` on a `LazyFrame`.
     if "code_column" not in frame.collect_schema():
         return frame.with_columns(
             nw.lit(None, dtype=nw.String).alias("code_column"),
@@ -385,14 +388,14 @@ def to_long_format(
 ) -> nw.DataFrame[Any]:
     """Build the long-format frame from a set of already-loaded schedules.
 
-    Melts and tags every schedule via `melt_schedule_frame` (the exact
-    same per-schedule step `to_wide_format` uses), concatenates them, and
-    adds `is_multiple`. Unlike `to_wide_format`, there's no pivot -- the
-    melt/concat/flag steps all stay lazy if `frames`' values are: the one
-    place this collects is the final `assert_unique_grain` call, which
-    verifies `_LONG_FORMAT_GRAIN` is actually unique in the data (not a
-    lazy-safe question, so this is one unavoidable collect, matching
-    `to_wide_format`'s own single unavoidable collect at `pivot`).
+    Melts and tags every schedule via `melt_schedule_frame`, the same
+    per-schedule step `to_wide_format` uses, concatenates them, and adds
+    `is_multiple`. Unlike `to_wide_format`, there is no pivot, so the melt,
+    concat, and flag steps all stay lazy if `frames`' values are lazy. The
+    one place this collects is the final `assert_unique_grain` call, which
+    verifies `_LONG_FORMAT_GRAIN` is actually unique in the data. That is
+    not a lazy-safe question, so it is a single unavoidable collect,
+    matching `to_wide_format`'s own collect at `pivot`.
 
     Parameters
     ----------
@@ -400,11 +403,12 @@ def to_long_format(
         Each schedule's already-loaded, already-stacked frame, keyed by
         schedule root name.
     code_columns : dict[str, str or None]
-        Each schedule's code column name, keyed the same way as `frames`
-        -- ``None`` for a schedule with no code column.
+        Each schedule's code column name, keyed the same way as `frames`.
+        Use ``None`` for a schedule with no code column.
     trailing_columns : dict[str, tuple[str, ...]]
         Each schedule's trailing single-occurrence columns, keyed the
-        same way as `frames` -- an empty tuple for a schedule with none.
+        same way as `frames`. Use an empty tuple for a schedule with
+        none.
 
     Returns
     -------
@@ -414,7 +418,7 @@ def to_long_format(
     Raises
     ------
     ReshapeError
-        If `_LONG_FORMAT_GRAIN` is not a unique grain -- a genuinely
+        If `_LONG_FORMAT_GRAIN` is not a unique grain, which means a
         duplicated row in the source data.
     """
     melted = [
@@ -436,15 +440,15 @@ def _parse_wide_column_key(
 ) -> tuple[str, str | None, float | None, bool, str]:
     """Parse a wide-format column name into its long-format components.
 
-    Inverts the naming `_with_column_key` builds: ``{schedule}__
-    {variable}`` for a plain field, ``{schedule}__{code_column}_
-    {code_value}__{variable}`` for a coded one. Splitting on ``"__"`` is
-    unambiguous -- verified no real FCA schedule or field name contains a
-    literal ``"__"``. For the coded case, `code_column`/`code_value` are
-    recovered by splitting the middle segment from the right on a single
-    ``"_"``, which correctly isolates `code_value` (always purely numeric
-    digits) even when `code_column` itself contains an underscore (e.g.
-    ``"INV_CODE"``).
+    Inverts the naming `_with_column_key` builds:
+    ``{schedule}__{variable}`` for a plain field and
+    ``{schedule}__{code_column}_{code_value}__{variable}`` for a coded one.
+    Splitting on ``"__"`` is unambiguous, because no FCA schedule or field
+    name contains a literal ``"__"``. For the coded case, `code_column` and
+    `code_value` are recovered by splitting the middle segment from the
+    right on a single ``"_"``. That isolates `code_value`, which is always
+    purely numeric digits, even when `code_column` itself contains an
+    underscore, as in ``"INV_CODE"``.
 
     Parameters
     ----------
@@ -508,34 +512,32 @@ def convert_wide_format_to_long_format(
 ) -> NativeDataFrame:
     """Convert an already-built wide-format frame to long format.
 
-    Standalone, and self-contained: `wide`'s own column names fully
+    This function is self-contained. `wide`'s own column names fully
     describe the long-format row each one unpivots to (see
-    `_parse_wide_column_key`), so this needs no `FCACallReport` instance,
+    `_parse_wide_column_key`), so it needs no `FCACallReport` instance,
     layout lookups, or other external metadata.
 
-    Column names are schema, not data -- a wide frame has at most a few
-    thousand columns, known statically via `collect_schema`, so they're
-    parsed in plain Python rather than with narwhals string expressions.
-    That's a deliberate choice, not just a style preference:
-    `narwhals.Expr.str.split` raises ``TypeError`` on plain (numpy-backed)
-    pandas, this package's default backend, since it requires a
-    pyarrow-backed pandas series -- confirmed directly, and `Expr.str` has
-    no regex-capture-group equivalent (`.extract`) to work around it with
-    either. The actual reshape (one `unpivot` plus a `join` against a
-    small lookup frame built from the parsed column names) uses only
-    lazy-safe narwhals operations, so this stays a genuinely deferred,
-    uncollected query when `wide` is a `polars.LazyFrame` -- no
-    duplicate-grain check is needed here either, since each wide column
-    maps to exactly one `(schedule, code_column, code_value,
-    variable_name)` tuple by construction, so the long-format grain is
-    unique automatically.
+    Column names are schema rather than data. A wide frame has at most a
+    few thousand columns, known statically via `collect_schema`, so they
+    are parsed in plain Python rather than with narwhals string
+    expressions. That is necessary, not merely stylistic:
+    `narwhals.Expr.str.split` requires a pyarrow-backed pandas series and
+    raises ``TypeError`` on plain numpy-backed pandas, this package's
+    default backend, and `Expr.str` has no regex-capture-group equivalent
+    to work around it. The reshape itself, one `unpivot` plus a `join`
+    against a small lookup frame built from the parsed column names, uses
+    only lazy-safe narwhals operations, so it stays a deferred,
+    uncollected query when `wide` is a `polars.LazyFrame`. No
+    duplicate-grain check is needed either, since each wide column maps to
+    exactly one `(schedule, code_column, code_value, variable_name)` tuple
+    by construction, making the long-format grain unique automatically.
 
-    Every non-null-`value` row matches what
+    Every row with a non-null `value` matches what
     `FCACallReport.to_long_format` would build directly from the same
-    source data. Row *counts* can still differ, though: pivoting fills in
-    every `(UNINUM, period)` x wide-column combination, including ones no
-    institution actually reported (e.g. an investment code one
-    institution used but another never did), as an explicit null row --
+    source data, but row *counts* can still differ. Pivoting fills in every
+    `(UNINUM, period)` by wide-column combination as an explicit null row,
+    including combinations no institution actually reported, such as an
+    investment code one institution used and another never did.
     `to_long_format` only ever has a row for a combination that genuinely
     appeared in the source. Filter to non-null `value` before comparing
     row-for-row against a directly-built long-format frame.
@@ -604,8 +606,9 @@ def convert_wide_format_to_long_format(
     )
     # `long_frame`/`lookup` are matched to the same laziness just above, but
     # narwhals' `.join` signature binds a single concrete frame type, so it
-    # can't statically see that -- the same real-but-unexpressible runtime
-    # invariant as `concat`'s type-var mismatch (see core._backend.concat).
+    # can't statically see that. This is the same real-but-unexpressible
+    # runtime invariant as `concat`'s type-var mismatch (see
+    # core._backend.concat).
     joined = long_frame.join(lookup, on="column_key", how="left")  # type: ignore[arg-type]
     long_frame = joined.drop("column_key")
     return finalize_as(frame=long_frame, dataframe_type=dataframe_type)
@@ -641,13 +644,12 @@ def convert_long_format_to_wide_format(
 ) -> NativeDataFrame:
     """Convert an already-built long-format frame to wide format.
 
-    Standalone, and self-contained: reuses `_with_column_key` directly
-    (it already branches on ``code_column.is_null()``, exactly what
-    `is_multiple` means, so it works unmodified on a long-format frame)
-    followed by `call_report.core._backend.pivot`. Pivoting mechanically
-    requires the `(UNINUM, period, column_key)` grain to be unique, so
-    `pivot` enforces that -- and raises `ReshapeError` if it isn't --
-    without a separate check needed here.
+    This function is self-contained. It builds each row's wide column name
+    with `_with_column_key`, then pivots with
+    `call_report.core._backend.pivot`. Pivoting requires the
+    `(UNINUM, period, column_key)` grain to be unique, and `pivot` enforces
+    that and raises `ReshapeError` if it is not, so no separate check is
+    needed here.
 
     Parameters
     ----------
