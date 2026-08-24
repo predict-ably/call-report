@@ -7,6 +7,13 @@ on:
     branches: [main]
     paths:
       - "src/call_report/**"
+      # A change to the tests themselves must run the tests. Without this,
+      # a test-only pull request is type-checked (mypy.yml already lists
+      # tests/**) but the suite never actually runs on it.
+      - "tests/**"
+      # tests/fca/test_release_archive.py regression-tests every release zip
+      # checked in here, so adding a quarter's archive needs the suite too.
+      - "data/**"
       - ".github/workflows/**"
       - "pyproject.toml"
 
