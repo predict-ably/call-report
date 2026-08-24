@@ -1,80 +1,65 @@
-"""Shared, hand-built fixture-file writers for the call_report test suite.
+"""Suite-wide fixtures for the call_report test suite.
 
-Every helper here writes small windows-1252-encoded files that mimic the
-*structural* quirks of real FCA Call Report releases. The suite stays hermetic with
-no file stored in tests and no tests of file reading/parsing functionality
-requiring the data to be read from the network.
+Only fixtures and hooks live here. Helpers that a test module imports by
+name live in :mod:`tests.helpers`, because pytest loads every
+``conftest.py`` itself and importing one as a library gives it two
+identities in ``sys.modules``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from pathlib import Path
+from collections.abc import Iterator
 
-ENCODING = "windows-1252"
+import pytest
 
-
-def _write(path: Path, text: str) -> Path:
-    """Encode *text* as windows-1252 bytes and write it to *path*."""
-    path.write_bytes(text.encode(ENCODING))
-    return path
+from call_report.config import config_context, get_config, set_config
+from tests.helpers import ALL_BACKENDS
 
 
-def layout_text(
-    *, title: str, variable_lines: Iterable[str], note: str | None = None
-) -> str:
-    """Assemble the raw text body of a ``D_<ROOT>.TXT`` layout file."""
-    lines = [
-        title,
-        "                            DATA DELIMITED BY COMMAS",
-        "",
-        "         VARIABLE    FIELD  DEC.",
-        "             NAME    TYPE   POS.  VARIABLE DESCRIPTION",
-        "  ---------------  -------  ----  --------------------------------------",
-        *variable_lines,
-    ]
-    if note is not None:
-        lines.append(f"  **  NOTE:  {note}")
-    return "\n".join(lines) + "\n"
+@pytest.fixture(autouse=True)
+def reset_config() -> Iterator[None]:
+    """Restore the package configuration after every test.
 
-
-def write_layout(
-    directory: Path,
-    *,
-    root: str,
-    variable_lines: Iterable[str],
-    note: str | None = None,
-    year_suffix: str | None = None,
-) -> Path:
-    """Write a ``D_<ROOT>[_<YEAR>].TXT`` layout file into *directory*."""
-    suffix = f"_{year_suffix}" if year_suffix else ""
-    text = layout_text(
-        title=f"FILE LAYOUT FOR SCHEDULE {root}",
-        variable_lines=variable_lines,
-        note=note,
-    )
-    return _write(directory / f"D_{root}{suffix}.TXT", text)
-
-
-def write_data(
-    directory: Path,
-    *,
-    root: str,
-    year: int,
-    month: int,
-    rows: Iterable[str],
-    legacy: bool = False,
-    generated: str = "20260115",
-) -> Path:
-    """Write a schedule's raw comma-delimited data file into *directory*.
-
-    When *legacy* is true, uses the pre-2015 ``<ROOT><MM><YY>.TXT`` naming
-    (no underscore); otherwise uses the modern
-    ``<ROOT>_Q<YYYYMM>_G<YYYYMMDD>.TXT`` naming.
+    ``call_report.config`` is process-global (thread-local) mutable state.
+    Without this, a test that calls `set_config` and then fails before its
+    own cleanup leaves the backend switched for every test that runs after
+    it, turning one real failure into a cascade of unrelated ones. Making
+    the restore automatic means no test has to remember to do it, and no
+    test can be broken by one that ran earlier.
     """
-    if legacy:
-        name = f"{root}{month:02d}{year % 100:02d}.TXT"
-    else:
-        name = f"{root}_Q{year}{month:02d}_G{generated}.TXT"
-    text = "\n".join(rows) + "\n"
-    return _write(directory / name, text)
+    before = get_config()
+    try:
+        yield
+    finally:
+        set_config(**before)
+
+
+@pytest.fixture(params=ALL_BACKENDS)
+def backend(request: pytest.FixtureRequest) -> Iterator[str]:
+    """Run the requesting test once per dataframe backend, with it configured.
+
+    Requesting this fixture both parametrizes the test across pandas,
+    polars, and pyarrow *and* activates each backend for the whole test
+    body, so the code under test sees the same backend the fixture names.
+    """
+    with config_context(dataframe_backend=request.param):
+        yield request.param
+
+
+@pytest.fixture
+def polars_backend() -> Iterator[str]:
+    """Configure the polars backend for the whole test body.
+
+    Used by tests that need a backend-specific behavior polars alone
+    exhibits, such as an empty column inferring the ``Unknown`` dtype
+    rather than a concrete one.
+    """
+    with config_context(dataframe_backend="polars"):
+        yield "polars"
+
+
+@pytest.fixture
+def lazy_polars_backend() -> Iterator[str]:
+    """Configure the polars backend in lazy mode for the whole test body."""
+    with config_context(dataframe_backend="polars", lazy=True):
+        yield "polars"

@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from call_report.fca._discovery import scan_release
-from tests.conftest import write_data, write_layout
-from tests.fca.conftest import RC_LINES_7COL
+from tests.fca.layouts import RC_LINES_7COL
+from tests.helpers import write_data, write_layout
 
 
 def test_scan_release_pairs_layout_with_data(tmp_path: Path) -> None:

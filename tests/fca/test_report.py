@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import math
 from datetime import date
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import narwhals as nw
+import pandas as pd
+import polars as pl
+import pyarrow as pa
 import pytest
 
 from call_report.config import config_context
@@ -30,22 +32,8 @@ from call_report.fca import (
 )
 from call_report.fca.layout import FCALayout
 from call_report.fca.transport import LocalDirectoryTransport
-from tests.conftest import write_data, write_layout
-from tests.fca.conftest import RC_LINES_7COL
-
-
-def _rows(native_frame: Any) -> list[dict[str, Any]]:
-    return nw.from_native(native_frame).rows(named=True)
-
-
-def _is_missing(value: object) -> bool:
-    """Return True for a missing value, however the active backend represents it.
-
-    pandas represents a missing numeric value as NaN (a float); polars and
-    pyarrow use an actual None -- both count as "missing" here.
-    """
-    return value is None or (isinstance(value, float) and math.isnan(value))
-
+from tests.fca.layouts import RC_LINES_7COL
+from tests.helpers import is_missing, rows_of, write_data, write_layout
 
 # ---------------------------------------------------------------------------
 # __init__ / sklearn-style conventions
@@ -258,7 +246,7 @@ def test_load_auto_fetches_if_needed(data_dir: Path, release_2026q1: Path) -> No
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     result = report.load(schedule="RC")
-    rows = _rows(result)
+    rows = rows_of(result)
     assert len(rows) == 1
     assert rows[0]["UNINUM"] == 610000
 
@@ -273,7 +261,7 @@ def test_load_result_carries_period_and_uninum_columns(
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     result = report.load(schedule="RC")
-    rows = _rows(result)
+    rows = rows_of(result)
     assert {"period", "UNINUM"} <= set(rows[0])
     periods_seen = {r["period"] for r in rows}
     assert periods_seen == {date(2025, 9, 30), date(2025, 12, 31)}
@@ -289,12 +277,12 @@ def test_load_schema_policy_union_outer_joins_columns(
         schema_policy="union",
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
-    rows = _rows(report.load(schedule="RC"))
+    rows = rows_of(report.load(schedule="RC"))
     assert "TOTLIAB" in rows[0]
     q3_rows = [r for r in rows if r["period"] == date(2025, 9, 30)]
     q4_rows = [r for r in rows if r["period"] == date(2025, 12, 31)]
-    assert all(_is_missing(r["TOTLIAB"]) for r in q3_rows)
-    assert all(not _is_missing(r["TOTLIAB"]) for r in q4_rows)
+    assert all(is_missing(r["TOTLIAB"]) for r in q3_rows)
+    assert all(not is_missing(r["TOTLIAB"]) for r in q4_rows)
 
 
 def test_load_schema_policy_intersection_drops_uncommon_columns(
@@ -307,7 +295,7 @@ def test_load_schema_policy_intersection_drops_uncommon_columns(
         schema_policy="intersection",
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
-    rows = _rows(report.load(schedule="RC"))
+    rows = rows_of(report.load(schedule="RC"))
     assert "TOTLIAB" not in rows[0]
     assert "TOTASSETS" in rows[0]
 
@@ -335,7 +323,7 @@ def test_load_schedule_missing_in_some_periods_returns_partial_result(
         end="2025-12-31",
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
-    rows = _rows(report.load(schedule="RCR7"))
+    rows = rows_of(report.load(schedule="RCR7"))
     q3 = ReportingPeriod.from_period_end(value="2025-09-30")
     q4 = ReportingPeriod.from_period_end(value="2025-12-31")
     assert all(r["period"] == date(2025, 12, 31) for r in rows)
@@ -399,7 +387,7 @@ def test_load_records_layout_parse_error_and_continues(tmp_path: Path) -> None:
         end="2025-12-31",
         transport=LocalDirectoryTransport(data_dir=tmp_path),
     )
-    rows = _rows(report.load(schedule="RC"))
+    rows = rows_of(report.load(schedule="RC"))
     assert len(rows) == 1
     assert rows[0]["period"] == date(2025, 9, 30)
 
@@ -452,13 +440,13 @@ def test_load_accepts_case_insensitive_schedule_string(
         end="2026-03-31",
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
-    by_string = _rows(report.load(schedule="rcb"))
+    by_string = rows_of(report.load(schedule="rcb"))
     report2 = FCACallReport(
         start="2026-03-31",
         end="2026-03-31",
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
-    by_enum = _rows(report2.load(schedule=FCASchedule.RCB))
+    by_enum = rows_of(report2.load(schedule=FCASchedule.RCB))
     assert by_string == by_enum
 
 
@@ -482,7 +470,7 @@ def test_load_institutions(data_dir: Path, release_2026q1: Path) -> None:
         end="2026-03-31",
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
-    rows = _rows(report.load_institutions())
+    rows = rows_of(report.load_institutions())
     assert rows[0]["UNINUM"] == 610000
     assert rows[0]["SHORTNAME"] == "Café Ridge FCB"
     assert rows[0]["period"] == date(2026, 3, 31)
@@ -519,7 +507,7 @@ def test_load_institutions_records_parse_error_and_continues(tmp_path: Path) -> 
         end="2025-12-31",
         transport=LocalDirectoryTransport(data_dir=tmp_path),
     )
-    rows = _rows(report.load_institutions())
+    rows = rows_of(report.load_institutions())
     assert len(rows) == 1
     assert rows[0]["period"] == date(2025, 9, 30)
     assert len(report.errors_) == 1
@@ -642,41 +630,37 @@ def test_legacy_naming_resolves(data_dir: Path, release_2003q1: Path) -> None:
         end="2003-03-31",
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
-    rows = _rows(report.load(schedule="RC"))
+    rows = rows_of(report.load(schedule="RC"))
     assert rows[0]["UNINUM"] == 610000
     assert rows[0]["TOTASSETS"] == 500000
 
 
-@pytest.mark.parametrize("backend", ["pandas", "polars", "pyarrow"])
 def test_load_honors_configured_dataframe_backend(
     data_dir: Path, release_2026q1: Path, backend: str
 ) -> None:
-    """load() returns a native frame of whichever backend is configured."""
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
+    """load() returns a native frame of whichever backend is configured.
 
+    The `backend` fixture both parametrizes this across all three backends
+    and activates each one for the whole test body, so `load` runs under
+    the same backend the assertion expects.
+    """
     expected_type = {
         "pandas": pd.DataFrame,
         "polars": pl.DataFrame,
         "pyarrow": pa.Table,
     }[backend]
-    with config_context(dataframe_backend=backend):
-        report = FCACallReport(
-            start="2026-03-31",
-            end="2026-03-31",
-            transport=LocalDirectoryTransport(data_dir=data_dir),
-        )
-        result = report.load(schedule="RC")
-    assert isinstance(result, expected_type)
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    assert isinstance(report.load(schedule="RC"), expected_type)
 
 
 def test_load_honors_lazy_config_for_polars(
     data_dir: Path, release_2026q1: Path
 ) -> None:
     """lazy=True with the polars backend returns a polars.LazyFrame."""
-    import polars as pl
-
     with config_context(dataframe_backend="polars", lazy=True):
         report = FCACallReport(
             start="2026-03-31",
@@ -695,10 +679,6 @@ def test_load_honors_dataframe_type_override(
     data_dir: Path, release_2026q1: Path, dataframe_type: DataFrameType
 ) -> None:
     """load() converts its result to `dataframe_type` as a final step."""
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
-
     expected_type = {
         "pandas": pd.DataFrame,
         "pyarrow_table": pa.Table,
@@ -718,8 +698,6 @@ def test_load_all_passes_dataframe_type_through_to_every_schedule(
     data_dir: Path, release_2026q1: Path
 ) -> None:
     """load_all() applies `dataframe_type` to every schedule in the result."""
-    import pyarrow as pa
-
     report = FCACallReport(
         start="2026-03-31",
         end="2026-03-31",
@@ -738,10 +716,6 @@ def test_load_institutions_honors_dataframe_type_override(
     data_dir: Path, release_2026q1: Path, dataframe_type: DataFrameType
 ) -> None:
     """load_institutions() converts its result to `dataframe_type` as a final step."""
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
-
     expected_type = {
         "pandas": pd.DataFrame,
         "pyarrow_table": pa.Table,
@@ -772,7 +746,7 @@ def test_to_wide_format_default_includes_every_discovered_schedule(
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     wide = report.to_wide_format()
-    rows = _rows(wide)
+    rows = rows_of(wide)
     assert len(rows) == 1
     row = rows[0]
     assert row["UNINUM"] == 610000
@@ -795,7 +769,7 @@ def test_to_wide_format_explicit_schedules_narrows_the_result(
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     wide = report.to_wide_format(schedules=["RC"])
-    columns = _rows(wide)[0]
+    columns = rows_of(wide)[0]
     assert "RC__TOTASSETS" in columns
     assert not any(name.startswith(("RCB__", "RCR7__")) for name in columns)
 
@@ -810,7 +784,7 @@ def test_to_wide_format_accepts_schedule_enum_members(
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     wide = report.to_wide_format(schedules=[FCASchedule.RC])
-    assert "RC__TOTASSETS" in _rows(wide)[0]
+    assert "RC__TOTASSETS" in rows_of(wide)[0]
 
 
 def test_to_wide_format_multi_period_grain_and_schema_union(
@@ -823,12 +797,12 @@ def test_to_wide_format_multi_period_grain_and_schema_union(
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     wide = report.to_wide_format(schedules=["RC"])
-    rows = {(row["UNINUM"], row["period"]): row for row in _rows(wide)}
+    rows = {(row["UNINUM"], row["period"]): row for row in rows_of(wide)}
     assert len(rows) == 4
     # release_2025q3's RC layout has no TOTLIAB column yet.
     q3_row = rows[(610000, date(2025, 9, 30))]
     assert q3_row["RC__TOTASSETS"] == 1000000.0
-    assert _is_missing(q3_row["RC__TOTLIAB"])
+    assert is_missing(q3_row["RC__TOTLIAB"])
     q4_row = rows[(610000, date(2025, 12, 31))]
     assert q4_row["RC__TOTASSETS"] == 1050000.0
     assert q4_row["RC__TOTLIAB"] == 900000.0
@@ -868,10 +842,6 @@ def test_to_wide_format_honors_dataframe_type_override(
     data_dir: Path, release_2026q1: Path, dataframe_type: DataFrameType
 ) -> None:
     """to_wide_format() converts its result to `dataframe_type` as a final step."""
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
-
     expected_type = {
         "pandas": pd.DataFrame,
         "pyarrow_table": pa.Table,
@@ -902,8 +872,6 @@ def test_to_wide_format_reshapes_a_lazy_loaded_schedule_correctly(
     data_dir: Path, release_2026q1: Path
 ) -> None:
     """lazy=True with the polars backend still reshapes correctly end to end."""
-    import polars as pl
-
     with config_context(dataframe_backend="polars", lazy=True):
         report = FCACallReport(
             start="2026-03-31",
@@ -965,7 +933,7 @@ def test_to_long_format_default_includes_every_discovered_schedule(
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     long_ = report.to_long_format()
-    rows = _rows(long_)
+    rows = rows_of(long_)
     assert len(rows) == 11
     rc_row = next(
         r for r in rows if r["schedule"] == "RC" and r["variable_name"] == "TOTASSETS"
@@ -974,7 +942,7 @@ def test_to_long_format_default_includes_every_discovered_schedule(
     assert rc_row["period"] == date(2026, 3, 31)
     assert rc_row["value"] == 1100000.0
     assert rc_row["is_multiple"] is False
-    assert _is_missing(rc_row["code_column"])
+    assert is_missing(rc_row["code_column"])
     rcb_row = next(
         r
         for r in rows
@@ -1002,7 +970,7 @@ def test_to_long_format_explicit_schedules_narrows_the_result(
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     long_ = report.to_long_format(schedules=["RC"])
-    rows = _rows(long_)
+    rows = rows_of(long_)
     assert {row["schedule"] for row in rows} == {"RC"}
     assert len(rows) == 2
 
@@ -1017,7 +985,7 @@ def test_to_long_format_accepts_schedule_enum_members(
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     long_ = report.to_long_format(schedules=[FCASchedule.RC])
-    assert {row["schedule"] for row in _rows(long_)} == {"RC"}
+    assert {row["schedule"] for row in rows_of(long_)} == {"RC"}
 
 
 def test_to_long_format_multi_period_grain_and_schema_union(
@@ -1030,7 +998,7 @@ def test_to_long_format_multi_period_grain_and_schema_union(
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     long_ = report.to_long_format(schedules=["RC"])
-    rows = _rows(long_)
+    rows = rows_of(long_)
     # release_2025q3's RC layout has no TOTLIAB column yet, but _load's own
     # schema_policy="union" already null-fills it across periods before
     # to_long_format ever melts -- so q3 still gets a (null-valued) TOTLIAB
@@ -1043,7 +1011,7 @@ def test_to_long_format_multi_period_grain_and_schema_union(
         and r["variable_name"] == "TOTLIAB"
         and r["UNINUM"] == 610000
     )
-    assert _is_missing(q3_totliab["value"])
+    assert is_missing(q3_totliab["value"])
     q4_totassets = next(
         r
         for r in rows
@@ -1112,10 +1080,6 @@ def test_to_long_format_honors_dataframe_type_override(
     data_dir: Path, release_2026q1: Path, dataframe_type: DataFrameType
 ) -> None:
     """to_long_format() converts its result to `dataframe_type` as a final step."""
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
-
     expected_type = {
         "pandas": pd.DataFrame,
         "pyarrow_table": pa.Table,
@@ -1146,8 +1110,6 @@ def test_to_long_format_reshapes_a_lazy_loaded_schedule_correctly(
     data_dir: Path, release_2026q1: Path
 ) -> None:
     """lazy=True with the polars backend still reshapes correctly end to end."""
-    import polars as pl
-
     with config_context(dataframe_backend="polars", lazy=True):
         report = FCACallReport(
             start="2026-03-31",
@@ -1231,19 +1193,19 @@ def test_wide_and_long_format_carry_the_same_information(
         converted_long.select(long_cols).sort(long_cols).rows(named=True)
     )
     long_rows = long_frame.select(long_cols).sort(long_cols).rows(named=True)
-    assert _normalize_rows(converted_long_rows) == _normalize_rows(long_rows)
+    assert _normalizerows_of(converted_long_rows) == _normalizerows_of(long_rows)
 
     wide_cols = sorted(wide_frame.columns)
     converted_wide_rows = (
         converted_wide.select(wide_cols).sort(wide_cols).rows(named=True)
     )
     wide_rows = wide_frame.select(wide_cols).sort(wide_cols).rows(named=True)
-    assert _normalize_rows(converted_wide_rows) == _normalize_rows(wide_rows)
+    assert _normalizerows_of(converted_wide_rows) == _normalizerows_of(wide_rows)
 
 
-def _normalize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _normalizerows_of(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Replace any NaN value with None, so row-dict equality isn't NaN != NaN."""
     return [
-        {key: (None if _is_missing(value) else value) for key, value in row.items()}
+        {key: (None if is_missing(value) else value) for key, value in row.items()}
         for row in rows
     ]

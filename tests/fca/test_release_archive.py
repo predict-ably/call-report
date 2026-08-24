@@ -46,6 +46,12 @@ from call_report.fca.institutions import INSTITUTIONS_ROOT, read_institutions
 from call_report.fca.layout import FCALayout
 from call_report.fca.reader import read_schedule_file
 from call_report.fca.transport import PackagedArchiveTransport
+from tests.helpers import ALL_BACKENDS
+
+# This whole module drives real archived releases end to end and dominates
+# the suite's runtime. Marked so a contributor iterating on unit tests can
+# run `pytest -m "not slow"`; CI still runs everything.
+pytestmark = pytest.mark.slow
 
 ALL_KNOWN_PERIODS = tuple(PeriodRange(start=EARLIEST_PERIOD, end=LATEST_KNOWN_PERIOD))
 
@@ -55,7 +61,6 @@ ALL_KNOWN_PERIODS = tuple(PeriodRange(start=EARLIEST_PERIOD, end=LATEST_KNOWN_PE
 _MODERN_ERA_FIRST_YEAR = 2015
 _CROSS_BACKEND_SAMPLE_SIZE = 20
 _CROSS_BACKEND_SEED = 726026  # fixed so the sample is stable across CI runs
-CROSS_BACKEND_BACKENDS = ("pandas", "polars", "pyarrow")
 
 
 def _stratified_sample(
@@ -326,7 +331,7 @@ def test_release_institutions_load(
     _assert_institutions_load(report=archive_report, period=period)
 
 
-@pytest.mark.parametrize("backend", CROSS_BACKEND_BACKENDS)
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
 @pytest.mark.parametrize(
     "period",
     CROSS_BACKEND_SAMPLE_PERIODS,
@@ -340,7 +345,7 @@ def test_release_metadata_and_data_load_across_backends(
         _assert_all_schedules_load(report=archive_report, period=period)
 
 
-@pytest.mark.parametrize("backend", CROSS_BACKEND_BACKENDS)
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
 @pytest.mark.parametrize(
     "period",
     CROSS_BACKEND_SAMPLE_PERIODS,

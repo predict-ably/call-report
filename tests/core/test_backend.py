@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 import narwhals as nw
+import pandas as pd
+import polars as pl
+import pyarrow as pa
 import pytest
 
 from call_report.config import config_context
@@ -22,6 +25,7 @@ from call_report.core._backend import (
     pivot,
 )
 from call_report.exceptions import LayoutParseError, ReshapeError
+from tests.helpers import ALL_BACKENDS
 
 
 def test_build_frame_returns_eager_narwhals_frame() -> None:
@@ -34,8 +38,6 @@ def test_build_frame_returns_eager_narwhals_frame() -> None:
 
 def test_finalize_returns_native_eager_frame_by_default() -> None:
     """finalize() unwraps to a native, eager frame when lazy is not configured."""
-    import pandas as pd
-
     with config_context(dataframe_backend="pandas", lazy=False):
         frame = build_frame(data={"UNINUM": [1, 2]})
         result = finalize(frame=frame)
@@ -44,8 +46,6 @@ def test_finalize_returns_native_eager_frame_by_default() -> None:
 
 def test_finalize_returns_native_lazy_frame_when_configured() -> None:
     """finalize() returns a LazyFrame when lazy=True is configured."""
-    import polars as pl
-
     with config_context(dataframe_backend="polars", lazy=True):
         frame = build_frame(data={"UNINUM": [1, 2]})
         result = finalize(frame=frame)
@@ -123,8 +123,6 @@ def _lazy_frame(*, data: dict[str, list[Any]]) -> nw.LazyFrame[Any]:
 
 def test_finalize_accepts_an_already_lazy_frame() -> None:
     """finalize() is a no-op passthrough for a frame that's already lazy."""
-    import polars as pl
-
     lazy = _lazy_frame(data={"UNINUM": [1, 2]})
     with config_context(dataframe_backend="polars", lazy=True):
         result = finalize(frame=lazy)
@@ -192,8 +190,6 @@ def test_pivot_collects_a_lazy_frame() -> None:
 
 def test_finalize_as_accepts_an_already_lazy_frame() -> None:
     """finalize_as() finalizes-and-converts starting from an already-lazy frame."""
-    import polars as pl
-
     lazy = _lazy_frame(data={"UNINUM": [1, 2]})
     with config_context(dataframe_backend="polars", lazy=True):
         result = finalize_as(frame=lazy, dataframe_type=None)
@@ -203,8 +199,6 @@ def test_finalize_as_accepts_an_already_lazy_frame() -> None:
 
 def test_finalize_as_converts_an_already_lazy_frame_to_a_non_lazy_type() -> None:
     """finalize_as() collects an already-lazy frame when a non-lazy type is asked."""
-    import pandas as pd
-
     lazy = _lazy_frame(data={"UNINUM": [1, 2]})
     with config_context(dataframe_backend="polars", lazy=True):
         result = finalize_as(frame=lazy, dataframe_type="pandas")
@@ -259,10 +253,6 @@ def test_assert_unique_grain_is_keyword_only() -> None:
 
 def test_dataframe_type_of_identifies_each_supported_type() -> None:
     """_dataframe_type_of correctly labels a frame of each backend/laziness."""
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
-
     data = {"a": [1, 2]}
     assert _dataframe_type_of(pd.DataFrame(data)) == "pandas"
     assert _dataframe_type_of(pa.table(data)) == "pyarrow_table"
@@ -296,8 +286,6 @@ def test_convert_dataframe_type_lazy_already_matching_skips_collect() -> None:
 
 def test_convert_dataframe_type_collects_lazy_source_when_converting() -> None:
     """A lazy source converting to a different type is collected first."""
-    import pandas as pd
-
     with config_context(dataframe_backend="polars", lazy=True):
         native = finalize(frame=build_frame(data={"UNINUM": [1, 2]}))
     result = convert_dataframe_type(data=native, dataframe_type="pandas")
@@ -305,7 +293,6 @@ def test_convert_dataframe_type_collects_lazy_source_when_converting() -> None:
     assert result["UNINUM"].tolist() == [1, 2]
 
 
-_SOURCE_BACKENDS = ["pandas", "polars", "pyarrow"]
 _TARGET_TYPES: list[DataFrameType] = [
     "pandas",
     "pyarrow_table",
@@ -314,16 +301,12 @@ _TARGET_TYPES: list[DataFrameType] = [
 ]
 
 
-@pytest.mark.parametrize("source_backend", _SOURCE_BACKENDS)
+@pytest.mark.parametrize("source_backend", ALL_BACKENDS)
 @pytest.mark.parametrize("target_type", _TARGET_TYPES)
 def test_convert_dataframe_type_matrix(
     source_backend: str, target_type: DataFrameType
 ) -> None:
     """Every (source backend, target type) combination converts correctly."""
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
-
     with config_context(dataframe_backend=source_backend):
         native = finalize(
             frame=build_frame(data={"UNINUM": [1, 2], "TOTASSETS": [10, 20]})
@@ -370,8 +353,6 @@ def test_convert_dataframe_type_is_keyword_only() -> None:
 
 def test_finalize_as_finalizes_and_converts_in_one_step() -> None:
     """finalize_as combines finalize() and convert_dataframe_type()."""
-    import pyarrow as pa
-
     with config_context(dataframe_backend="pandas", lazy=False):
         frame = build_frame(data={"UNINUM": [1, 2]})
         result = finalize_as(frame=frame, dataframe_type="pyarrow_table")
@@ -380,8 +361,6 @@ def test_finalize_as_finalizes_and_converts_in_one_step() -> None:
 
 def test_finalize_as_none_dataframe_type_matches_finalize_alone() -> None:
     """finalize_as with dataframe_type=None behaves exactly like finalize()."""
-    import pandas as pd
-
     with config_context(dataframe_backend="pandas", lazy=False):
         frame = build_frame(data={"UNINUM": [1, 2]})
         result = finalize_as(frame=frame, dataframe_type=None)

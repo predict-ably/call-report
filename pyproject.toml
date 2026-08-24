@@ -67,7 +67,28 @@ path = "src/call_report/__init__.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src/call_report"]
-addopts = ["--doctest-modules"]
+addopts = [
+    "--doctest-modules",
+    # Fail on an unregistered marker or an unknown ini key rather than
+    # silently ignoring it, so a typo'd marker cannot quietly deselect
+    # nothing.
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "slow: real-archive regression tests over the full FCA release history (deselect with '-m \"not slow\"')",
+]
+filterwarnings = [
+    # A warning from pandas/polars/pyarrow, or from this package, is a
+    # signal that something is deprecated or misused. Fail on it rather
+    # than let it scroll past.
+    "error",
+    # PackagedArchiveTransport cleans its extraction directory up on
+    # garbage collection rather than deterministically, so this fires in
+    # whichever test happens to trigger the collection. Tracked separately:
+    # the fix is a close()/context-manager API on the transport.
+    "ignore:Implicitly cleaning up:ResourceWarning",
+]
 
 [tool.ruff]
 line-length = 88

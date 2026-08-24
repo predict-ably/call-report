@@ -6,6 +6,8 @@ from datetime import date
 from typing import Any
 
 import narwhals as nw
+import polars as pl
+import pyarrow as pa
 import pytest
 
 from call_report.config import config_context
@@ -22,20 +24,7 @@ from call_report.fca._reshape import (
     to_long_format,
     to_wide_format,
 )
-
-
-def _rows(frame: nw.DataFrame[Any]) -> list[dict[str, Any]]:
-    return frame.sort(["UNINUM", "period"]).rows(named=True)
-
-
-def _is_missing(value: object) -> bool:
-    """Return True for a missing value, however the active backend represents it.
-
-    pandas represents a missing (non-numeric) value as NaN, not None --
-    both count as "missing" here.
-    """
-    return value is None or (isinstance(value, float) and value != value)
-
+from tests.helpers import is_missing, sorted_rows
 
 # ---------------------------------------------------------------------------
 # melt_schedule_frame
@@ -44,16 +33,15 @@ def _is_missing(value: object) -> bool:
 
 def test_melt_schedule_frame_no_code_column() -> None:
     """A plain (no-code) schedule melts every non-identifier column."""
-    with config_context(dataframe_backend="pandas"):
-        frame = build_frame(
-            data={
-                "SYSTEM": [6, 6],
-                "UNINUM": [1, 2],
-                "period": ["2026-03-31", "2026-03-31"],
-                "TOTASSETS": [100, 200],
-                "TOTLIAB": [50, 90],
-            }
-        )
+    frame = build_frame(
+        data={
+            "SYSTEM": [6, 6],
+            "UNINUM": [1, 2],
+            "period": ["2026-03-31", "2026-03-31"],
+            "TOTASSETS": [100, 200],
+            "TOTLIAB": [50, 90],
+        }
+    )
     melted = melt_schedule_frame(frame=frame, schedule="RC", code_column=None)
     assert isinstance(melted, nw.DataFrame)
     assert set(melted.columns) == {
@@ -71,17 +59,16 @@ def test_melt_schedule_frame_no_code_column() -> None:
 
 def test_melt_schedule_frame_with_code_column() -> None:
     """A code-bearing schedule keeps the code as `code_value`, not a melted row."""
-    with config_context(dataframe_backend="pandas"):
-        frame = build_frame(
-            data={
-                "SYSTEM": [6, 6],
-                "UNINUM": [1, 1],
-                "period": ["2026-03-31", "2026-03-31"],
-                "INV_CODE": [10, 20],
-                "BKVAL": [100, 150],
-                "MKTVAL": [110.0, 160.0],
-            }
-        )
+    frame = build_frame(
+        data={
+            "SYSTEM": [6, 6],
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "INV_CODE": [10, 20],
+            "BKVAL": [100, 150],
+            "MKTVAL": [110.0, 160.0],
+        }
+    )
     melted = melt_schedule_frame(frame=frame, schedule="RCB", code_column="INV_CODE")
     assert isinstance(melted, nw.DataFrame)
     assert set(melted.columns) == {
@@ -100,17 +87,16 @@ def test_melt_schedule_frame_with_code_column() -> None:
 
 def test_melt_schedule_frame_trailing_columns_not_duplicated_per_code() -> None:
     """A trailing (single_multiple_single) column produces one row per grain."""
-    with config_context(dataframe_backend="pandas"):
-        frame = build_frame(
-            data={
-                "UNINUM": [1, 1, 2],
-                "period": ["2026-03-31"] * 3,
-                "CAPCODE": [10, 20, 10],
-                "VAL1": [100, 150, 300],
-                "VAL2": [200, 250, 400],
-                "TOTAL": [999, 999, 888],
-            }
-        )
+    frame = build_frame(
+        data={
+            "UNINUM": [1, 1, 2],
+            "period": ["2026-03-31"] * 3,
+            "CAPCODE": [10, 20, 10],
+            "VAL1": [100, 150, 300],
+            "VAL2": [200, 250, 400],
+            "TOTAL": [999, 999, 888],
+        }
+    )
     melted = melt_schedule_frame(
         frame=frame,
         schedule="RCR7",
@@ -134,33 +120,31 @@ def test_melt_schedule_frame_trailing_columns_not_duplicated_per_code() -> None:
 
 def test_melt_schedule_frame_is_keyword_only() -> None:
     """melt_schedule_frame takes no positional arguments."""
-    with config_context(dataframe_backend="pandas"):
-        frame = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"], "A": [1]})
+    frame = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"], "A": [1]})
     with pytest.raises(TypeError):
         melt_schedule_frame(frame, "RC", None)  # type: ignore[call-arg]
 
 
-def test_melt_schedule_frame_empty_input_produces_float64_value() -> None:
+def test_melt_schedule_frame_empty_input_produces_float64_value(
+    polars_backend: str,
+) -> None:
     """A zero-row schedule still gets Float64 `value`, not `Unknown`.
 
-    Confirmed real: RCO has zero rows at 2000Q1. See
-    `test_cast_numeric_to_float64_casts_an_unknown_dtype_column` for why
-    this matters -- an uncast `Unknown` column can raise
-    `polars.exceptions.SchemaError` when later concatenated against a
-    populated schedule's real numeric `value` column.
+    RCO has zero rows at 2000Q1, so this is a real shape. An uncast
+    `Unknown` column can raise `polars.exceptions.SchemaError` when later
+    concatenated against a populated schedule's numeric `value` column.
+    See `test_cast_numeric_to_float64_casts_an_unknown_dtype_column`.
     """
-    with config_context(dataframe_backend="polars"):
-        frame = build_frame(data={"UNINUM": [], "period": [], "TOTASSETS": []})
+    frame = build_frame(data={"UNINUM": [], "period": [], "TOTASSETS": []})
     melted = melt_schedule_frame(frame=frame, schedule="RCO", code_column=None)
     assert melted.collect_schema()["value"] == nw.Float64()
 
 
-def test_melt_schedule_frame_empty_coded_input_produces_float64_code_value() -> None:
+def test_melt_schedule_frame_empty_coded_input_produces_float64_code_value(
+    polars_backend: str,
+) -> None:
     """A zero-row *coded* schedule gets Float64 `value` and `code_value`."""
-    with config_context(dataframe_backend="polars"):
-        frame = build_frame(
-            data={"UNINUM": [], "period": [], "INV_CODE": [], "BKVAL": []}
-        )
+    frame = build_frame(data={"UNINUM": [], "period": [], "INV_CODE": [], "BKVAL": []})
     melted = melt_schedule_frame(frame=frame, schedule="RCB", code_column="INV_CODE")
     assert melted.collect_schema()["value"] == nw.Float64()
     assert melted.collect_schema()["code_value"] == nw.Float64()
@@ -173,8 +157,7 @@ def test_melt_schedule_frame_empty_coded_input_produces_float64_code_value() -> 
 
 def test_cast_numeric_to_float64_casts_an_int_column() -> None:
     """An Int64 column is cast to Float64."""
-    with config_context(dataframe_backend="pandas"):
-        frame = build_frame(data={"value": [1, 2, 3]})
+    frame = build_frame(data={"value": [1, 2, 3]})
     assert frame.schema["value"] == nw.Int64()
     result = _cast_numeric_to_float64(frame, column="value")
     assert result.schema["value"] == nw.Float64()
@@ -182,39 +165,38 @@ def test_cast_numeric_to_float64_casts_an_int_column() -> None:
 
 def test_cast_numeric_to_float64_leaves_non_numeric_untouched() -> None:
     """A String column is left as-is."""
-    with config_context(dataframe_backend="pandas"):
-        frame = build_frame(data={"value": ["a", "b"]})
+    frame = build_frame(data={"value": ["a", "b"]})
     result = _cast_numeric_to_float64(frame, column="value")
     assert result.schema["value"] == nw.String()
 
 
 def test_cast_numeric_to_float64_works_on_a_different_column_name() -> None:
     """The column to normalize is a parameter, not hardcoded to "value"."""
-    with config_context(dataframe_backend="pandas"):
-        frame = build_frame(data={"code_value": [10, 20]})
+    frame = build_frame(data={"code_value": [10, 20]})
     result = _cast_numeric_to_float64(frame, column="code_value")
     assert result.schema["code_value"] == nw.Float64()
 
 
-def test_cast_numeric_to_float64_casts_an_unknown_dtype_column() -> None:
-    """An empty column (Unknown dtype -- no data to infer a type from) is cast too.
+def test_cast_numeric_to_float64_casts_an_unknown_dtype_column(
+    polars_backend: str,
+) -> None:
+    """An empty column, whose dtype is Unknown, is cast to Float64 too.
 
-    Regression test for a real CI failure:
-    ``polars.exceptions.SchemaError: type Int64 is incompatible with
-    expected type Null``. A schedule with zero rows for a period
-    (confirmed real: RCO at 2000Q1), or a field that's entirely null even
-    though rows exist (confirmed real: RCF1's own ``value`` at 2000Q1),
-    leaves narwhals unable to infer any concrete dtype -- `Unknown`,
-    which `is_numeric()` reports False for. Left alone, concatenating
-    that against a real Int64/Float64 piece can raise depending on the
-    installed polars version and concat order (both confirmed to vary --
-    this didn't reproduce locally, only on a CI platform this project's
-    dev environment doesn't cover). pandas doesn't reproduce `Unknown`
-    for an empty column (it infers Float64 directly), so this needs a
-    backend where empty data genuinely produces it.
+    Regression test for ``polars.exceptions.SchemaError: type Int64 is
+    incompatible with expected type Null``.
+
+    Two real shapes leave narwhals unable to infer a concrete dtype: a
+    schedule with zero rows for a period, such as RCO at 2000Q1, and a
+    field that is entirely null though rows exist, such as RCF1's
+    ``value`` at 2000Q1. Both yield `Unknown`, which `is_numeric()`
+    reports False for. Left uncast, concatenating that against a real
+    Int64 or Float64 piece can raise, depending on the installed polars
+    version and on concat order.
+
+    This test uses polars specifically: pandas infers Float64 directly
+    for an empty column, so it never produces the `Unknown` this guards.
     """
-    with config_context(dataframe_backend="polars"):
-        frame = build_frame(data={"value": []})
+    frame = build_frame(data={"value": []})
     dtype = frame.collect_schema()["value"]
     assert isinstance(dtype, nw.Unknown)
     result = _cast_numeric_to_float64(frame, column="value")
@@ -228,64 +210,61 @@ def test_cast_numeric_to_float64_casts_an_unknown_dtype_column() -> None:
 
 def test_with_column_key_plain_naming_when_no_code_column_present() -> None:
     """A frame with no `code_column` at all gets `{schedule}__{variable}` keys."""
-    with config_context(dataframe_backend="pandas"):
-        frame = build_frame(
-            data={
-                "UNINUM": [1],
-                "period": ["2026-03-31"],
-                "schedule": ["RC"],
-                "variable_name": ["TOTASSETS"],
-                "value": [100.0],
-            }
-        )
+    frame = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "schedule": ["RC"],
+            "variable_name": ["TOTASSETS"],
+            "value": [100.0],
+        }
+    )
     result = _with_column_key(frame)
     assert result["column_key"].to_list() == ["RC__TOTASSETS"]
 
 
 def test_with_column_key_coded_naming() -> None:
     """A coded row gets `{schedule}__{code_column}_{code_value}__{variable}`."""
-    with config_context(dataframe_backend="pandas"):
-        frame = build_frame(
-            data={
-                "UNINUM": [1],
-                "period": ["2026-03-31"],
-                "schedule": ["RCB"],
-                "variable_name": ["BKVAL"],
-                "value": [100.0],
-                "code_column": ["INV_CODE"],
-                "code_value": [15],
-            }
-        )
+    frame = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "schedule": ["RCB"],
+            "variable_name": ["BKVAL"],
+            "value": [100.0],
+            "code_column": ["INV_CODE"],
+            "code_value": [15],
+        }
+    )
     result = _with_column_key(frame)
     assert result["column_key"].to_list() == ["RCB__INV_CODE_15__BKVAL"]
 
 
-def test_with_column_key_mixed_null_and_coded_rows() -> None:
+def test_with_column_key_mixed_null_and_codedsorted_rows() -> None:
     """A union of coded and non-coded schedules keys each row correctly."""
-    with config_context(dataframe_backend="pandas"):
-        coded = build_frame(
-            data={
-                "UNINUM": [1],
-                "period": ["2026-03-31"],
-                "schedule": ["RCB"],
-                "variable_name": ["BKVAL"],
-                "value": [100.0],
-                "code_column": ["INV_CODE"],
-                "code_value": [15],
-            }
-        )
-        plain = build_frame(
-            data={
-                "UNINUM": [1],
-                "period": ["2026-03-31"],
-                "schedule": ["RC"],
-                "variable_name": ["TOTASSETS"],
-                "value": [200.0],
-                "code_column": [None],
-                "code_value": [None],
-            }
-        )
-        combined = concat(frames=[coded, plain], how="union")
+    coded = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "schedule": ["RCB"],
+            "variable_name": ["BKVAL"],
+            "value": [100.0],
+            "code_column": ["INV_CODE"],
+            "code_value": [15],
+        }
+    )
+    plain = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "schedule": ["RC"],
+            "variable_name": ["TOTASSETS"],
+            "value": [200.0],
+            "code_column": [None],
+            "code_value": [None],
+        }
+    )
+    combined = concat(frames=[coded, plain], how="union")
     result = _with_column_key(combined)
     keys = dict(
         zip(
@@ -305,28 +284,27 @@ def test_with_column_key_mixed_null_and_coded_rows() -> None:
 
 def test_to_wide_format_combines_coded_and_plain_schedules() -> None:
     """to_wide_format stacks a code-bearing and a plain schedule correctly."""
-    with config_context(dataframe_backend="pandas"):
-        rc = build_frame(
-            data={
-                "UNINUM": [1, 2],
-                "period": ["2026-03-31", "2026-03-31"],
-                "TOTASSETS": [1000, 2000],
-            }
-        )
-        rcb = build_frame(
-            data={
-                "UNINUM": [1, 1],
-                "period": ["2026-03-31", "2026-03-31"],
-                "INV_CODE": [10, 20],
-                "BKVAL": [100, 150],
-            }
-        )
+    rc = build_frame(
+        data={
+            "UNINUM": [1, 2],
+            "period": ["2026-03-31", "2026-03-31"],
+            "TOTASSETS": [1000, 2000],
+        }
+    )
+    rcb = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "INV_CODE": [10, 20],
+            "BKVAL": [100, 150],
+        }
+    )
     result = to_wide_format(
         frames={"RC": rc, "RCB": rcb},
         code_columns={"RC": None, "RCB": "INV_CODE"},
         trailing_columns={"RC": (), "RCB": ()},
     )
-    rows = {row["UNINUM"]: row for row in _rows(result)}
+    rows = {row["UNINUM"]: row for row in sorted_rows(result)}
     assert rows[1]["RC__TOTASSETS"] == 1000.0
     assert rows[1]["RCB__INV_CODE_10__BKVAL"] == 100.0
     assert rows[1]["RCB__INV_CODE_20__BKVAL"] == 150.0
@@ -335,14 +313,13 @@ def test_to_wide_format_combines_coded_and_plain_schedules() -> None:
 
 def test_to_wide_format_duplicate_grain_raises_reshape_error() -> None:
     """A genuinely duplicated (UNINUM, period, variable) row raises ReshapeError."""
-    with config_context(dataframe_backend="pandas"):
-        rc = build_frame(
-            data={
-                "UNINUM": [1, 1],
-                "period": ["2026-03-31", "2026-03-31"],
-                "TOTASSETS": [1000, 9999],
-            }
-        )
+    rc = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "TOTASSETS": [1000, 9999],
+        }
+    )
     with pytest.raises(ReshapeError):
         to_wide_format(
             frames={"RC": rc},
@@ -362,9 +339,9 @@ def test_to_wide_format_empty_schedule_alongside_a_populated_one() -> None:
     Int64/Float64 `value` column.
 
     `period` is attached via `nw.lit(...)` rather than passed as raw
-    frame data, matching how `FCACallReport._load` actually builds it
-    (`_with_period_column`, always a concrete date literal, regardless of
-    row count) -- unlike `UNINUM`/`value`, `period` can never genuinely be
+    frame data, matching how `FCACallReport._load` builds it.
+    `_with_period_column` always writes a concrete date literal regardless
+    of row count, so unlike `UNINUM` and `value`, `period` can never be
     `Unknown` by the time `melt_schedule_frame` sees it.
     """
     period_end = date(2026, 3, 31)
@@ -386,8 +363,7 @@ def test_to_wide_format_empty_schedule_alongside_a_populated_one() -> None:
 
 def test_to_wide_format_is_keyword_only() -> None:
     """to_wide_format takes no positional arguments."""
-    with config_context(dataframe_backend="pandas"):
-        rc = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"], "A": [1]})
+    rc = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"], "A": [1]})
     with pytest.raises(TypeError):
         to_wide_format({"RC": rc}, {"RC": None}, {"RC": ()})  # type: ignore[call-arg]
 
@@ -497,7 +473,7 @@ def test_to_wide_format_full_pipeline_stays_lazy_until_pivot() -> None:
         trailing_columns={"RC": (), "RCB": ()},
     )
     assert isinstance(result, nw.DataFrame)
-    rows = {row["UNINUM"]: row for row in _rows(result)}
+    rows = {row["UNINUM"]: row for row in sorted_rows(result)}
     assert rows[1]["RC__TOTASSETS"] == 1000.0
     assert rows[1]["RCB__INV_CODE_10__BKVAL"] == 100.0
     assert rows[2]["RC__TOTASSETS"] == 2000.0
@@ -510,28 +486,26 @@ def test_to_wide_format_full_pipeline_stays_lazy_until_pivot() -> None:
 
 def test_with_is_multiple_flag_true_for_a_coded_row() -> None:
     """A row with a real code gets is_multiple=True."""
-    with config_context(dataframe_backend="pandas"):
-        frame = build_frame(
-            data={
-                "schedule": ["RCB"],
-                "code_column": ["INV_CODE"],
-                "code_value": [15.0],
-            }
-        )
+    frame = build_frame(
+        data={
+            "schedule": ["RCB"],
+            "code_column": ["INV_CODE"],
+            "code_value": [15.0],
+        }
+    )
     result = _with_is_multiple_flag(frame)
     assert result["is_multiple"].to_list() == [True]
 
 
 def test_with_is_multiple_flag_false_for_a_null_code_row() -> None:
     """A row with code_column present but null gets is_multiple=False."""
-    with config_context(dataframe_backend="pandas"):
-        coded = build_frame(
-            data={"schedule": ["RCB"], "code_column": ["INV_CODE"], "code_value": [15]}
-        )
-        plain = build_frame(
-            data={"schedule": ["RC"], "code_column": [None], "code_value": [None]}
-        )
-        combined = concat(frames=[coded, plain], how="union")
+    coded = build_frame(
+        data={"schedule": ["RCB"], "code_column": ["INV_CODE"], "code_value": [15]}
+    )
+    plain = build_frame(
+        data={"schedule": ["RC"], "code_column": [None], "code_value": [None]}
+    )
+    combined = concat(frames=[coded, plain], how="union")
     result = _with_is_multiple_flag(combined)
     flags = dict(
         zip(result["schedule"].to_list(), result["is_multiple"].to_list(), strict=True)
@@ -541,16 +515,15 @@ def test_with_is_multiple_flag_false_for_a_null_code_row() -> None:
 
 def test_with_is_multiple_flag_adds_null_code_columns_when_entirely_absent() -> None:
     """No coded schedule at all: code_column/code_value are added, all null."""
-    with config_context(dataframe_backend="pandas"):
-        frame = build_frame(data={"schedule": ["RC"]})
+    frame = build_frame(data={"schedule": ["RC"]})
     assert "code_column" not in frame.columns
     result = _with_is_multiple_flag(frame)
     assert isinstance(result, nw.DataFrame)
     assert set(result.columns) >= {"code_column", "code_value", "is_multiple"}
     assert result["is_multiple"].to_list() == [False]
     row = result.rows(named=True)[0]
-    assert _is_missing(row["code_column"])
-    assert _is_missing(row["code_value"])
+    assert is_missing(row["code_column"])
+    assert is_missing(row["code_value"])
 
 
 # ---------------------------------------------------------------------------
@@ -560,22 +533,21 @@ def test_with_is_multiple_flag_adds_null_code_columns_when_entirely_absent() -> 
 
 def test_to_long_format_combines_coded_and_plain_schedules() -> None:
     """to_long_format tags plain and coded schedules' rows correctly."""
-    with config_context(dataframe_backend="pandas"):
-        rc = build_frame(
-            data={
-                "UNINUM": [1, 2],
-                "period": ["2026-03-31", "2026-03-31"],
-                "TOTASSETS": [1000, 2000],
-            }
-        )
-        rcb = build_frame(
-            data={
-                "UNINUM": [1, 1],
-                "period": ["2026-03-31", "2026-03-31"],
-                "INV_CODE": [10, 20],
-                "BKVAL": [100, 150],
-            }
-        )
+    rc = build_frame(
+        data={
+            "UNINUM": [1, 2],
+            "period": ["2026-03-31", "2026-03-31"],
+            "TOTASSETS": [1000, 2000],
+        }
+    )
+    rcb = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "INV_CODE": [10, 20],
+            "BKVAL": [100, 150],
+        }
+    )
     result = to_long_format(
         frames={"RC": rc, "RCB": rcb},
         code_columns={"RC": None, "RCB": "INV_CODE"},
@@ -585,7 +557,7 @@ def test_to_long_format_combines_coded_and_plain_schedules() -> None:
     rows = result.rows(named=True)
     rc_row = next(r for r in rows if r["schedule"] == "RC" and r["UNINUM"] == 1)
     assert rc_row["is_multiple"] is False
-    assert _is_missing(rc_row["code_column"])
+    assert is_missing(rc_row["code_column"])
     assert rc_row["value"] == 1000.0
     rcb_row = next(
         r for r in rows if r["schedule"] == "RCB" and r["code_value"] == 10.0
@@ -597,16 +569,15 @@ def test_to_long_format_combines_coded_and_plain_schedules() -> None:
 
 def test_to_long_format_trailing_column_is_single() -> None:
     """A single_multiple_single schedule's trailing field is tagged not-multiple."""
-    with config_context(dataframe_backend="pandas"):
-        rcr7 = build_frame(
-            data={
-                "UNINUM": [1, 1],
-                "period": ["2026-03-31"] * 2,
-                "CAPCODE": [10, 20],
-                "VAL1": [100, 150],
-                "TOTAL": [999, 999],
-            }
-        )
+    rcr7 = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31"] * 2,
+            "CAPCODE": [10, 20],
+            "VAL1": [100, 150],
+            "TOTAL": [999, 999],
+        }
+    )
     result = to_long_format(
         frames={"RCR7": rcr7},
         code_columns={"RCR7": "CAPCODE"},
@@ -615,7 +586,7 @@ def test_to_long_format_trailing_column_is_single() -> None:
     rows = result.rows(named=True)
     total_row = next(r for r in rows if r["variable_name"] == "TOTAL")
     assert total_row["is_multiple"] is False
-    assert _is_missing(total_row["code_column"])
+    assert is_missing(total_row["code_column"])
     assert total_row["value"] == 999.0
     val1_row = next(
         r for r in rows if r["variable_name"] == "VAL1" and r["code_value"] == 10.0
@@ -625,10 +596,9 @@ def test_to_long_format_trailing_column_is_single() -> None:
 
 def test_to_long_format_no_coded_schedule_still_has_code_columns() -> None:
     """Schedules with zero code columns still produce a complete long schema."""
-    with config_context(dataframe_backend="pandas"):
-        rc = build_frame(
-            data={"UNINUM": [1], "period": ["2026-03-31"], "TOTASSETS": [1000]}
-        )
+    rc = build_frame(
+        data={"UNINUM": [1], "period": ["2026-03-31"], "TOTASSETS": [1000]}
+    )
     result = to_long_format(
         frames={"RC": rc}, code_columns={"RC": None}, trailing_columns={"RC": ()}
     )
@@ -647,14 +617,13 @@ def test_to_long_format_no_coded_schedule_still_has_code_columns() -> None:
 
 def test_to_long_format_duplicate_grain_raises_reshape_error() -> None:
     """A genuinely duplicated (UNINUM, period, schedule, ..., variable) row raises."""
-    with config_context(dataframe_backend="pandas"):
-        rc = build_frame(
-            data={
-                "UNINUM": [1, 1],
-                "period": ["2026-03-31", "2026-03-31"],
-                "TOTASSETS": [1000, 9999],
-            }
-        )
+    rc = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "TOTASSETS": [1000, 9999],
+        }
+    )
     with pytest.raises(ReshapeError, match="not a unique grain"):
         to_long_format(
             frames={"RC": rc}, code_columns={"RC": None}, trailing_columns={"RC": ()}
@@ -686,8 +655,7 @@ def test_to_long_format_empty_schedule_alongside_a_populated_one() -> None:
 
 def test_to_long_format_is_keyword_only() -> None:
     """to_long_format takes no positional arguments."""
-    with config_context(dataframe_backend="pandas"):
-        rc = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"], "A": [1]})
+    rc = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"], "A": [1]})
     with pytest.raises(TypeError):
         to_long_format({"RC": rc}, {"RC": None}, {"RC": ()})  # type: ignore[call-arg]
 
@@ -774,15 +742,14 @@ def test_parse_wide_column_key_rejects_malformed_names(column_key: str) -> None:
 
 def test_convert_wide_format_to_long_format_basic() -> None:
     """A wide frame converts to the same information in long form."""
-    with config_context(dataframe_backend="pandas"):
-        wide = build_frame(
-            data={
-                "UNINUM": [1, 2],
-                "period": ["2026-03-31", "2026-03-31"],
-                "RC__TOTASSETS": [1000.0, 2000.0],
-                "RCB__INV_CODE_15__BKVAL": [9.0, 8.0],
-            }
-        )
+    wide = build_frame(
+        data={
+            "UNINUM": [1, 2],
+            "period": ["2026-03-31", "2026-03-31"],
+            "RC__TOTASSETS": [1000.0, 2000.0],
+            "RCB__INV_CODE_15__BKVAL": [9.0, 8.0],
+        }
+    )
     result = convert_wide_format_to_long_format(wide=wide.to_native())
     frame = nw.from_native(result)
     assert isinstance(frame, nw.DataFrame)
@@ -806,18 +773,16 @@ def test_convert_wide_format_to_long_format_basic() -> None:
 
 def test_convert_wide_format_to_long_format_rejects_a_malformed_column_name() -> None:
     """A wide column not matching the naming convention raises ReshapeError."""
-    with config_context(dataframe_backend="pandas"):
-        wide = build_frame(
-            data={"UNINUM": [1], "period": ["2026-03-31"], "NOTVALIDATALL": [1.0]}
-        )
+    wide = build_frame(
+        data={"UNINUM": [1], "period": ["2026-03-31"], "NOTVALIDATALL": [1.0]}
+    )
     with pytest.raises(ReshapeError):
         convert_wide_format_to_long_format(wide=wide.to_native())
 
 
 def test_convert_wide_format_to_long_format_is_keyword_only() -> None:
     """convert_wide_format_to_long_format takes no positional arguments."""
-    with config_context(dataframe_backend="pandas"):
-        wide = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"]})
+    wide = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"]})
     with pytest.raises(TypeError):
         convert_wide_format_to_long_format(  # type: ignore[call-overload]
             wide.to_native()
@@ -826,8 +791,6 @@ def test_convert_wide_format_to_long_format_is_keyword_only() -> None:
 
 def test_convert_wide_format_to_long_format_stays_lazy() -> None:
     """A LazyFrame input produces a genuinely uncollected LazyFrame output."""
-    import polars as pl
-
     wide_native = _lazy_frame(
         data={
             "UNINUM": [1],
@@ -843,12 +806,9 @@ def test_convert_wide_format_to_long_format_stays_lazy() -> None:
 
 def test_convert_wide_format_to_long_format_honors_dataframe_type() -> None:
     """dataframe_type converts the result as a final step."""
-    import pyarrow as pa
-
-    with config_context(dataframe_backend="pandas"):
-        wide = build_frame(
-            data={"UNINUM": [1], "period": ["2026-03-31"], "RC__TOTASSETS": [1000.0]}
-        )
+    wide = build_frame(
+        data={"UNINUM": [1], "period": ["2026-03-31"], "RC__TOTASSETS": [1000.0]}
+    )
     result = convert_wide_format_to_long_format(
         wide=wide.to_native(), dataframe_type="pyarrow_table"
     )
@@ -857,19 +817,18 @@ def test_convert_wide_format_to_long_format_honors_dataframe_type() -> None:
 
 def test_convert_long_format_to_wide_format_basic() -> None:
     """A long frame converts to the same information in wide form."""
-    with config_context(dataframe_backend="pandas"):
-        long_ = build_frame(
-            data={
-                "UNINUM": [1, 1],
-                "period": ["2026-03-31", "2026-03-31"],
-                "schedule": ["RC", "RCB"],
-                "code_column": [None, "INV_CODE"],
-                "code_value": [None, 15.0],
-                "is_multiple": [False, True],
-                "variable_name": ["TOTASSETS", "BKVAL"],
-                "value": [1000.0, 9.0],
-            }
-        )
+    long_ = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "schedule": ["RC", "RCB"],
+            "code_column": [None, "INV_CODE"],
+            "code_value": [None, 15.0],
+            "is_multiple": [False, True],
+            "variable_name": ["TOTASSETS", "BKVAL"],
+            "value": [1000.0, 9.0],
+        }
+    )
     result = convert_long_format_to_wide_format(long=long_.to_native())
     frame = nw.from_native(result)
     assert isinstance(frame, nw.DataFrame)
@@ -880,38 +839,36 @@ def test_convert_long_format_to_wide_format_basic() -> None:
 
 def test_convert_long_format_to_wide_format_duplicate_grain_raises() -> None:
     """A duplicated (UNINUM, period, column_key) grain raises via pivot."""
-    with config_context(dataframe_backend="pandas"):
-        long_ = build_frame(
-            data={
-                "UNINUM": [1, 1],
-                "period": ["2026-03-31", "2026-03-31"],
-                "schedule": ["RC", "RC"],
-                "code_column": [None, None],
-                "code_value": [None, None],
-                "is_multiple": [False, False],
-                "variable_name": ["TOTASSETS", "TOTASSETS"],
-                "value": [1000.0, 9999.0],
-            }
-        )
+    long_ = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "schedule": ["RC", "RC"],
+            "code_column": [None, None],
+            "code_value": [None, None],
+            "is_multiple": [False, False],
+            "variable_name": ["TOTASSETS", "TOTASSETS"],
+            "value": [1000.0, 9999.0],
+        }
+    )
     with pytest.raises(ReshapeError):
         convert_long_format_to_wide_format(long=long_.to_native())
 
 
 def test_convert_long_format_to_wide_format_is_keyword_only() -> None:
     """convert_long_format_to_wide_format takes no positional arguments."""
-    with config_context(dataframe_backend="pandas"):
-        long_ = build_frame(
-            data={
-                "UNINUM": [1],
-                "period": ["2026-03-31"],
-                "schedule": ["RC"],
-                "code_column": [None],
-                "code_value": [None],
-                "is_multiple": [False],
-                "variable_name": ["TOTASSETS"],
-                "value": [1000.0],
-            }
-        )
+    long_ = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "schedule": ["RC"],
+            "code_column": [None],
+            "code_value": [None],
+            "is_multiple": [False],
+            "variable_name": ["TOTASSETS"],
+            "value": [1000.0],
+        }
+    )
     with pytest.raises(TypeError):
         convert_long_format_to_wide_format(  # type: ignore[call-overload]
             long_.to_native()
@@ -930,15 +887,14 @@ def test_wide_to_long_to_wide_round_trip_matches_original() -> None:
     grid-completion introduces no extra rows either way -- an exact match
     is expected here (see the real-archive test for the with-gaps case).
     """
-    with config_context(dataframe_backend="pandas"):
-        wide = build_frame(
-            data={
-                "UNINUM": [1, 2],
-                "period": ["2026-03-31", "2026-03-31"],
-                "RC__TOTASSETS": [1000.0, 2000.0],
-                "RCB__INV_CODE_15__BKVAL": [9.0, 8.0],
-            }
-        ).to_native()
+    wide = build_frame(
+        data={
+            "UNINUM": [1, 2],
+            "period": ["2026-03-31", "2026-03-31"],
+            "RC__TOTASSETS": [1000.0, 2000.0],
+            "RCB__INV_CODE_15__BKVAL": [9.0, 8.0],
+        }
+    ).to_native()
     long_ = convert_wide_format_to_long_format(wide=wide)
     round_tripped = nw.from_native(convert_long_format_to_wide_format(long=long_))
     original = nw.from_native(wide)
@@ -950,7 +906,7 @@ def test_wide_to_long_to_wide_round_trip_matches_original() -> None:
     assert round_tripped_rows == original_rows
 
 
-def test_long_to_wide_to_long_round_trip_matches_non_null_rows() -> None:
+def test_long_to_wide_to_long_round_trip_matches_non_nullsorted_rows() -> None:
     """Long -> wide -> long reproduces every non-null-value row exactly.
 
     This fixture has a genuine gap (UNINUM 2 has no INV_CODE=20 row at
@@ -958,19 +914,18 @@ def test_long_to_wide_to_long_round_trip_matches_non_null_rows() -> None:
     null row that the original never had -- documented behavior, not a
     bug (see convert_wide_format_to_long_format's docstring).
     """
-    with config_context(dataframe_backend="pandas"):
-        original = build_frame(
-            data={
-                "UNINUM": [1, 1, 2],
-                "period": ["2026-03-31"] * 3,
-                "schedule": ["RCB", "RCB", "RCB"],
-                "code_column": ["INV_CODE"] * 3,
-                "code_value": [10.0, 20.0, 10.0],
-                "is_multiple": [True, True, True],
-                "variable_name": ["BKVAL"] * 3,
-                "value": [100.0, 150.0, 300.0],
-            }
-        ).to_native()
+    original = build_frame(
+        data={
+            "UNINUM": [1, 1, 2],
+            "period": ["2026-03-31"] * 3,
+            "schedule": ["RCB", "RCB", "RCB"],
+            "code_column": ["INV_CODE"] * 3,
+            "code_value": [10.0, 20.0, 10.0],
+            "is_multiple": [True, True, True],
+            "variable_name": ["BKVAL"] * 3,
+            "value": [100.0, 150.0, 300.0],
+        }
+    ).to_native()
     wide = convert_long_format_to_wide_format(long=original)
     round_tripped = nw.from_native(convert_wide_format_to_long_format(wide=wide))
     original_frame = nw.from_native(original)
