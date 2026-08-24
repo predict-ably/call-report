@@ -1,0 +1,269 @@
+{
+  "name": "RIB",
+  "periods": [
+    {
+      "start": "2000-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "GLMKTINV": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net Gains or Losses on Sales of Securities",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "GAINMKTINV": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gains on Sales of Securities",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LOSSMKTINV": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Losses on Sales of Securities",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "GLAQPROP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net Gains or Losses on Sales of Other Property Owned",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "GAINACQPROP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gains on Sales of Other Property Owned",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LOSSACQPROP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Losses on Sales of Other Property Owned",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NETGLOASSETS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net Gains or Losses on Sales of Other Assets",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "GAINOASSETS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gains on Sales of Other Assets",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LOSSOASSETS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Losses on Sales of Other Assets",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NETGLOTRAN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net Gains or Losses on Other Transactions",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "GAINOTRAN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gains on Other Transactions",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LOSSOTRAN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Losses on Other Transactions",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NETGLASSETS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Gains or Losses",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NETIMPAIRLOSs": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net other-than-temporary impairment losses",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Net other-than-temporary impairment losses",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Net other-than-temporary impairment losses",
+          "period_start": "2008-09-30",
+          "period_end": "2012-12-31"
+        }
+      ]
+    },
+    "NETIMPAIRLOSS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net other-than-temporary impairment losses",
+          "period_start": "2013-03-31",
+          "period_end": "2014-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Impairment on available-for-sale debt securities",
+          "period_start": "2015-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LoanLeaseSaleNetGain": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net gains (or losses(-)) on sales of loans and leases",
+          "period_start": "2013-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LoanLeaseSaleGain": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Gains",
+          "period_start": "2013-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LoanLeaseSaleLoss": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Losses",
+          "period_start": "2013-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

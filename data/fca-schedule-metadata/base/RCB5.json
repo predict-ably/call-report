@@ -1,0 +1,501 @@
+{
+  "name": "RCB5",
+  "periods": [
+    {
+      "start": "2018-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyBankInv35Pct30Day": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment Regulatory Limits (Banks only): Investments subject to the 35% regulatory limit (615.5132) (30-day average daily balance)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyBankTotLoans": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment Regulatory Limits (Banks only): Total loans as defined by 615.5131 (quarterly average daily balance)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankInvPctOfTotLoans": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "Investment Regulatory Limits (Banks only): Investments as a percentage of total loans (item 1(a) divided by 1(b))",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankLrgstObligor": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment Regulatory Limits (Banks only): Largest concentration to one obligor (excluding investments fully guaranteed by the U.S. government or GSE) (quarter-end)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankLrgstObligorPctOfTotRegCap": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "Investment Regulatory Limits (Banks only): Obligor exposure as a percentage of total regulatory capital (item 1(d) divided by RC-R.1, item 5(a))",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TotInvestmentsRegLimit": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment Regulatory Limits (Banks only): Total investments volume, as adjusted to measure asset class and GSE-MBS concentration limits (quarter-end)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankLrgstConcnAssetCls": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment Regulatory Limits (Banks only): Largest concentration in one asset class (excluding money market securities and investments fully guaranteed by U.S. government or GSE) (quarter-end)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankLrgstConcnAssetClsPctOfTotInv": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "Investment Regulatory Limits (Banks only): Largest percentage portfolio concentration in one asset class (item 1(g) divided by 1(f))",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankMBSByGSE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment Regulatory Limits (Banks only): MBS guaranteed by a GSE (excluding Farmer Mac securities) (quarter-end)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankMBSByGSEPctOfTotInv": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "Investment Regulatory Limits (Banks only): Percentage portfolio concentration in MBS guaranteed by a GSE (item 1(i) divided by 1(f))",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AssocInv10Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment Regulatory Limits (Associations only): Investments subject to the 10% regulatory limit (615.5140(b)(4))",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AssocLoans10Pct": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment Regulatory Limits (Associations only): Loans subject to the 10% regulatory limit (615.5140(b)(4))",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AvgDailyAssocTotLoans": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment Regulatory Limits (Associations only): Total adjusted loans as defined by 615.5140(b)(4) (90-day average daily balance)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AssocInvPctOfTotLoans": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "Investment Regulatory Limits (Associations only): Investments as a percentage of total loans (sum of items 2(a) and 2(b) divided by 2(c))",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankPledgedSecurities": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment purposes (Banks only): Pledged securities",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankSecsLiquidityRsrvBuffer": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment purposes (Banks only): Securities included in the liquidity reserve and supplemental liquidity buffer",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankSecsRemvdLiquidityRsrvBuffer": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment purposes (Banks only): Securities removed from the liquidity reserve and supplemental liquidity buffer due to noncompliance with 615.5143(a) or (b)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankSecsRemvdLiquidityBuffer": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment purposes (Banks only): Securities removed from supplemental liquidity buffer due to noncompliance with 615.5134(e)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BankSecuritiesHeldOther": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment purposes (Banks only): Securities held for other purposes",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TotBankSecurities": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investment purposes (Banks only):Total",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "IneligibleInvWhenPurchased": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Ineligible Investment: Investments determined to be ineligible when purchased as defined by 615.5143(a)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "IneligibleInvAfterPurchase": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Ineligible Investment: Investments that became ineligible after purchase as defined by 614.5143(b)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DebtSec5140e": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investments and loans approved by FCA under 615.5140(e): Debt securities",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EquitySec5140e": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investments and loans approved by FCA under 615.5140(e): Equity securities",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "Loans5140e": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Investments and loans approved by FCA under 615.5140(e): Loans",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "USDADebtSecsFarmerMac": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "USDA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Debt securities: Issued or guaranteed by Farmer Mac",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "USDADebtSecsOther": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "USDA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Debt securities: Other securitizations",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "USDALoanPurch5140Amt": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "USDA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Loans purchased under investment authorities in regulation 615.5140: Amount outstanding",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "USDALoanPurch5140AmtPurch": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "USDA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Loans purchased under investment authorities in regulation 615.5140: Amount purchased during quarter",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "USDALoanPurch5140Nbr": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "USDA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Loans purchased under investment authorities in regulation 615.5140: Number outstanding",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "USDALoanPurch5140NbrPurch": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "USDA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Loans purchased under investment authorities in regulation 615.5140: Number purchased during quarter",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "USDAPremiumAdded": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "USDA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Price premiums/discounts: Premiums added during quarter (net of discounts)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "USDAPremiumAmortized": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "USDA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Price premiums/discounts: Premiums amortized during quarter (net of discounts)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "USDAUnamortizedPremium": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "USDA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Price premiums/discounts: Unamortized premiums outstanding (net of discounts)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "USDAAvgPricePaidPurch": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "USDA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Average price paid on purchases during quarter",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "USDAProjAvgRORPurch": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "USDA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Projected average internal rate of return on purchases during quarter",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "SBADebtSecs": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "SBA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Debt securities",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "SBALoanPurch5140": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "SBA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Loans purchased under investment authorities in regulation 615.5140",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "SBAPremiumAdded": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "SBA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Price premiums/discounts Premiums added during quarter (net of discounts)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "SBAPremiumAmortized": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "SBA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Price premiums/discounts Premiums amortized during quarter (net of discounts)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "SBAUnamortizedPremium": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "SBA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Price premiums/discounts Unamortized premiums outstanding (net of discounts)",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "SBAAvgPricePaidPurch": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "SBA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Average price paid on purchases during quarter",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "SBAProjAvgRORPurch": {
+      "versions": [
+        {
+          "dtype": "Float64",
+          "definition": "SBA Guaranteed Financial Instruments Purchased Under Regulatory Investment Authorities: Projected average internal rate of return on purchases during quarter",
+          "period_start": "2018-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

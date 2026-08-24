@@ -3,8 +3,10 @@
 This package collects the small vocabulary every call report source shares:
 the calendar-quarter enum and reporting-period objects
 (:class:`ReportingPeriod`, :class:`PeriodRange`), the cross-time schema
-vocabulary (:class:`FieldAttributes`, :class:`FieldSchema`,
-:class:`FileMetadata`), the cross-source :class:`Source` and
+vocabulary (:class:`FieldVersion`, :class:`FieldAttributes`,
+:class:`FieldSchema`, :class:`FileMetadata`, and their comparison-result
+types :class:`FieldChange`, :class:`FieldSchemaDiff`,
+:class:`FileMetadataDiff`), the cross-source :class:`Source` and
 :class:`FileType` enums, and :class:`BaseCallReport`, the abstract interface
 every source-specific entry point implements. Import them directly from
 ``call_report.core`` (e.g. ``from call_report.core import ReportingPeriod``);
@@ -17,13 +19,25 @@ from __future__ import annotations
 from call_report.core._base import BaseCallReport
 from call_report.core._enums import FileType, Quarter, Source
 from call_report.core._periods import PeriodRange, ReportingPeriod
-from call_report.core._schema import FieldAttributes, FieldSchema, FileMetadata
+from call_report.core._schema import (
+    FieldAttributes,
+    FieldChange,
+    FieldSchema,
+    FieldSchemaDiff,
+    FieldVersion,
+    FileMetadata,
+    FileMetadataDiff,
+)
 
 __all__ = [
     "BaseCallReport",
     "FieldAttributes",
+    "FieldChange",
     "FieldSchema",
+    "FieldSchemaDiff",
+    "FieldVersion",
     "FileMetadata",
+    "FileMetadataDiff",
     "FileType",
     "PeriodRange",
     "Quarter",

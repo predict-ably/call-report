@@ -1,0 +1,537 @@
+{
+  "name": "RI",
+  "periods": [
+    {
+      "start": "2000-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "INTLNS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest income on Loans and Leases",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "INTNTRECOFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest income on notes receivable from other FCS institutions",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "INTNTRECO": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest income on notes receivable from others",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "INTSCON": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest on Sales Contracts",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "INTMKTIN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest and Other Income on securities",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Interest and Other Income on Marketable Investments",
+          "period_start": "2004-03-31",
+          "period_end": "2004-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Interest and Other Income on securities",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Interest and Other Income on Marketable Investments",
+          "period_start": "2006-03-31",
+          "period_end": "2008-06-30"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Interest and Other Income on securities",
+          "period_start": "2008-09-30",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OINTINC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other Interest Income",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TINTINC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Interest Income",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXPSYSNTBDS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest Expense on Systemwide Notes and Bonds",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXPNTPAYOFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest Expense on Notes payable to Other FCS institutions",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXPOINTBEARDT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest Expense on Other interest- bearing debt",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TOTINTEXP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Interest Expense",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NETINTY": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net Interest Income",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "PROVLNS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Provisions for Losses on Loans,Sales Contracts,Notes,and Leases",
+          "period_start": "2000-03-31",
+          "period_end": "2014-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Provisions for credit losses: On loans, sales contracts, notes, and leases",
+          "period_start": "2015-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "PROVOTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Provisions for Losses on Other Assets",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "PATDIV": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Patronage,Dividends,etc.,from other FC Institutions",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OPNONINTY": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Operating Income",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ONONINTY": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other Noninterest Income",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TOTNONINTY": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Noninterest Income",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NETGLASSETS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net Gains or Losses",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TOTNONINTEXP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Noninterest Expense",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BFORTAX": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Income before Income Taxes and Extraordinary Items and Other Adjustments",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TAXES": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Applicable Income Taxes",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "BFOREXT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Income before Extraordinary Items and Other Adjustments",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXTITEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Extraordinary Items and Other Adjustments",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NETY": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net Income (or loss (-))",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "INTDLNASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest income on Direct loans to associations",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "INTNONACLN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest on nonaccrual loans",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXPNTDLNDIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest expense on notes payable/direct loans to district bank (ACAs, PCAs, and FLCAs only)",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNREALINVSEC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Unrealized holding gains (or losses(-)) on investment securities",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MPENLIABADJ": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Minimum pension liability adjustments",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OCOMPINCADJ": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other comprehensive income adjustments",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NOCOMPINC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Net other comprehensive income (or loss(-))",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "COMPINC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Comprehensive income (or loss(-))",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CASHFLOHEDGADJ": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Cash flow hedge adjustments",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NONTEMPIMPAIRN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other-than-temporary impairments included in earnings",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Other-than-temporary impairments included in earnings",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Other-than-temporary impairments included in earnings",
+          "period_start": "2008-09-30",
+          "period_end": "2014-12-31"
+        }
+      ]
+    },
+    "PATPAID": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Patronage on Asset Purchases and Sales - Certain Pool Programs: Paid",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Patronage on Asset Purchases and Sales - Certain Pool Programs: Paid",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Patronage on Asset Purchases and Sales - Certain Pool Programs: Paid",
+          "period_start": "2011-12-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "PATRECEIVED": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Patronage on Asset Purchases and Sales - Certain Pool Programs: Recieved",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Patronage on Asset Purchases and Sales - Certain Pool Programs: Recieved",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Patronage on Asset Purchases and Sales - Certain Pool Programs: Recieved",
+          "period_start": "2011-12-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LossProvisionOBSExposure": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Provisions for losses: On off-balance sheet exposures",
+          "period_start": "2013-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NONTEMPIMPAIR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Non-credit impairment on securities available-for-sale included in earnings",
+          "period_start": "2015-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ProvDebtSec": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Provisions for credit losses: On debt securities (start collecting on March 2023)",
+          "period_start": "2015-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

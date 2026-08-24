@@ -1,0 +1,691 @@
+{
+  "name": "RC",
+  "periods": [
+    {
+      "start": "2000-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CASH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Cash",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MKTINV": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Securities",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Marketable Investments",
+          "period_start": "2004-03-31",
+          "period_end": "2004-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Securities",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Marketable Investments",
+          "period_start": "2006-03-31",
+          "period_end": "2008-06-30"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Securities",
+          "period_start": "2008-09-30",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "ACTREC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accounts Receivable",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ACRLNS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrual Loans and Leases net of unearned income and unapplied loan payments",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NTRECOFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans, notes, sales, contracts, and leases: Notes receivable from other FCS institutions",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ONTREC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans, notes, sales, contracts, and leases: Other notes receivable",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ACRSCON": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans, notes, sales, contracts, and leases: Accrual Sales Contracts",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NONACR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans, notes, sales, contracts, and leases: Nonaccrual Loans",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ALLNLOSS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans, notes, sales, contracts, and leases: Allowance for Losses on Loans",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Loans, notes, sales, contracts, and leases: Allowance for credit losses on loans, etc.",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NETLOANS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans, notes, sales, contracts, and leases: Net Loans",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIRLOANS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued Interest Receivable on Loans and Leases",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIRNTRECOFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued Interest Receivable on Notes receivable from other FCS Institutions",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIRONTREC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued Interest Receivable on Other Notes receivable",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIRSCON": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued Interest Receivable on Sales Contracts",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIRMKTIN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued Interest Receivable on Securities",
+          "period_start": "2000-03-31",
+          "period_end": "2003-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Accrued Interest Receivable on Marketable Investments",
+          "period_start": "2004-03-31",
+          "period_end": "2004-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Accrued Interest Receivable on Securities",
+          "period_start": "2005-03-31",
+          "period_end": "2005-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Accrued Interest Receivable on Marketable Investments",
+          "period_start": "2006-03-31",
+          "period_end": "2008-06-30"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Accrued Interest Receivable on Securities",
+          "period_start": "2008-09-30",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIREC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Accrued Interest Receivable",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "INFCINST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity Investments in other FC Institutions",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "NAQPROP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other Property Owned",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "FIXASSET": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Premises and Other Fixed Assets",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OASSETS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other Assets",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSETS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Assets",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "SYSNTBDSOS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest bearing liabilities: Systemwide notes and bonds outstanding",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "NTPAYOFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest bearing liabilities: Notes payable to other FCS",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OINTBEARDT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest bearing liabilities: Other interest-bearing debt",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ACTPAY": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accounts Payable",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIPSYSNTBDSOS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued interest payable on: Systemwide notes and bonds outstanding",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIPNTPAYOFCI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued interest payable on: Notes payable to other FCS institutions",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIPOINTBEARDT": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued Interest Payable on Other interest-bearing debt",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIPAY": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Accrued Interest Payable",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OLIABS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other Liabilities",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LIABS": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Liabilities",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CAPSTK": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Capital Stock, Participation certificates and paid-in surplus net of impairment",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "EARNNW": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Earned Surplus Net of Impairment",
+          "period_start": "2000-03-31",
+          "period_end": "2016-12-31"
+        }
+      ]
+    },
+    "NETWRTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Net Worth",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TOTLICAP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Liabilities and Net Worth",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ACNOCOMINC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accumulated other comprehensive income (net)",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LNADJFVAL": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans, notes, sales, contracts, and leases: Loan adjustment for fair value",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DTADJFVAL": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest bearing liabilities: Debt adjustment for fair value",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TOTINTBEARLIAB": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest bearing liabilities: Total interest bearing liabilities",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIRDERIVATIVE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued interest receivable: Derivatives",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "IBLSUBNOTEBOND": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "nterest bearing liabilities: Subordinated notes and bonds",
+          "period_start": "2000-03-31",
+          "period_end": "2012-12-31"
+        },
+        {
+          "dtype": "Int64",
+          "definition": "Interest bearing liabilities: Subordinated notes and bonds",
+          "period_start": "2013-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIPSUBNOTEBOND": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued interest payable on: Subordinated notes and bonds",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AIPDERIVATIVE": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued interest payable on: Derivatives",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "LoanLeaseHeld": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Loans and leases held for sale",
+          "period_start": "2013-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CreditLossReserve": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Reserve for credit losses on off-balance sheet exposures",
+          "period_start": "2013-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TERMPERFSTK": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Interest bearing liabilities: Limited-life (term) preferred stock",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AccrdIntPayTermPrefStk": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Accrued interest payable on: Limited-life (term) preferred stock",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "CapStock": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Capital stock",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "PerpetualPrefStk": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Perpetual Preferred stock",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "PAIDIN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Paid-in capital",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "AllocSurplus": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Allocated Surplus",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNRETERN": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Unallocated retained earnings",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TotInvDebtSecurities": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Debt securities, net of allowance for credit losses",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TotInvEquityFCSI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity investments in System institutions and Farmer Mac",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TotInvEquityNonFCSI": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Equity investments in non-System institutions",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "TotInvestments": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Investments",
+          "period_start": "2017-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

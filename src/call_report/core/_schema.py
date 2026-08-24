@@ -2,16 +2,21 @@
 
 A call report file (schedule) and the fields within it can both change shape
 over time: fields get added, dropped, or occasionally retired and later
-reintroduced as a source's forms evolve. :class:`FieldAttributes` and
-:class:`FileMetadata` capture that history uniformly across sources, in
-terms of the periods each field or file is actually present for, so a single
-object can answer "what did this look like across every period" rather than
-one period at a time.
+reintroduced as a source's forms evolve. A field can also be redefined in
+place -- its dtype or definition can change while the field never actually
+disappears (e.g. a field whose embedded code list grows over time).
+:class:`FieldVersion` captures one span of a field's history where its
+dtype/definition held constant; :class:`FieldAttributes` is one or more of
+them. :class:`FieldAttributes` and :class:`FileMetadata` capture this history
+uniformly across sources, in terms of the periods each field or file is
+actually present for, so a single object can answer "what did this look like
+across every period" rather than one period at a time.
 """
 
 from __future__ import annotations
 
 import ast
+import json
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager, nullcontext
@@ -24,13 +29,18 @@ import narwhals as nw
 from call_report.config import DataFrameBackend, config_context
 from call_report.core._backend import (
     DataFrameType,
+    FrameOrLazy,
     build_frame,
     concat,
     convert_dataframe_type,
     finalize,
 )
 from call_report.core._periods import PeriodRange, ReportingPeriod
-from call_report.exceptions import PeriodNotAvailableError, SchemaError
+from call_report.exceptions import (
+    InvalidPeriodError,
+    PeriodNotAvailableError,
+    SchemaError,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -248,58 +258,188 @@ def _validate_period_spans(periods: tuple[PeriodRange, ...], label: str) -> None
 
 
 @dataclass(frozen=True, kw_only=True)
+class FieldVersion:
+    """One span of a field's history where its dtype and definition held constant.
+
+    A `FieldAttributes`'s `versions` is one or more of these: most fields
+    have exactly one (their dtype/definition never changed across their
+    whole known history), but a field whose definition was revised in
+    place -- without ever disappearing -- has one version per revision,
+    with adjacent (non-gapped) `periods`.
+
+    Attributes
+    ----------
+    dtype : narwhals.dtypes.DType
+        The field's data type during this version, as an instantiated
+        narwhals dtype (e.g. `narwhals.Int64()`, `narwhals.String()`).
+        Translating a source's own vocabulary (e.g. FCA's
+        ``"Numeric"``/``"Alphanum."``) into a narwhals dtype is that
+        source's own responsibility -- this class is shared across every
+        source, so it only ever deals in narwhals' vocabulary.
+    definition : str
+        The field's human-readable definition during this version, taken
+        from the source's layout file.
+    periods : PeriodRange
+        The contiguous span this version covers.
+
+    Examples
+    --------
+    >>> import narwhals as nw
+    >>> from call_report.core import FieldVersion, PeriodRange
+    >>> version = FieldVersion(
+    ...     dtype=nw.Int64(),
+    ...     definition="Investment Code: 10 U.S. Treasury securities...",
+    ...     periods=PeriodRange(start="2000-03-31", end="2014-12-31"),
+    ... )
+    >>> version.periods[0].label
+    '2000Q1'
+    """  # numpydoc ignore=PR01
+
+    dtype: nw.dtypes.DType
+    definition: str
+    periods: PeriodRange
+
+
+def _validate_field_versions(versions: tuple[FieldVersion, ...], label: str) -> None:
+    """Validate that field versions are non-empty, ordered, and non-overlapping.
+
+    Unlike `_validate_period_spans`, adjacent versions are allowed when
+    their `dtype`/`definition` differ -- that represents an in-place
+    redefinition (e.g. a field's embedded code list growing over time with
+    no presence gap). Adjacent versions with identical `dtype`/`definition`
+    are still rejected, since those should have been expressed as a single
+    version.
+
+    Parameters
+    ----------
+    versions : tuple[FieldVersion, ...]
+        The versions to validate, in the order they were supplied.
+    label : str
+        A short description of the field being validated, used to make
+        the error message actionable.
+
+    Raises
+    ------
+    SchemaError
+        If `versions` is empty, or any two versions are out of order,
+        overlapping, or adjacent with identical `dtype`/`definition`.
+    """
+    if not versions:
+        raise SchemaError(f"{label} must have at least one version.")
+    previous = versions[0]
+    for version in versions[1:]:
+        next_expected = previous.periods[-1].next()
+        start = version.periods[0]
+        if start < next_expected:
+            raise SchemaError(
+                f"{label} versions must be chronologically ordered and "
+                f"non-overlapping; the version starting {start.label} is "
+                f"not far enough after the version ending "
+                f"{previous.periods[-1].label}."
+            )
+        if start == next_expected and (version.dtype, version.definition) == (
+            previous.dtype,
+            previous.definition,
+        ):
+            raise SchemaError(
+                f"{label} has adjacent versions with identical dtype/definition "
+                f"spanning {previous.periods[0].label} to {version.periods[-1].label}; "
+                "these should be merged into a single version."
+            )
+        previous = version
+
+
+def _coalesced_presence(versions: tuple[FieldVersion, ...]) -> tuple[PeriodRange, ...]:
+    """Merge a field's versions into presence spans, ignoring content changes.
+
+    Adjacent versions (regardless of whether their `dtype`/`definition`
+    differ) are merged into one span; a span only breaks where a real gap
+    exists. Used by `FileMetadata.changed` to compare a field's overall
+    presence against the file's own `periods`, independent of any
+    in-place redefinitions the field underwent while present.
+
+    Parameters
+    ----------
+    versions : tuple[FieldVersion, ...]
+        A field's versions, chronologically ordered (as `FieldAttributes`
+        already guarantees).
+
+    Returns
+    -------
+    tuple[PeriodRange, ...]
+        The field's presence spans, merged across content changes.
+    """
+    merged: list[PeriodRange] = [versions[0].periods]
+    for version in versions[1:]:
+        if version.periods[0] == merged[-1][-1].next():
+            merged[-1] = PeriodRange(start=merged[-1][0], end=version.periods[-1])
+        else:
+            merged.append(version.periods)
+    return tuple(merged)
+
+
+@dataclass(frozen=True, kw_only=True)
 class FieldAttributes:
     """Cross-time metadata for a single field within a call report file.
 
     Unlike a per-period layout entry, this describes a field across its
-    whole known history rather than a single period.
+    whole known history rather than a single period. A field whose dtype
+    or definition changed while it stayed continuously present (e.g. a
+    field whose embedded code list grew over time, with no presence gap)
+    is represented as multiple `FieldVersion` objects with adjacent
+    `periods`, rather than forcing one dtype/definition across the field's
+    entire history.
 
     Attributes
     ----------
     name : str
         The field's name, as it appears in the source's layout files.
-    dtype : narwhals.dtypes.DType
-        The field's data type, as an instantiated narwhals dtype (e.g.
-        `narwhals.Int64()`, `narwhals.String()`). Translating a source's
-        own vocabulary (e.g. FCA's ``"Numeric"``/``"Alphanum."``) into a
-        narwhals dtype is that source's own responsibility -- this class
-        is shared across every source, so it only ever deals in narwhals'
-        vocabulary.
-    definition : str
-        The field's human-readable definition, taken from the source's
-        layout file.
-    periods : tuple[PeriodRange, ...]
-        One or more chronologically ordered, non-overlapping, non-adjacent
-        spans describing when this field was present. More than one span
-        means the field was dropped and later reintroduced.
+    versions : tuple[FieldVersion, ...]
+        One or more chronologically ordered, non-overlapping `FieldVersion`
+        objects describing this field's dtype/definition over time. More
+        than one version means the field's dtype or definition changed at
+        some point, was dropped and later reintroduced, or both. Adjacent
+        versions always differ in `dtype`/`definition` -- identical
+        adjacent content is rejected, since it should have been expressed
+        as a single version.
 
     Raises
     ------
     SchemaError
-        If `periods` is empty, or its spans are out of order, overlapping,
-        or adjacent.
+        If `versions` is empty, or its spans are out of order, overlapping,
+        or adjacent with identical `dtype`/`definition`.
 
     Examples
     --------
     >>> import narwhals as nw
-    >>> from call_report.core import FieldAttributes, PeriodRange
-    >>> uninum = FieldAttributes(
-    ...     name="UNINUM",
-    ...     dtype=nw.Int64(),
-    ...     definition="System, District, and Association codes concatenated.",
-    ...     periods=(PeriodRange(start="2000-03-31", end="2026-03-31"),),
+    >>> from call_report.core import FieldAttributes, FieldVersion, PeriodRange
+    >>> inv_code = FieldAttributes(
+    ...     name="INV_CODE",
+    ...     versions=(
+    ...         FieldVersion(
+    ...             dtype=nw.Int64(),
+    ...             definition="Investment Code: 10 U.S. Treasury securities...",
+    ...             periods=PeriodRange(start="2000-03-31", end="2014-12-31"),
+    ...         ),
+    ...         FieldVersion(
+    ...             dtype=nw.Int64(),
+    ...             definition="Investment Code: 10 U.S. Treasury securities..."
+    ...             "15 SBA securities...",
+    ...             periods=PeriodRange(start="2015-03-31", end="2026-03-31"),
+    ...         ),
+    ...     ),
     ... )
-    >>> uninum.first_period.label
+    >>> inv_code.first_period.label
     '2000Q1'
+    >>> inv_code.last_period.label
+    '2026Q1'
     """  # numpydoc ignore=PR01
 
     name: str
-    dtype: nw.dtypes.DType
-    definition: str
-    periods: tuple[PeriodRange, ...]
+    versions: tuple[FieldVersion, ...]
 
     def __post_init__(self) -> None:
-        """Validate that `periods` forms well-ordered, non-overlapping spans.
+        """Validate that `versions` forms well-ordered, non-overlapping spans.
 
         Runs automatically after construction, since this dataclass is
         frozen and cannot be validated any other way.
@@ -307,64 +447,72 @@ class FieldAttributes:
         Raises
         ------
         SchemaError
-            If `periods` is empty, or any two spans are out of order,
-            overlapping, or adjacent.
+            If `versions` is empty, or any two versions are out of order,
+            overlapping, or adjacent with identical `dtype`/`definition`.
         """
-        _validate_period_spans(self.periods, f"field {self.name!r}")
+        _validate_field_versions(self.versions, f"field {self.name!r}")
 
     @property
     def first_period(self) -> ReportingPeriod:
         """Return the earliest period this field is present in.
 
-        This is the start of the earliest of this field's `periods` spans,
-        not necessarily the start of the file it belongs to.
+        This is the start of this field's earliest version, not
+        necessarily the start of the file it belongs to.
 
         Returns
         -------
         ReportingPeriod
-            The first period of this field's earliest span.
+            The first period of this field's earliest version.
 
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, PeriodRange
+        >>> from call_report.core import FieldAttributes, FieldVersion, PeriodRange
         >>> field = FieldAttributes(
         ...     name="UNINUM",
-        ...     dtype=nw.Int64(),
-        ...     definition="",
-        ...     periods=(PeriodRange(start="2000-03-31", end="2005-12-31"),),
+        ...     versions=(
+        ...         FieldVersion(
+        ...             dtype=nw.Int64(),
+        ...             definition="",
+        ...             periods=PeriodRange(start="2000-03-31", end="2005-12-31"),
+        ...         ),
+        ...     ),
         ... )
         >>> field.first_period.label
         '2000Q1'
         """
-        return self.periods[0][0]
+        return self.versions[0].periods[0]
 
     @property
     def last_period(self) -> ReportingPeriod:
         """Return the latest period this field is present in.
 
-        This is the end of the latest of this field's `periods` spans, not
-        necessarily the end of the file it belongs to.
+        This is the end of this field's latest version, not necessarily
+        the end of the file it belongs to.
 
         Returns
         -------
         ReportingPeriod
-            The last period of this field's latest span.
+            The last period of this field's latest version.
 
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, PeriodRange
+        >>> from call_report.core import FieldAttributes, FieldVersion, PeriodRange
         >>> field = FieldAttributes(
         ...     name="UNINUM",
-        ...     dtype=nw.Int64(),
-        ...     definition="",
-        ...     periods=(PeriodRange(start="2000-03-31", end="2005-12-31"),),
+        ...     versions=(
+        ...         FieldVersion(
+        ...             dtype=nw.Int64(),
+        ...             definition="",
+        ...             periods=PeriodRange(start="2000-03-31", end="2005-12-31"),
+        ...         ),
+        ...     ),
         ... )
         >>> field.last_period.label
         '2005Q4'
         """
-        return self.periods[-1][-1]
+        return self.versions[-1].periods[-1]
 
 
 class _ReadOnlySchema(nw.Schema):
@@ -594,6 +742,108 @@ narwhals.dtypes.DType]], optional
         raise TypeError("FieldSchema.schema is read-only.")
 
 
+@dataclass(frozen=True, kw_only=True)
+class FieldChange:
+    """One field's before/after metadata between two FieldSchema snapshots.
+
+    Only appears in `FieldSchemaDiff.changed` -- a field present in only
+    one of the two compared schemas shows up in `FieldSchemaDiff.added`/
+    `FieldSchemaDiff.removed` instead, as a plain name.
+
+    Attributes
+    ----------
+    name : str
+        The field name.
+    before : FieldAttributes
+        This field's metadata in the left-hand (``self``) schema.
+    after : FieldAttributes
+        This field's metadata in the right-hand (``other``) schema.
+
+    Examples
+    --------
+    >>> import narwhals as nw
+    >>> from call_report.core import (
+    ...     FieldAttributes,
+    ...     FieldChange,
+    ...     FieldVersion,
+    ...     PeriodRange,
+    ... )
+    >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+    >>> old = FieldAttributes(
+    ...     name="UNINUM",
+    ...     versions=(FieldVersion(dtype=nw.Int64(), definition="old", periods=span),),
+    ... )
+    >>> new = FieldAttributes(
+    ...     name="UNINUM",
+    ...     versions=(FieldVersion(dtype=nw.Int64(), definition="new", periods=span),),
+    ... )
+    >>> change = FieldChange(name="UNINUM", before=old, after=new)
+    >>> change.before.versions[0].definition
+    'old'
+    """  # numpydoc ignore=PR01
+
+    name: str
+    before: FieldAttributes
+    after: FieldAttributes
+
+
+@dataclass(frozen=True, kw_only=True)
+class FieldSchemaDiff:
+    """The result of comparing two FieldSchema snapshots via `FieldSchema.compare`.
+
+    `added`/`removed`/`changed` are mutually exclusive: a field appears in
+    exactly one of them (or none, if it's identical in both schemas).
+
+    Attributes
+    ----------
+    added : tuple[str, ...]
+        Field names present in the compared-against schema but not this
+        one.
+    removed : tuple[str, ...]
+        Field names present in this schema but not the compared-against
+        one.
+    changed : tuple[FieldChange, ...]
+        Fields present in both schemas, but with different metadata.
+    order_changed : bool
+        Whether the fields common to both schemas appear in a different
+        relative order. Always ``False`` unless `FieldSchema.compare` was
+        called with ``check_order=True``.
+
+    Examples
+    --------
+    >>> diff = FieldSchemaDiff(added=("ASSOC",), removed=(), changed=())
+    >>> diff.added
+    ('ASSOC',)
+    """  # numpydoc ignore=PR01
+
+    added: tuple[str, ...]
+    removed: tuple[str, ...]
+    changed: tuple[FieldChange, ...]
+    order_changed: bool = False
+
+    @property
+    def is_empty(self) -> bool:
+        """Return whether the two schemas being compared were identical.
+
+        A convenience for the common "did anything change" check, without
+        inspecting `added`/`removed`/`changed` individually.
+
+        Returns
+        -------
+        bool
+            ``True`` if there is nothing in `added`, `removed`, or
+            `changed`, and `order_changed` is ``False``.
+
+        Examples
+        --------
+        >>> FieldSchemaDiff(added=(), removed=(), changed=()).is_empty
+        True
+        >>> FieldSchemaDiff(added=("ASSOC",), removed=(), changed=()).is_empty
+        False
+        """
+        return not (self.added or self.removed or self.changed or self.order_changed)
+
+
 class FieldSchema(Mapping[str, FieldAttributes]):
     """An ordered, immutable mapping of field name to FieldAttributes.
 
@@ -614,12 +864,16 @@ class FieldSchema(Mapping[str, FieldAttributes]):
     Examples
     --------
     >>> import narwhals as nw
-    >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+    >>> from call_report.core import (
+    ...     FieldAttributes,
+    ...     FieldSchema,
+    ...     FieldVersion,
+    ...     PeriodRange,
+    ... )
+    >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
     >>> uninum = FieldAttributes(
     ...     name="UNINUM",
-    ...     dtype=nw.Int64(),
-    ...     definition="",
-    ...     periods=(PeriodRange(start="2000-03-31", end="2026-03-31"),),
+    ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
     ... )
     >>> schema = FieldSchema(fields=[uninum])
     >>> schema["UNINUM"] is uninum
@@ -639,7 +893,9 @@ class FieldSchema(Mapping[str, FieldAttributes]):
             field.name: field for field in ordered
         }
         self._order: tuple[str, ...] = tuple(names)
-        self._schema = _ReadOnlySchema((field.name, field.dtype) for field in ordered)
+        self._schema = _ReadOnlySchema(
+            (field.name, field.versions[-1].dtype) for field in ordered
+        )
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -655,10 +911,16 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> FieldSchema(fields=[field]).names
         ('UNINUM',)
@@ -669,13 +931,13 @@ class FieldSchema(Mapping[str, FieldAttributes]):
     def schema(self) -> nw.Schema:
         """Return this schema's fields as a narwhals Schema.
 
-        Built once at construction from each field's `name` and `dtype`,
-        so `subset`, `add_fields`, `as_of`, and `from_dataframe` all get an
-        up to date narwhals Schema for free -- they construct their result
-        via `FieldSchema(fields=...)`, which runs this same construction
-        logic. Read-only: the returned object rejects in-place mutation
-        (e.g. item assignment), so it cannot be used to change this
-        schema's fields.
+        Built once at construction from each field's `name` and its
+        *latest* version's `dtype`, so `subset`, `add_fields`, `as_of`, and
+        `from_dataframe` all get an up to date narwhals Schema for free --
+        they construct their result via `FieldSchema(fields=...)`, which
+        runs this same construction logic. Read-only: the returned object
+        rejects in-place mutation (e.g. item assignment), so it cannot be
+        used to change this schema's fields.
 
         Returns
         -------
@@ -685,10 +947,16 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> FieldSchema(fields=[field]).schema
         Schema({'UNINUM': Int64})
@@ -719,13 +987,20 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> uninum = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> rssd = FieldAttributes(
-        ...     name="RSSD", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="RSSD",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> schema = FieldSchema(fields=[uninum, rssd])
         >>> schema.subset(names=["UNINUM"]).names
@@ -772,13 +1047,20 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> uninum = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> rssd = FieldAttributes(
-        ...     name="RSSD", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="RSSD",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> FieldSchema(fields=[uninum]).add_fields(fields=rssd, index=0).names
         ('RSSD', 'UNINUM')
@@ -799,9 +1081,12 @@ class FieldSchema(Mapping[str, FieldAttributes]):
     def as_of(self, *, period: str | date | ReportingPeriod) -> FieldSchema:
         """Return a new FieldSchema of only the fields present as of `period`.
 
-        Each surviving field's `periods` is narrowed to the single quarter
-        `period`, since this is a point-in-time snapshot rather than a
-        history.
+        Each surviving field is narrowed to a single version covering the
+        quarter `period`, using whichever of that field's versions was
+        actually active at that date -- not always its most recent one.
+        This is what makes the snapshot historically accurate: a field
+        whose definition was later revised still shows the definition that
+        applied at `period`, not today's.
 
         Parameters
         ----------
@@ -811,32 +1096,179 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         Returns
         -------
         FieldSchema
-            A new schema containing only fields present at `period`.
+            A new schema containing only fields present at `period`, each
+            narrowed to a single version.
 
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
-        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
-        >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
         ... )
-        >>> FieldSchema(fields=[field]).as_of(period="2010-03-31").names
-        ('UNINUM',)
+        >>> field = FieldAttributes(
+        ...     name="INV_CODE",
+        ...     versions=(
+        ...         FieldVersion(
+        ...             dtype=nw.Int64(),
+        ...             definition="old text",
+        ...             periods=PeriodRange(start="2000-03-31", end="2014-12-31"),
+        ...         ),
+        ...         FieldVersion(
+        ...             dtype=nw.Int64(),
+        ...             definition="new text",
+        ...             periods=PeriodRange(start="2015-03-31", end="2026-03-31"),
+        ...         ),
+        ...     ),
+        ... )
+        >>> schema = FieldSchema(fields=[field])
+        >>> schema.as_of(period="2010-03-31")["INV_CODE"].versions[0].definition
+        'old text'
+        >>> schema.as_of(period="2020-03-31")["INV_CODE"].versions[0].definition
+        'new text'
         """
         resolved = _coerce_period(period)
-        snapshot = (PeriodRange(start=resolved, end=resolved),)
-        return FieldSchema(
-            fields=(
+        snapshot_span = PeriodRange(start=resolved, end=resolved)
+        fields: list[FieldAttributes] = []
+        for field in self._ordered_fields:
+            active = next(
+                (version for version in field.versions if resolved in version.periods),
+                None,
+            )
+            if active is None:
+                continue
+            fields.append(
                 FieldAttributes(
                     name=field.name,
-                    dtype=field.dtype,
-                    definition=field.definition,
-                    periods=snapshot,
+                    versions=(
+                        FieldVersion(
+                            dtype=active.dtype,
+                            definition=active.definition,
+                            periods=snapshot_span,
+                        ),
+                    ),
                 )
-                for field in self._ordered_fields
-                if any(resolved in span for span in field.periods)
             )
+        return FieldSchema(fields=fields)
+
+    def is_equal(self, *, other: FieldSchema, check_order: bool = False) -> bool:
+        """Return whether `other` defines the same fields and metadata.
+
+        Content comparison is always order-insensitive (inherited from
+        `Mapping.__eq__`): two schemas with the same fields in a different
+        order compare equal by default. Pass `check_order=True` to
+        additionally require the fields appear in the same sequence.
+
+        Parameters
+        ----------
+        other : FieldSchema
+            The schema to compare against.
+        check_order : bool, default False
+            If ``True``, also require identical field order.
+
+        Returns
+        -------
+        bool
+            ``True`` if `other` has the same fields (and, if `check_order`
+            is ``True``, the same field order).
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
+        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+        >>> uninum = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
+        ... )
+        >>> rssd = FieldAttributes(
+        ...     name="RSSD",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
+        ... )
+        >>> forward = FieldSchema(fields=[uninum, rssd])
+        >>> reordered = FieldSchema(fields=[rssd, uninum])
+        >>> forward.is_equal(other=reordered)
+        True
+        >>> forward.is_equal(other=reordered, check_order=True)
+        False
+        """
+        if check_order and self.names != other.names:
+            return False
+        return self == other
+
+    def compare(
+        self, *, other: FieldSchema, check_order: bool = False
+    ) -> FieldSchemaDiff:
+        """Compare this schema against `other`, field by field.
+
+        Unlike `is_equal`, this returns the actual differences rather than
+        a single bool -- useful for reviewing what changed between two
+        point-in-time snapshots, or auditing a metadata regeneration run.
+
+        Parameters
+        ----------
+        other : FieldSchema
+            The schema to compare against.
+        check_order : bool, default False
+            If ``True``, also detect whether the fields common to both
+            schemas appear in a different relative order.
+
+        Returns
+        -------
+        FieldSchemaDiff
+            The fields added, removed, and changed between the two
+            schemas.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
+        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+        >>> def _field(name: str, definition: str) -> FieldAttributes:
+        ...     return FieldAttributes(
+        ...         name=name,
+        ...         versions=(
+        ...             FieldVersion(
+        ...                 dtype=nw.Int64(), definition=definition, periods=span
+        ...             ),
+        ...         ),
+        ...     )
+        >>> before = FieldSchema(fields=[_field("UNINUM", "old"), _field("RSSD", "")])
+        >>> after = FieldSchema(fields=[_field("UNINUM", "new"), _field("ASSOC", "")])
+        >>> diff = before.compare(other=after)
+        >>> diff.added
+        ('ASSOC',)
+        >>> diff.removed
+        ('RSSD',)
+        >>> [change.name for change in diff.changed]
+        ['UNINUM']
+        >>> diff.is_empty
+        False
+        """
+        added = tuple(name for name in other.names if name not in self._by_name)
+        removed = tuple(name for name in self.names if name not in other._by_name)
+        changed = tuple(
+            FieldChange(name=name, before=self[name], after=other[name])
+            for name in self.names
+            if name in other._by_name and self[name] != other[name]
+        )
+        common_here = tuple(name for name in self.names if name in other._by_name)
+        common_there = tuple(name for name in other.names if name in self._by_name)
+        order_changed = check_order and common_here != common_there
+        return FieldSchemaDiff(
+            added=added, removed=removed, changed=changed, order_changed=order_changed
         )
 
     @overload
@@ -885,11 +1317,12 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         backend: DataFrameBackend | None = None,
         dataframe_type: DataFrameType | None = None,
     ) -> NativeDataFrame:
-        """Return this schema as a native dataframe, one row per field span.
+        """Return this schema as a native dataframe, one row per field version.
 
-        A field present across more than one span (i.e. dropped and later
-        reintroduced) contributes one row per span, all sharing the same
-        `dtype` and `definition`.
+        A field with more than one version (redefined in place without a
+        presence gap, dropped and later reintroduced, or both) contributes
+        one row per version, each with that version's own `dtype` and
+        `definition`.
 
         Parameters
         ----------
@@ -915,7 +1348,7 @@ class FieldSchema(Mapping[str, FieldAttributes]):
             A native dataframe with columns ``field_name``, ``dtype``,
             ``definition``, ``period_start``, and ``period_end`` (the last
             two as ISO ``YYYY-MM-DD`` strings). ``dtype`` holds each
-            field's narwhals dtype as its `repr` (e.g. ``"Int64"``,
+            version's narwhals dtype as its `repr` (e.g. ``"Int64"``,
             ``"Datetime(time_unit='us', time_zone='UTC')"``) -- a plain
             string, so it round-trips through every backend, including
             pyarrow, which cannot hold arbitrary Python objects as column
@@ -924,10 +1357,16 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> frame = FieldSchema(fields=[field]).to_dataframe()
         >>> list(frame.columns)
@@ -935,12 +1374,14 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         """
         columns: dict[str, list[Any]] = {column: [] for column in _FIELD_COLUMNS}
         for field in self._ordered_fields:
-            for span in field.periods:
+            for version in field.versions:
                 columns["field_name"].append(field.name)
-                columns["dtype"].append(repr(field.dtype))
-                columns["definition"].append(field.definition)
-                columns["period_start"].append(span[0].period_end.isoformat())
-                columns["period_end"].append(span[-1].period_end.isoformat())
+                columns["dtype"].append(repr(version.dtype))
+                columns["definition"].append(version.definition)
+                columns["period_start"].append(
+                    version.periods[0].period_end.isoformat()
+                )
+                columns["period_end"].append(version.periods[-1].period_end.isoformat())
         with _backend_context(backend):
             native = finalize(frame=build_frame(data=columns))
         return convert_dataframe_type(data=native, dataframe_type=dataframe_type)
@@ -950,7 +1391,7 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         """Reconstruct a FieldSchema from a dataframe built by `to_dataframe`.
 
         Rows are grouped by ``field_name``, so a field is reconstructed
-        with all of its spans even if `data` has one row per span.
+        with all of its versions even if `data` has one row per version.
 
         Parameters
         ----------
@@ -965,40 +1406,135 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> frame = FieldSchema(fields=[field]).to_dataframe()
         >>> FieldSchema.from_dataframe(data=frame).names
         ('UNINUM',)
         """
         order: list[str] = []
-        dtypes: dict[str, nw.dtypes.DType] = {}
-        definitions: dict[str, str] = {}
-        spans: dict[str, list[PeriodRange]] = {}
+        versions: dict[str, list[FieldVersion]] = {}
         for row in _rows(data):
             name = row["field_name"]
-            if name not in spans:
+            if name not in versions:
                 order.append(name)
-                spans[name] = []
-                dtypes[name] = _dtype_from_repr(row["dtype"])
-                definitions[name] = row["definition"]
-            spans[name].append(
-                PeriodRange(start=row["period_start"], end=row["period_end"])
+                versions[name] = []
+            versions[name].append(
+                FieldVersion(
+                    dtype=_dtype_from_repr(row["dtype"]),
+                    definition=row["definition"],
+                    periods=PeriodRange(
+                        start=row["period_start"], end=row["period_end"]
+                    ),
+                )
             )
         return cls(
             fields=[
-                FieldAttributes(
-                    name=name,
-                    dtype=dtypes[name],
-                    definition=definitions[name],
-                    periods=tuple(spans[name]),
-                )
+                FieldAttributes(name=name, versions=tuple(versions[name]))
                 for name in order
             ]
         )
+
+    def to_json(self, *, indent: int | None = 2) -> str:
+        """Return this schema as a JSON string.
+
+        The format this package ships canonical schedule metadata in (see
+        `call_report.fca.get_fca_file_metadata`) -- chosen over a flat
+        dataframe because a field's versions nest naturally under its
+        name.
+
+        Parameters
+        ----------
+        indent : int, optional
+            Passed through to `json.dumps`; the default (``2``) produces
+            human-readable, diffable output, matching the shipped metadata
+            files. Pass ``None`` for the most compact representation.
+
+        Returns
+        -------
+        str
+            A JSON object mapping each field name to its ``versions``
+            list, field order preserved.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
+        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+        >>> field = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
+        ... )
+        >>> schema = FieldSchema(fields=[field])
+        >>> FieldSchema.from_json(text=schema.to_json()) == schema
+        True
+        """
+        return json.dumps(_field_schema_to_dict(self), indent=indent)
+
+    @classmethod
+    def from_json(cls, *, text: str) -> FieldSchema:
+        """Reconstruct a FieldSchema from JSON built by `to_json`.
+
+        The inverse of `to_json`; round-tripping a schema through both
+        reconstructs an equal `FieldSchema`.
+
+        Parameters
+        ----------
+        text : str
+            A JSON string in the shape `to_json` produces.
+
+        Returns
+        -------
+        FieldSchema
+            The reconstructed schema.
+
+        Raises
+        ------
+        SchemaError
+            If `text` is not valid JSON, is valid JSON that isn't a JSON
+            object, or doesn't otherwise match the shape `to_json`
+            produces (a missing key, a bad dtype repr, or an invalid
+            period value).
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
+        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+        >>> field = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
+        ... )
+        >>> schema = FieldSchema(fields=[field])
+        >>> FieldSchema.from_json(text=schema.to_json()).names
+        ('UNINUM',)
+        """
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise SchemaError(f"{text[:80]!r} is not valid JSON: {error}") from error
+        if not isinstance(data, dict):
+            raise SchemaError(f"expected a JSON object, got {type(data).__name__}.")
+        return _field_schema_from_dict(data)
 
     def __getitem__(self, name: str) -> FieldAttributes:
         """Return the field with the given name.
@@ -1023,10 +1559,16 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> FieldSchema(fields=[field])["UNINUM"] is field
         True
@@ -1047,10 +1589,16 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> list(FieldSchema(fields=[field]))
         ['UNINUM']
@@ -1070,10 +1618,16 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> len(FieldSchema(fields=[field]))
         1
@@ -1093,15 +1647,161 @@ class FieldSchema(Mapping[str, FieldAttributes]):
         Examples
         --------
         >>> import narwhals as nw
-        >>> from call_report.core import FieldAttributes, FieldSchema, PeriodRange
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> FieldSchema(fields=[field])
         FieldSchema(names=('UNINUM',))
         """
         return f"FieldSchema(names={self._order!r})"
+
+
+def _field_schema_to_dict(schema: FieldSchema) -> dict[str, Any]:
+    """Convert a FieldSchema into a JSON-serializable nested dict.
+
+    Shared by `FieldSchema.to_json` and `FileMetadata.to_json`, so the
+    field-serialization shape is defined exactly once.
+
+    Parameters
+    ----------
+    schema : FieldSchema
+        The schema to convert.
+
+    Returns
+    -------
+    dict[str, Any]
+        A ``{field_name: {"versions": [...]}}`` mapping, field order
+        preserved.
+    """
+    return {
+        field.name: {
+            "versions": [
+                {
+                    "dtype": repr(version.dtype),
+                    "definition": version.definition,
+                    "period_start": version.periods[0].period_end.isoformat(),
+                    "period_end": version.periods[-1].period_end.isoformat(),
+                }
+                for version in field.versions
+            ]
+        }
+        for field in schema.values()
+    }
+
+
+def _field_schema_from_dict(data: Mapping[str, Any]) -> FieldSchema:
+    """Reconstruct a FieldSchema from the dict shape `_field_schema_to_dict` produces.
+
+    The inverse of `_field_schema_to_dict`; shared by `FieldSchema.from_json`
+    and `FileMetadata.from_json`.
+
+    Parameters
+    ----------
+    data : Mapping[str, Any]
+        A ``{field_name: {"versions": [...]}}`` mapping.
+
+    Returns
+    -------
+    FieldSchema
+        The reconstructed schema.
+
+    Raises
+    ------
+    SchemaError
+        If `data` is malformed: a missing key, a value of the wrong shape,
+        a bad dtype repr, or an invalid period value.
+    """
+    try:
+        fields = [
+            FieldAttributes(
+                name=name,
+                versions=tuple(
+                    FieldVersion(
+                        dtype=_dtype_from_repr(version["dtype"]),
+                        definition=version["definition"],
+                        periods=PeriodRange(
+                            start=version["period_start"], end=version["period_end"]
+                        ),
+                    )
+                    for version in field_data["versions"]
+                ),
+            )
+            for name, field_data in data.items()
+        ]
+    except (KeyError, TypeError, InvalidPeriodError) as error:
+        raise SchemaError(f"malformed field schema JSON: {error}") from error
+    return FieldSchema(fields=fields)
+
+
+@dataclass(frozen=True, kw_only=True)
+class FileMetadataDiff:
+    """The result of comparing two FileMetadata via `FileMetadata.compare`.
+
+    `name`/`periods` are compared directly; field-level differences are
+    delegated entirely to `FieldSchema.compare` (see `file_schema_diff`).
+
+    Attributes
+    ----------
+    name_changed : bool
+        Whether the two files have different `name` values.
+    periods_changed : bool
+        Whether the two files have different publication `periods`.
+    file_schema_diff : FieldSchemaDiff
+        The field-level differences, delegated to `FieldSchema.compare`.
+
+    Examples
+    --------
+    >>> empty = FieldSchemaDiff(added=(), removed=(), changed=())
+    >>> diff = FileMetadataDiff(
+    ...     name_changed=False, periods_changed=False, file_schema_diff=empty
+    ... )
+    >>> diff.name_changed
+    False
+    """  # numpydoc ignore=PR01
+
+    name_changed: bool
+    periods_changed: bool
+    file_schema_diff: FieldSchemaDiff
+
+    @property
+    def is_empty(self) -> bool:
+        """Return whether the two files being compared were identical.
+
+        A convenience for the common "did anything change" check, without
+        inspecting `name_changed`/`periods_changed`/`file_schema_diff`
+        individually.
+
+        Returns
+        -------
+        bool
+            ``True`` if `name`/`periods` matched and `file_schema_diff` is
+            empty too.
+
+        Examples
+        --------
+        >>> empty = FieldSchemaDiff(added=(), removed=(), changed=())
+        >>> FileMetadataDiff(
+        ...     name_changed=False, periods_changed=False, file_schema_diff=empty
+        ... ).is_empty
+        True
+        >>> FileMetadataDiff(
+        ...     name_changed=True, periods_changed=False, file_schema_diff=empty
+        ... ).is_empty
+        False
+        """
+        return (
+            not self.name_changed
+            and not self.periods_changed
+            and self.file_schema_diff.is_empty
+        )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1135,12 +1835,14 @@ class FileMetadata:
     >>> from call_report.core import (
     ...     FieldAttributes,
     ...     FieldSchema,
+    ...     FieldVersion,
     ...     FileMetadata,
     ...     PeriodRange,
     ... )
     >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
     >>> uninum = FieldAttributes(
-    ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+    ...     name="UNINUM",
+    ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
     ... )
     >>> metadata = FileMetadata(
     ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[uninum])
@@ -1217,10 +1919,14 @@ class FileMetadata:
     def changed(self) -> bool:
         """Return whether any field's presence differs from this file's own.
 
-        A field whose `periods` do not exactly match this file's `periods`
-        was added after the file's first period, dropped before its last,
-        or has a gap the file itself does not have -- in every case, the
-        file's column schema was not identical across its whole history.
+        A field whose overall presence (its versions' periods, merged
+        across any in-place redefinitions) does not exactly match this
+        file's `periods` was added after the file's first period, dropped
+        before its last, or has a gap the file itself does not have -- in
+        every case, the file's column schema was not identical across its
+        whole history. A field that was purely redefined in place (its
+        dtype/definition changed but it was always present) does *not*
+        count as `changed` on its own.
 
         Returns
         -------
@@ -1233,19 +1939,26 @@ class FileMetadata:
         >>> from call_report.core import (
         ...     FieldAttributes,
         ...     FieldSchema,
+        ...     FieldVersion,
         ...     FileMetadata,
         ...     PeriodRange,
         ... )
         >>> full = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> partial = PeriodRange(start="2010-03-31", end="2026-03-31")
         >>> added_later = FieldAttributes(
-        ...     name="RSSD", dtype=nw.Int64(), definition="", periods=(partial,)
+        ...     name="RSSD",
+        ...     versions=(
+        ...         FieldVersion(dtype=nw.Int64(), definition="", periods=partial),
+        ...     ),
         ... )
         >>> schema = FieldSchema(fields=[added_later])
         >>> FileMetadata(name="RCB", periods=(full,), file_schema=schema).changed
         True
         """
-        return any(field.periods != self.periods for field in self.file_schema.values())
+        return any(
+            _coalesced_presence(field.versions) != self.periods
+            for field in self.file_schema.values()
+        )
 
     def as_of(self, *, period: str | date | ReportingPeriod) -> FileMetadata:
         """Return a new FileMetadata snapshot as of `period`.
@@ -1274,12 +1987,14 @@ class FileMetadata:
         >>> from call_report.core import (
         ...     FieldAttributes,
         ...     FieldSchema,
+        ...     FieldVersion,
         ...     FileMetadata,
         ...     PeriodRange,
         ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> metadata = FileMetadata(
         ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[field])
@@ -1298,6 +2013,121 @@ class FileMetadata:
             name=self.name,
             periods=(PeriodRange(start=resolved, end=resolved),),
             file_schema=self.file_schema.as_of(period=resolved),
+        )
+
+    def is_equal(self, *, other: FileMetadata, check_order: bool = False) -> bool:
+        """Return whether `other` describes the same file: name, periods, and fields.
+
+        Field comparison is delegated entirely to `FieldSchema.is_equal`,
+        so this doesn't duplicate that logic.
+
+        Parameters
+        ----------
+        other : FileMetadata
+            The file metadata to compare against.
+        check_order : bool, default False
+            Passed through to `FieldSchema.is_equal` for the field
+            comparison.
+
+        Returns
+        -------
+        bool
+            ``True`` if `name`, `periods`, and `file_schema` (per
+            `FieldSchema.is_equal`) all match.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     FileMetadata,
+        ...     PeriodRange,
+        ... )
+        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+        >>> field = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
+        ... )
+        >>> a = FileMetadata(
+        ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[field])
+        ... )
+        >>> b = FileMetadata(
+        ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[field])
+        ... )
+        >>> a.is_equal(other=b)
+        True
+        """
+        return (
+            self.name == other.name
+            and self.periods == other.periods
+            and self.file_schema.is_equal(
+                other=other.file_schema, check_order=check_order
+            )
+        )
+
+    def compare(
+        self, *, other: FileMetadata, check_order: bool = False
+    ) -> FileMetadataDiff:
+        """Compare this file's metadata against `other`.
+
+        `name`/`periods` are compared directly; the field-level comparison
+        is delegated entirely to `FieldSchema.compare`.
+
+        Parameters
+        ----------
+        other : FileMetadata
+            The file metadata to compare against.
+        check_order : bool, default False
+            Passed through to `FieldSchema.compare`.
+
+        Returns
+        -------
+        FileMetadataDiff
+            The name/periods/field-level differences between the two.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     FileMetadata,
+        ...     PeriodRange,
+        ... )
+        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+        >>> old_field = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(
+        ...         FieldVersion(dtype=nw.Int64(), definition="old", periods=span),
+        ...     ),
+        ... )
+        >>> new_field = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(
+        ...         FieldVersion(dtype=nw.Int64(), definition="new", periods=span),
+        ...     ),
+        ... )
+        >>> before = FileMetadata(
+        ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[old_field])
+        ... )
+        >>> after = FileMetadata(
+        ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[new_field])
+        ... )
+        >>> diff = before.compare(other=after)
+        >>> diff.is_empty
+        False
+        >>> [change.name for change in diff.file_schema_diff.changed]
+        ['UNINUM']
+        """
+        return FileMetadataDiff(
+            name_changed=self.name != other.name,
+            periods_changed=self.periods != other.periods,
+            file_schema_diff=self.file_schema.compare(
+                other=other.file_schema, check_order=check_order
+            ),
         )
 
     @overload
@@ -1384,12 +2214,14 @@ class FileMetadata:
         >>> from call_report.core import (
         ...     FieldAttributes,
         ...     FieldSchema,
+        ...     FieldVersion,
         ...     FileMetadata,
         ...     PeriodRange,
         ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> metadata = FileMetadata(
         ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[field])
@@ -1399,8 +2231,6 @@ class FileMetadata:
         ['file_name', 'field_name', 'dtype', 'definition', 'period_start', 'period_end']
         """
         fields_frame = nw.from_native(self.file_schema.to_dataframe(backend=backend))
-        if isinstance(fields_frame, nw.LazyFrame):
-            fields_frame = fields_frame.collect()
         fields_frame = fields_frame.with_columns(
             nw.lit(self.name).alias("file_name")
         ).select(*_FILE_COLUMNS)
@@ -1414,7 +2244,11 @@ class FileMetadata:
             "period_end": [span[-1].period_end.isoformat() for span in self.periods],
         }
         with _backend_context(backend):
-            file_frame = build_frame(data=file_rows)
+            file_frame: FrameOrLazy = build_frame(data=file_rows)
+            # fields_frame may already be lazy (lazy=True configured); match it
+            # so concat isn't asked to stack an eager frame with a lazy one.
+            if isinstance(fields_frame, nw.LazyFrame):
+                file_frame = file_frame.lazy()
             combined = concat(frames=[file_frame, fields_frame], how="strict")
             native = finalize(frame=combined)
         return convert_dataframe_type(data=native, dataframe_type=dataframe_type)
@@ -1448,12 +2282,14 @@ class FileMetadata:
         >>> from call_report.core import (
         ...     FieldAttributes,
         ...     FieldSchema,
+        ...     FieldVersion,
         ...     FileMetadata,
         ...     PeriodRange,
         ... )
         >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
         >>> field = FieldAttributes(
-        ...     name="UNINUM", dtype=nw.Int64(), definition="", periods=(span,)
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
         ... )
         >>> metadata = FileMetadata(
         ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[field])
@@ -1488,4 +2324,122 @@ class FileMetadata:
             name=next(iter(file_names)),
             periods=periods,
             file_schema=FieldSchema.from_dataframe(data=field_frame),
+        )
+
+    def to_json(self, *, indent: int | None = 2) -> str:
+        """Return this file's metadata as a JSON string.
+
+        This is the format shipped, canonical FCA schedule metadata is
+        stored in (see `call_report.fca.get_fca_file_metadata`).
+
+        Parameters
+        ----------
+        indent : int, optional
+            Passed through to `json.dumps`; see `FieldSchema.to_json`.
+
+        Returns
+        -------
+        str
+            A JSON object with ``name``, ``periods``, and ``fields`` keys
+            -- the latter built via the same shape `FieldSchema.to_json`
+            produces.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     FileMetadata,
+        ...     PeriodRange,
+        ... )
+        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+        >>> field = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
+        ... )
+        >>> metadata = FileMetadata(
+        ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[field])
+        ... )
+        >>> FileMetadata.from_json(text=metadata.to_json()) == metadata
+        True
+        """
+        payload = {
+            "name": self.name,
+            "periods": [
+                {
+                    "start": span[0].period_end.isoformat(),
+                    "end": span[-1].period_end.isoformat(),
+                }
+                for span in self.periods
+            ],
+            "fields": _field_schema_to_dict(self.file_schema),
+        }
+        return json.dumps(payload, indent=indent)
+
+    @classmethod
+    def from_json(cls, *, text: str) -> FileMetadata:
+        """Reconstruct a FileMetadata from JSON built by `to_json`.
+
+        The inverse of `to_json`; round-tripping metadata through both
+        reconstructs an equal `FileMetadata`.
+
+        Parameters
+        ----------
+        text : str
+            A JSON string in the shape `to_json` produces.
+
+        Returns
+        -------
+        FileMetadata
+            The reconstructed file metadata.
+
+        Raises
+        ------
+        SchemaError
+            If `text` is not valid JSON, is valid JSON that isn't a JSON
+            object, or doesn't otherwise match the shape `to_json`
+            produces.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     FileMetadata,
+        ...     PeriodRange,
+        ... )
+        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+        >>> field = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
+        ... )
+        >>> metadata = FileMetadata(
+        ...     name="RCB", periods=(span,), file_schema=FieldSchema(fields=[field])
+        ... )
+        >>> FileMetadata.from_json(text=metadata.to_json()).name
+        'RCB'
+        """
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise SchemaError(f"{text[:80]!r} is not valid JSON: {error}") from error
+        if not isinstance(data, dict):
+            raise SchemaError(f"expected a JSON object, got {type(data).__name__}.")
+        try:
+            name = data["name"]
+            periods = tuple(
+                PeriodRange(start=span["start"], end=span["end"])
+                for span in data["periods"]
+            )
+            fields_data = data["fields"]
+        except (KeyError, TypeError, InvalidPeriodError) as error:
+            raise SchemaError(f"malformed file metadata JSON: {error}") from error
+        return cls(
+            name=name,
+            periods=periods,
+            file_schema=_field_schema_from_dict(fields_data),
         )

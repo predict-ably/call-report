@@ -14,8 +14,12 @@ import pytest
 from call_report.config import DataFrameBackend, config_context
 from call_report.core import (
     FieldAttributes,
+    FieldChange,
     FieldSchema,
+    FieldSchemaDiff,
+    FieldVersion,
     FileMetadata,
+    FileMetadataDiff,
     PeriodRange,
     ReportingPeriod,
 )
@@ -25,6 +29,7 @@ from call_report.exceptions import PeriodNotAvailableError, SchemaError
 FULL_SPAN = PeriodRange(start="2000-03-31", end="2026-03-31")
 EARLY_SPAN = PeriodRange(start="2000-03-31", end="2005-12-31")
 LATE_SPAN = PeriodRange(start="2010-03-31", end="2026-03-31")
+ADJACENT_SPAN = PeriodRange(start="2006-03-31", end="2009-12-31")
 _DEFAULT_DTYPE = nw.Int64()
 
 
@@ -33,10 +38,23 @@ def _field(
     *,
     dtype: nw.dtypes.DType = _DEFAULT_DTYPE,
     definition: str = "",
-    periods: tuple[PeriodRange, ...] = (FULL_SPAN,),
+    periods: PeriodRange | tuple[PeriodRange, ...] = FULL_SPAN,
 ) -> FieldAttributes:
+    """Build a FieldAttributes whose version(s) all share `dtype`/`definition`.
+
+    `periods` may be a single `PeriodRange` (the common case, one version)
+    or a tuple of spans (one version per span, e.g. to test a field with a
+    real presence gap) -- every version built this way shares the same
+    `dtype`/`definition`. Tests that need versions with *different*
+    content per span construct `FieldAttributes`/`FieldVersion` directly.
+    """
+    spans = periods if isinstance(periods, tuple) else (periods,)
     return FieldAttributes(
-        name=name, dtype=dtype, definition=definition, periods=periods
+        name=name,
+        versions=tuple(
+            FieldVersion(dtype=dtype, definition=definition, periods=span)
+            for span in spans
+        ),
     )
 
 
@@ -45,9 +63,9 @@ def _field(
 # ---------------------------------------------------------------------------
 
 
-def test_field_attributes_rejects_empty_periods() -> None:
-    """An empty `periods` tuple is rejected."""
-    with pytest.raises(SchemaError, match="at least one period span"):
+def test_field_attributes_rejects_empty_versions() -> None:
+    """An empty `versions` tuple is rejected."""
+    with pytest.raises(SchemaError, match="at least one version"):
         _field(periods=())
 
 
@@ -61,17 +79,58 @@ def test_field_attributes_accepts_multiple_gapped_spans() -> None:
 @pytest.mark.parametrize(
     "second_span",
     [
-        PeriodRange(start="2006-03-31", end="2009-12-31"),  # adjacent, no gap
         PeriodRange(start="2003-03-31", end="2009-12-31"),  # overlaps EARLY_SPAN
         PeriodRange(start="1999-03-31", end="1999-12-31"),  # out of order
     ],
+    ids=["overlapping", "out-of-order"],
 )
-def test_field_attributes_rejects_touching_or_unordered_spans(
+def test_field_attributes_rejects_overlapping_or_unordered_versions(
     second_span: PeriodRange,
 ) -> None:
-    """Adjacent, overlapping, or out-of-order spans are all rejected."""
+    """Overlapping or out-of-order versions are rejected."""
     with pytest.raises(SchemaError, match="chronologically ordered"):
         _field(periods=(EARLY_SPAN, second_span))
+
+
+def test_field_attributes_rejects_adjacent_versions_with_identical_content() -> None:
+    """Adjacent versions sharing the same dtype/definition should be one version.
+
+    `_field()` gives every span the same dtype/definition, so two adjacent
+    (gap-free) spans built through it are exactly this case.
+    """
+    with pytest.raises(SchemaError, match="identical dtype/definition"):
+        _field(periods=(EARLY_SPAN, ADJACENT_SPAN))
+
+
+def test_field_attributes_accepts_adjacent_versions_with_different_definition() -> None:
+    """Adjacent versions ARE allowed when their definition differs.
+
+    This is the real-world case this whole model exists for: a field
+    redefined in place (e.g. RCB's INV_CODE growing its embedded code
+    list) with no presence gap.
+    """
+    field = FieldAttributes(
+        name="INV_CODE",
+        versions=(
+            FieldVersion(dtype=nw.Int64(), definition="old", periods=EARLY_SPAN),
+            FieldVersion(dtype=nw.Int64(), definition="new", periods=ADJACENT_SPAN),
+        ),
+    )
+    assert len(field.versions) == 2
+    assert field.first_period.label == "2000Q1"
+    assert field.last_period.label == "2009Q4"
+
+
+def test_field_attributes_accepts_adjacent_versions_with_different_dtype() -> None:
+    """Adjacent versions are also allowed when only the dtype differs."""
+    field = FieldAttributes(
+        name="X",
+        versions=(
+            FieldVersion(dtype=nw.Int64(), definition="", periods=EARLY_SPAN),
+            FieldVersion(dtype=nw.Float64(), definition="", periods=ADJACENT_SPAN),
+        ),
+    )
+    assert len(field.versions) == 2
 
 
 def test_field_attributes_is_frozen() -> None:
@@ -83,8 +142,22 @@ def test_field_attributes_is_frozen() -> None:
 
 def test_field_attributes_is_keyword_only() -> None:
     """The FieldAttributes constructor takes no positional args."""
+    version = FieldVersion(dtype=nw.Int64(), definition="", periods=FULL_SPAN)
     with pytest.raises(TypeError):
-        FieldAttributes("UNINUM", nw.Int64(), "", (FULL_SPAN,))  # type: ignore[call-arg]
+        FieldAttributes("UNINUM", (version,))  # type: ignore[call-arg]
+
+
+def test_field_version_is_frozen() -> None:
+    """FieldVersion instances cannot be mutated after construction."""
+    version = FieldVersion(dtype=nw.Int64(), definition="", periods=FULL_SPAN)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        version.definition = "OTHER"  # type: ignore[misc]
+
+
+def test_field_version_is_keyword_only() -> None:
+    """The FieldVersion constructor takes no positional args."""
+    with pytest.raises(TypeError):
+        FieldVersion(nw.Int64(), "", FULL_SPAN)  # type: ignore[call-arg]
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +294,19 @@ def test_field_schema_schema_maps_names_to_dtypes() -> None:
     assert list(schema.schema.names()) == ["UNINUM", "SHORTNAME"]
 
 
+def test_field_schema_schema_reflects_latest_version_dtype() -> None:
+    """Schema uses a field's *latest* version dtype when it changed over time."""
+    field = FieldAttributes(
+        name="X",
+        versions=(
+            FieldVersion(dtype=nw.Int64(), definition="", periods=EARLY_SPAN),
+            FieldVersion(dtype=nw.Float64(), definition="", periods=ADJACENT_SPAN),
+        ),
+    )
+    schema = FieldSchema(fields=[field])
+    assert schema.schema == nw.Schema({"X": nw.Float64()})
+
+
 def test_field_schema_schema_is_a_narwhals_schema() -> None:
     """Schema is a genuine narwhals.Schema, not just duck-typed."""
     schema = FieldSchema(fields=[_field("UNINUM")])
@@ -321,6 +407,22 @@ def test_file_metadata_rejects_invalid_periods() -> None:
         FileMetadata(name="RCB", periods=(), file_schema=FieldSchema(fields=[]))
 
 
+def test_file_metadata_rejects_adjacent_periods() -> None:
+    """Unlike field versions, a file's own periods still forbid adjacency.
+
+    `FileMetadata.periods` describes when the *file* was published, not a
+    field's dtype/definition history -- it keeps the strict
+    `_validate_period_spans` rule (no gap-free adjacency at all), unlike
+    the relaxed `_validate_field_versions` rule fields now get.
+    """
+    with pytest.raises(SchemaError, match="chronologically ordered"):
+        FileMetadata(
+            name="RCB",
+            periods=(EARLY_SPAN, ADJACENT_SPAN),
+            file_schema=FieldSchema(fields=[]),
+        )
+
+
 def test_file_metadata_not_changed_when_fields_match_file_span() -> None:
     """Changed is False when every field covers the file's full lifetime."""
     schema = FieldSchema(fields=[_field("UNINUM", periods=(FULL_SPAN,))])
@@ -331,6 +433,43 @@ def test_file_metadata_not_changed_when_fields_match_file_span() -> None:
 def test_file_metadata_changed_when_a_field_span_differs() -> None:
     """Changed is True when a field's presence differs from the file's own."""
     schema = FieldSchema(fields=[_field("RSSD", periods=(LATE_SPAN,))])
+    metadata = FileMetadata(name="RCB", periods=(FULL_SPAN,), file_schema=schema)
+    assert metadata.changed is True
+
+
+def test_file_metadata_not_changed_by_in_place_redefinition() -> None:
+    """A field redefined in place (no presence gap) does not count as changed.
+
+    `changed` is about presence, not content: `_coalesced_presence` merges
+    the field's two adjacent versions back into one continuous span before
+    comparing against the file's own periods, so a pure redefinition
+    (dtype/definition changed, field never absent) doesn't trip it.
+    """
+    field = FieldAttributes(
+        name="INV_CODE",
+        versions=(
+            FieldVersion(dtype=nw.Int64(), definition="old", periods=EARLY_SPAN),
+            FieldVersion(
+                dtype=nw.Int64(),
+                definition="new",
+                periods=PeriodRange(start="2006-03-31", end="2026-03-31"),
+            ),
+        ),
+    )
+    schema = FieldSchema(fields=[field])
+    metadata = FileMetadata(name="RCB", periods=(FULL_SPAN,), file_schema=schema)
+    assert metadata.changed is False
+
+
+def test_file_metadata_changed_true_for_field_with_a_real_gap() -> None:
+    """A field with a genuine presence gap (not just redefinition) is changed.
+
+    Distinguishes `_coalesced_presence`'s two branches: an in-place
+    redefinition (adjacent versions) merges into one span, but a real gap
+    between versions stays two separate spans -- which then differs from
+    the file's own single, unbroken span.
+    """
+    schema = FieldSchema(fields=[_field("RSSD", periods=(EARLY_SPAN, LATE_SPAN))])
     metadata = FileMetadata(name="RCB", periods=(FULL_SPAN,), file_schema=schema)
     assert metadata.changed is True
 
@@ -360,9 +499,36 @@ def test_field_schema_as_of_keeps_fields_present_at_the_period() -> None:
     schema = FieldSchema(fields=[_field("UNINUM")])
     snapshot = schema.as_of(period="2010-03-31")
     assert snapshot.names == ("UNINUM",)
-    assert snapshot["UNINUM"].periods == (
-        PeriodRange(start="2010-03-31", end="2010-03-31"),
+    assert snapshot["UNINUM"].versions == (
+        FieldVersion(
+            dtype=_DEFAULT_DTYPE,
+            definition="",
+            periods=PeriodRange(start="2010-03-31", end="2010-03-31"),
+        ),
     )
+
+
+def test_field_schema_as_of_uses_the_version_active_at_that_period() -> None:
+    """as_of surfaces the version actually active then, not always the latest.
+
+    This is the point-in-time accuracy the versioned model exists for: a
+    field whose definition was later revised should still show the old
+    definition for a period before the revision.
+    """
+    field = FieldAttributes(
+        name="INV_CODE",
+        versions=(
+            FieldVersion(dtype=nw.Int64(), definition="old text", periods=EARLY_SPAN),
+            FieldVersion(
+                dtype=nw.Int64(), definition="new text", periods=ADJACENT_SPAN
+            ),
+        ),
+    )
+    schema = FieldSchema(fields=[field])
+    before = schema.as_of(period="2001-03-31")["INV_CODE"]
+    after = schema.as_of(period="2007-03-31")["INV_CODE"]
+    assert before.versions[0].definition == "old text"
+    assert after.versions[0].definition == "new text"
 
 
 def test_field_schema_as_of_drops_fields_absent_in_a_gap() -> None:
@@ -445,7 +611,7 @@ def test_field_schema_dtype_round_trip_preserves_parametrized_dtype() -> None:
     """A parametrized dtype (e.g. Datetime) round-trips with its exact params."""
     schema = FieldSchema(fields=[_field("ASOFDATE", dtype=nw.Datetime("us", "UTC"))])
     restored = FieldSchema.from_dataframe(data=schema.to_dataframe())
-    assert restored["ASOFDATE"].dtype == nw.Datetime("us", "UTC")
+    assert restored["ASOFDATE"].versions[0].dtype == nw.Datetime("us", "UTC")
 
 
 def test_field_schema_dtype_round_trip_preserves_nested_dtype() -> None:
@@ -453,7 +619,7 @@ def test_field_schema_dtype_round_trip_preserves_nested_dtype() -> None:
     nested = nw.Struct({"codes": nw.List(nw.Int64())})
     schema = FieldSchema(fields=[_field("PAYLOAD", dtype=nested)])
     restored = FieldSchema.from_dataframe(data=schema.to_dataframe())
-    assert restored["PAYLOAD"].dtype == nested
+    assert restored["PAYLOAD"].versions[0].dtype == nested
 
 
 def test_field_schema_dtype_round_trip_preserves_enum_dtype() -> None:
@@ -461,7 +627,7 @@ def test_field_schema_dtype_round_trip_preserves_enum_dtype() -> None:
     enum = nw.Enum(("a", "b", "c"))
     schema = FieldSchema(fields=[_field("STATUS", dtype=enum)])
     restored = FieldSchema.from_dataframe(data=schema.to_dataframe())
-    assert restored["STATUS"].dtype == enum
+    assert restored["STATUS"].versions[0].dtype == enum
 
 
 def test_field_schema_dtype_round_trip_preserves_array_dtype() -> None:
@@ -469,7 +635,21 @@ def test_field_schema_dtype_round_trip_preserves_array_dtype() -> None:
     array = nw.Array(nw.Int64(), 3)
     schema = FieldSchema(fields=[_field("COORDS", dtype=array)])
     restored = FieldSchema.from_dataframe(data=schema.to_dataframe())
-    assert restored["COORDS"].dtype == array
+    assert restored["COORDS"].versions[0].dtype == array
+
+
+def test_field_schema_to_dataframe_one_row_per_version_with_different_content() -> None:
+    """A field redefined in place contributes one row per version, each distinct."""
+    field = FieldAttributes(
+        name="INV_CODE",
+        versions=(
+            FieldVersion(dtype=nw.Int64(), definition="old", periods=EARLY_SPAN),
+            FieldVersion(dtype=nw.Int64(), definition="new", periods=ADJACENT_SPAN),
+        ),
+    )
+    frame = FieldSchema(fields=[field]).to_dataframe(dataframe_type="pandas")
+    assert len(frame) == 2
+    assert list(frame["definition"]) == ["old", "new"]
 
 
 def _dataframe_with_dtype_text(dtype_text: str) -> pd.DataFrame:
@@ -673,6 +853,44 @@ def test_file_metadata_dataframe_round_trip_when_lazy() -> None:
     assert restored == metadata
 
 
+def test_file_metadata_to_dataframe_lazy_pipeline_does_not_collect_early() -> None:
+    """Under lazy=True, `fields_frame` and `file_frame` reach concat still lazy.
+
+    `FileMetadata.to_dataframe` used to collect `fields_frame` immediately
+    after building it, before combining it with a fresh `file_frame`. It
+    no longer does -- `file_frame` is instead matched to `fields_frame`'s
+    laziness via `.lazy()`. Confirmed here by patching `concat` and
+    checking both frames it receives are still `narwhals.LazyFrame`, not
+    already collected.
+    """
+    from unittest.mock import patch
+
+    from call_report.core import _schema
+
+    metadata = FileMetadata(
+        name="RCB",
+        periods=(FULL_SPAN,),
+        file_schema=FieldSchema(fields=[_field("UNINUM")]),
+    )
+
+    captured: list[object] = []
+    original = _schema.concat
+
+    def spy(*, frames: object, how: object) -> object:
+        captured.extend(frames)  # type: ignore[arg-type]
+        return original(frames=frames, how=how)  # type: ignore[call-overload]
+
+    with (
+        config_context(dataframe_backend="polars", lazy=True),
+        patch.object(_schema, "concat", spy),
+    ):
+        frame = metadata.to_dataframe()
+
+    assert isinstance(frame, pl.LazyFrame)
+    assert len(captured) == 2
+    assert all(isinstance(item, nw.LazyFrame) for item in captured)
+
+
 def test_file_metadata_from_dataframe_rejects_missing_file_rows() -> None:
     """A dataframe with no file-level period rows is rejected."""
     schema = FieldSchema(fields=[_field("UNINUM")])
@@ -692,3 +910,307 @@ def test_file_metadata_from_dataframe_rejects_multiple_file_names() -> None:
     combined = pd.concat([frame_a, frame_b], ignore_index=True)
     with pytest.raises(SchemaError, match="exactly one"):
         FileMetadata.from_dataframe(data=combined)
+
+
+# ---------------------------------------------------------------------------
+# FieldSchema.is_equal / compare
+# ---------------------------------------------------------------------------
+
+
+def test_field_schema_is_equal_true_regardless_of_order_by_default() -> None:
+    """Two schemas with the same fields in a different order are equal."""
+    uninum = _field("UNINUM")
+    rssd = _field("RSSD")
+    forward = FieldSchema(fields=[uninum, rssd])
+    reordered = FieldSchema(fields=[rssd, uninum])
+    assert forward.is_equal(other=reordered) is True
+
+
+def test_field_schema_is_equal_false_for_different_content() -> None:
+    """Schemas with a different field are not equal."""
+    a = FieldSchema(fields=[_field("UNINUM")])
+    b = FieldSchema(fields=[_field("RSSD")])
+    assert a.is_equal(other=b) is False
+
+
+def test_field_schema_is_equal_check_order_detects_reordering() -> None:
+    """check_order=True makes field order significant."""
+    uninum = _field("UNINUM")
+    rssd = _field("RSSD")
+    forward = FieldSchema(fields=[uninum, rssd])
+    reordered = FieldSchema(fields=[rssd, uninum])
+    assert forward.is_equal(other=reordered, check_order=True) is False
+    assert forward.is_equal(other=forward, check_order=True) is True
+
+
+def test_field_schema_compare_detects_added_and_removed() -> None:
+    """Pure adds/removes show up in added/removed, not changed."""
+    before = FieldSchema(fields=[_field("UNINUM"), _field("RSSD")])
+    after = FieldSchema(fields=[_field("UNINUM"), _field("ASSOC")])
+    diff = before.compare(other=after)
+    assert diff.added == ("ASSOC",)
+    assert diff.removed == ("RSSD",)
+    assert diff.changed == ()
+    assert diff.is_empty is False
+
+
+def test_field_schema_compare_detects_changed_field() -> None:
+    """A field present in both schemas with different content shows up in changed."""
+    before = FieldSchema(fields=[_field("UNINUM", definition="old")])
+    after = FieldSchema(fields=[_field("UNINUM", definition="new")])
+    diff = before.compare(other=after)
+    assert diff.added == ()
+    assert diff.removed == ()
+    assert diff.changed == (
+        FieldChange(name="UNINUM", before=before["UNINUM"], after=after["UNINUM"]),
+    )
+
+
+def test_field_schema_compare_identical_schemas_is_empty() -> None:
+    """Comparing a schema against itself produces an empty diff."""
+    schema = FieldSchema(fields=[_field("UNINUM")])
+    assert schema.compare(other=schema).is_empty is True
+
+
+def test_field_schema_compare_order_changed_only_when_requested() -> None:
+    """order_changed stays False unless check_order=True is passed."""
+    uninum = _field("UNINUM")
+    rssd = _field("RSSD")
+    forward = FieldSchema(fields=[uninum, rssd])
+    reordered = FieldSchema(fields=[rssd, uninum])
+    assert forward.compare(other=reordered).order_changed is False
+    assert forward.compare(other=reordered, check_order=True).order_changed is True
+
+
+def test_field_schema_compare_order_changed_ignores_added_removed_shift() -> None:
+    """An add/remove alone doesn't spuriously flag surviving fields as reordered."""
+    before = FieldSchema(fields=[_field("UNINUM"), _field("RSSD")])
+    after = FieldSchema(fields=[_field("UNINUM"), _field("RSSD"), _field("ASSOC")])
+    diff = before.compare(other=after, check_order=True)
+    assert diff.added == ("ASSOC",)
+    assert diff.order_changed is False
+
+
+def test_field_schema_diff_is_empty_true_when_nothing_differs() -> None:
+    """is_empty is True only when added/removed/changed are empty and order matches."""
+    assert FieldSchemaDiff(added=(), removed=(), changed=()).is_empty is True
+
+
+def test_field_schema_diff_is_empty_false_when_order_changed() -> None:
+    """order_changed alone is enough to make is_empty False."""
+    diff = FieldSchemaDiff(added=(), removed=(), changed=(), order_changed=True)
+    assert diff.is_empty is False
+
+
+# ---------------------------------------------------------------------------
+# FieldSchema.to_json / from_json
+# ---------------------------------------------------------------------------
+
+
+def test_field_schema_json_round_trip() -> None:
+    """from_json(to_json(schema)) reconstructs an equal schema."""
+    schema = FieldSchema(
+        fields=[_field("UNINUM"), _field("RSSD", periods=(EARLY_SPAN, LATE_SPAN))]
+    )
+    assert FieldSchema.from_json(text=schema.to_json()) == schema
+
+
+def test_field_schema_json_round_trip_preserves_multiple_versions() -> None:
+    """A field with multiple, differently-defined versions round-trips exactly."""
+    field = FieldAttributes(
+        name="INV_CODE",
+        versions=(
+            FieldVersion(dtype=nw.Int64(), definition="old", periods=EARLY_SPAN),
+            FieldVersion(dtype=nw.Int64(), definition="new", periods=ADJACENT_SPAN),
+        ),
+    )
+    schema = FieldSchema(fields=[field])
+    restored = FieldSchema.from_json(text=schema.to_json())
+    assert restored == schema
+    assert restored["INV_CODE"].versions[0].definition == "old"
+    assert restored["INV_CODE"].versions[1].definition == "new"
+
+
+def test_field_schema_json_preserves_field_order() -> None:
+    """Field order in the JSON matches the schema's own order."""
+    schema = FieldSchema(fields=[_field("RSSD"), _field("UNINUM")])
+    restored = FieldSchema.from_json(text=schema.to_json())
+    assert restored.names == ("RSSD", "UNINUM")
+
+
+def test_field_schema_to_json_default_indent_is_human_readable() -> None:
+    """The default indent produces multi-line, diffable output."""
+    schema = FieldSchema(fields=[_field("UNINUM")])
+    assert "\n" in schema.to_json()
+
+
+def test_field_schema_to_json_indent_none_is_compact() -> None:
+    """indent=None produces a single-line, compact JSON string."""
+    schema = FieldSchema(fields=[_field("UNINUM")])
+    assert "\n" not in schema.to_json(indent=None)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "not json",
+        "[]",
+        '{"UNINUM": {}}',
+        '{"UNINUM": {"versions": [{"dtype": "Int64"}]}}',
+        '{"UNINUM": {"versions": [{"dtype": "not_a_dtype", "definition": "", '
+        '"period_start": "2000-03-31", "period_end": "2026-03-31"}]}}',
+        '{"UNINUM": {"versions": [{"dtype": "Int64", "definition": "", '
+        '"period_start": "not-a-date", "period_end": "2026-03-31"}]}}',
+    ],
+    ids=[
+        "invalid-json-syntax",
+        "not-a-json-object",
+        "missing-versions-key",
+        "missing-fields-in-version",
+        "invalid-dtype-repr",
+        "invalid-period-value",
+    ],
+)
+def test_field_schema_from_json_rejects_malformed_input(text: str) -> None:
+    """Malformed JSON, at every level, raises SchemaError."""
+    with pytest.raises(SchemaError):
+        FieldSchema.from_json(text=text)
+
+
+# ---------------------------------------------------------------------------
+# FileMetadata.is_equal / compare
+# ---------------------------------------------------------------------------
+
+
+def test_file_metadata_is_equal_true_for_matching_metadata() -> None:
+    """Two FileMetadata with the same name/periods/fields are equal."""
+    schema = FieldSchema(fields=[_field("UNINUM")])
+    a = FileMetadata(name="RCB", periods=(FULL_SPAN,), file_schema=schema)
+    b = FileMetadata(name="RCB", periods=(FULL_SPAN,), file_schema=schema)
+    assert a.is_equal(other=b) is True
+
+
+def test_file_metadata_is_equal_false_for_different_name() -> None:
+    """A different name alone makes two FileMetadata unequal."""
+    schema = FieldSchema(fields=[])
+    a = FileMetadata(name="RCB", periods=(FULL_SPAN,), file_schema=schema)
+    b = FileMetadata(name="RCB2", periods=(FULL_SPAN,), file_schema=schema)
+    assert a.is_equal(other=b) is False
+
+
+def test_file_metadata_is_equal_delegates_check_order_to_field_schema() -> None:
+    """check_order is passed through to the underlying field comparison."""
+    uninum = _field("UNINUM")
+    rssd = _field("RSSD")
+    forward = FileMetadata(
+        name="RCB",
+        periods=(FULL_SPAN,),
+        file_schema=FieldSchema(fields=[uninum, rssd]),
+    )
+    reordered = FileMetadata(
+        name="RCB",
+        periods=(FULL_SPAN,),
+        file_schema=FieldSchema(fields=[rssd, uninum]),
+    )
+    assert forward.is_equal(other=reordered) is True
+    assert forward.is_equal(other=reordered, check_order=True) is False
+
+
+def test_file_metadata_compare_detects_name_and_periods_changes() -> None:
+    """name_changed/periods_changed reflect direct differences."""
+    schema = FieldSchema(fields=[])
+    a = FileMetadata(name="RCB", periods=(FULL_SPAN,), file_schema=schema)
+    b = FileMetadata(name="RCB2", periods=(EARLY_SPAN,), file_schema=schema)
+    diff = a.compare(other=b)
+    assert diff.name_changed is True
+    assert diff.periods_changed is True
+    assert diff.is_empty is False
+
+
+def test_file_metadata_compare_delegates_field_comparison_to_field_schema() -> None:
+    """The field-level diff matches what FieldSchema.compare produces directly."""
+    before_schema = FieldSchema(fields=[_field("UNINUM", definition="old")])
+    after_schema = FieldSchema(fields=[_field("UNINUM", definition="new")])
+    before = FileMetadata(name="RCB", periods=(FULL_SPAN,), file_schema=before_schema)
+    after = FileMetadata(name="RCB", periods=(FULL_SPAN,), file_schema=after_schema)
+    diff = before.compare(other=after)
+    assert diff.name_changed is False
+    assert diff.periods_changed is False
+    assert diff.file_schema_diff == before_schema.compare(other=after_schema)
+
+
+def test_file_metadata_compare_identical_is_empty() -> None:
+    """Comparing a FileMetadata against itself produces an empty diff."""
+    metadata = FileMetadata(
+        name="RCB",
+        periods=(FULL_SPAN,),
+        file_schema=FieldSchema(fields=[_field("UNINUM")]),
+    )
+    assert metadata.compare(other=metadata).is_empty is True
+
+
+def test_file_metadata_diff_is_empty_requires_all_three_clear() -> None:
+    """is_empty is True only when name/periods match and the field diff is empty."""
+    empty_field_diff = FieldSchemaDiff(added=(), removed=(), changed=())
+    assert (
+        FileMetadataDiff(
+            name_changed=False, periods_changed=False, file_schema_diff=empty_field_diff
+        ).is_empty
+        is True
+    )
+    assert (
+        FileMetadataDiff(
+            name_changed=True, periods_changed=False, file_schema_diff=empty_field_diff
+        ).is_empty
+        is False
+    )
+
+
+# ---------------------------------------------------------------------------
+# FileMetadata.to_json / from_json
+# ---------------------------------------------------------------------------
+
+
+def test_file_metadata_json_round_trip() -> None:
+    """from_json(to_json(metadata)) reconstructs an equal instance."""
+    schema = FieldSchema(
+        fields=[_field("UNINUM"), _field("RSSD", periods=(EARLY_SPAN, LATE_SPAN))]
+    )
+    metadata = FileMetadata(
+        name="RCB", periods=(EARLY_SPAN, LATE_SPAN), file_schema=schema
+    )
+    assert FileMetadata.from_json(text=metadata.to_json()) == metadata
+
+
+def test_file_metadata_json_round_trip_when_schema_empty() -> None:
+    """A file with no known fields still round-trips its own periods."""
+    metadata = FileMetadata(
+        name="RCB", periods=(FULL_SPAN,), file_schema=FieldSchema(fields=[])
+    )
+    assert FileMetadata.from_json(text=metadata.to_json()) == metadata
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "not json",
+        "[]",
+        '{"periods": [], "fields": {}}',
+        '{"name": "RCB", "fields": {}}',
+        '{"name": "RCB", "periods": [{"start": "bad-date", "end": "2026-03-31"}], '
+        '"fields": {}}',
+        '{"name": "RCB", "periods": [{"start": "2000-03-31", "end": "2026-03-31"}]}',
+    ],
+    ids=[
+        "invalid-json-syntax",
+        "not-a-json-object",
+        "missing-name-key",
+        "missing-periods-key",
+        "invalid-period-value",
+        "missing-fields-key",
+    ],
+)
+def test_file_metadata_from_json_rejects_malformed_input(text: str) -> None:
+    """Malformed JSON, at every level, raises SchemaError."""
+    with pytest.raises(SchemaError):
+        FileMetadata.from_json(text=text)

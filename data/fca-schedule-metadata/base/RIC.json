@@ -1,0 +1,161 @@
+{
+  "name": "RIC",
+  "periods": [
+    {
+      "start": "2000-03-31",
+      "end": "2026-03-31"
+    }
+  ],
+  "fields": {
+    "SYSTEM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "DIST": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "District Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "ASSOC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Association Code",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "MONTH": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Month of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "YEAR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Year of Report",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "UNINUM": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "System, District, and Association codes concatenated",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXPSALARY": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Salaries and Employee Benefits",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXPDIR": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Directors' Compensation",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXPBLDG": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Occupancy and Equipment Expense",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXPSERV": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Purchased Services",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXPDP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Data Processing",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXPCOMP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Compensation",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "EXPFCSIC": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Farm Credit System Insurance Corp. premium expense",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OEXP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Other Operating Expenses",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    },
+    "OPEREXP": {
+      "versions": [
+        {
+          "dtype": "Int64",
+          "definition": "Total Operating Expenses",
+          "period_start": "2000-03-31",
+          "period_end": "2026-03-31"
+        }
+      ]
+    }
+  }
+}

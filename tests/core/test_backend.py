@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import narwhals as nw
 import pytest
 
@@ -9,12 +11,17 @@ from call_report.config import config_context
 from call_report.core._backend import (
     DataFrameType,
     _dataframe_type_of,
+    _join_on_index,
+    _manual_pivot,
+    assert_unique_grain,
     build_frame,
     concat,
     convert_dataframe_type,
     finalize,
+    finalize_as,
+    pivot,
 )
-from call_report.exceptions import LayoutParseError
+from call_report.exceptions import LayoutParseError, ReshapeError
 
 
 def test_build_frame_returns_eager_narwhals_frame() -> None:
@@ -98,7 +105,151 @@ def test_concat_rejects_unknown_schema_policy() -> None:
     with config_context(dataframe_backend="pandas"):
         frame = build_frame(data={"UNINUM": [1]})
         with pytest.raises(ValueError, match="Unknown schema policy"):
-            concat(frames=[frame], how="bogus")  # type: ignore[arg-type]
+            concat(frames=[frame], how="bogus")  # type: ignore[call-overload]
+
+
+# ---------------------------------------------------------------------------
+# concat / finalize / pivot with lazy (polars.LazyFrame) input
+# ---------------------------------------------------------------------------
+
+
+def _lazy_frame(*, data: dict[str, list[Any]]) -> nw.LazyFrame[Any]:
+    with config_context(dataframe_backend="polars"):
+        frame = build_frame(data=data)
+    result = frame.lazy()
+    assert isinstance(result, nw.LazyFrame)
+    return result
+
+
+def test_finalize_accepts_an_already_lazy_frame() -> None:
+    """finalize() is a no-op passthrough for a frame that's already lazy."""
+    import polars as pl
+
+    lazy = _lazy_frame(data={"UNINUM": [1, 2]})
+    with config_context(dataframe_backend="polars", lazy=True):
+        result = finalize(frame=lazy)
+    assert isinstance(result, pl.LazyFrame)
+    assert result.collect().to_dicts() == [{"UNINUM": 1}, {"UNINUM": 2}]
+
+
+def test_concat_union_preserves_laziness() -> None:
+    """how='union' returns a LazyFrame, uncollected, when given LazyFrame input."""
+    first = _lazy_frame(data={"UNINUM": [1], "TOTASSETS": [100]})
+    second = _lazy_frame(data={"UNINUM": [2], "TOTASSETS": [200], "TOTLIAB": [50]})
+    stacked = concat(frames=[first, second], how="union")
+    assert isinstance(stacked, nw.LazyFrame)
+    assert set(stacked.collect().columns) == {"UNINUM", "TOTASSETS", "TOTLIAB"}
+
+
+def test_concat_intersection_preserves_laziness() -> None:
+    """how='intersection' returns an uncollected LazyFrame given LazyFrame input."""
+    first = _lazy_frame(data={"UNINUM": [1], "TOTASSETS": [100]})
+    second = _lazy_frame(data={"UNINUM": [2], "TOTASSETS": [200], "TOTLIAB": [50]})
+    stacked = concat(frames=[first, second], how="intersection")
+    assert isinstance(stacked, nw.LazyFrame)
+    assert set(stacked.collect().columns) == {"UNINUM", "TOTASSETS"}
+
+
+def test_concat_strict_preserves_laziness() -> None:
+    """how='strict' returns a LazyFrame, uncollected, when given LazyFrame input."""
+    first = _lazy_frame(data={"UNINUM": [1], "TOTASSETS": [100]})
+    second = _lazy_frame(data={"UNINUM": [2], "TOTASSETS": [200]})
+    stacked = concat(frames=[first, second], how="strict")
+    assert isinstance(stacked, nw.LazyFrame)
+    assert len(stacked.collect().rows(named=True)) == 2
+
+
+@pytest.mark.parametrize("how", ["intersection", "strict"])
+def test_concat_lazy_does_not_emit_performance_warning(how: str) -> None:
+    """Schema comparisons use collect_schema, not .columns, to avoid the warning."""
+    import warnings
+
+    first = _lazy_frame(data={"UNINUM": [1], "TOTASSETS": [100]})
+    second = _lazy_frame(data={"UNINUM": [2], "TOTASSETS": [200]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        concat(frames=[first, second], how=how)  # type: ignore[call-overload]
+
+
+def test_pivot_collects_a_lazy_frame() -> None:
+    """pivot() accepts a LazyFrame, collecting it internally before pivoting."""
+    frame = _lazy_frame(
+        data={
+            "UNINUM": [1, 1, 2, 2],
+            "period": ["2026-03-31"] * 4,
+            "key": ["A", "B", "A", "B"],
+            "value": [10, 20, 30, 40],
+        }
+    )
+    result = pivot(frame=frame, on="key", index=["UNINUM", "period"], values="value")
+    assert isinstance(result, nw.DataFrame)
+    rows = {row["UNINUM"]: row for row in result.sort(["UNINUM"]).rows(named=True)}
+    assert rows[1]["A"] == 10
+    assert rows[1]["B"] == 20
+    assert rows[2]["A"] == 30
+    assert rows[2]["B"] == 40
+
+
+def test_finalize_as_accepts_an_already_lazy_frame() -> None:
+    """finalize_as() finalizes-and-converts starting from an already-lazy frame."""
+    import polars as pl
+
+    lazy = _lazy_frame(data={"UNINUM": [1, 2]})
+    with config_context(dataframe_backend="polars", lazy=True):
+        result = finalize_as(frame=lazy, dataframe_type=None)
+    assert isinstance(result, pl.LazyFrame)
+    assert result.collect().to_dicts() == [{"UNINUM": 1}, {"UNINUM": 2}]
+
+
+def test_finalize_as_converts_an_already_lazy_frame_to_a_non_lazy_type() -> None:
+    """finalize_as() collects an already-lazy frame when a non-lazy type is asked."""
+    import pandas as pd
+
+    lazy = _lazy_frame(data={"UNINUM": [1, 2]})
+    with config_context(dataframe_backend="polars", lazy=True):
+        result = finalize_as(frame=lazy, dataframe_type="pandas")
+    assert isinstance(result, pd.DataFrame)
+    assert result["UNINUM"].tolist() == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# assert_unique_grain
+# ---------------------------------------------------------------------------
+
+
+def test_assert_unique_grain_returns_the_eager_frame_unchanged_when_unique() -> None:
+    """A genuinely unique grain passes through, still eager, no error."""
+    with config_context(dataframe_backend="pandas"):
+        frame = build_frame(data={"UNINUM": [1, 2], "period": ["2026-03-31"] * 2})
+    result = assert_unique_grain(frame=frame, columns=["UNINUM", "period"])
+    assert isinstance(result, nw.DataFrame)
+    assert result.shape[0] == 2
+
+
+def test_assert_unique_grain_collects_a_lazy_frame_first() -> None:
+    """A LazyFrame input is collected, then checked, returning an eager frame."""
+    frame = _lazy_frame(data={"UNINUM": [1, 2], "period": ["2026-03-31"] * 2})
+    result = assert_unique_grain(frame=frame, columns=["UNINUM", "period"])
+    assert isinstance(result, nw.DataFrame)
+    assert result.shape[0] == 2
+
+
+def test_assert_unique_grain_raises_on_a_genuine_duplicate() -> None:
+    """A duplicated grain raises ReshapeError naming the offending columns."""
+    with config_context(dataframe_backend="pandas"):
+        frame = build_frame(
+            data={"UNINUM": [1, 1], "period": ["2026-03-31", "2026-03-31"]}
+        )
+    with pytest.raises(ReshapeError, match=r"\['UNINUM', 'period'\]"):
+        assert_unique_grain(frame=frame, columns=["UNINUM", "period"])
+
+
+def test_assert_unique_grain_is_keyword_only() -> None:
+    """assert_unique_grain takes no positional arguments."""
+    with config_context(dataframe_backend="pandas"):
+        frame = build_frame(data={"UNINUM": [1]})
+    with pytest.raises(TypeError):
+        assert_unique_grain(frame, ["UNINUM"])  # type: ignore[call-arg]
 
 
 # ---------------------------------------------------------------------------
@@ -210,3 +361,169 @@ def test_convert_dataframe_type_is_keyword_only() -> None:
         native = finalize(frame=build_frame(data={"UNINUM": [1]}))
     with pytest.raises(TypeError):
         convert_dataframe_type(native, None)  # type: ignore[call-overload]
+
+
+# ---------------------------------------------------------------------------
+# finalize_as
+# ---------------------------------------------------------------------------
+
+
+def test_finalize_as_finalizes_and_converts_in_one_step() -> None:
+    """finalize_as combines finalize() and convert_dataframe_type()."""
+    import pyarrow as pa
+
+    with config_context(dataframe_backend="pandas", lazy=False):
+        frame = build_frame(data={"UNINUM": [1, 2]})
+        result = finalize_as(frame=frame, dataframe_type="pyarrow_table")
+    assert isinstance(result, pa.Table)
+
+
+def test_finalize_as_none_dataframe_type_matches_finalize_alone() -> None:
+    """finalize_as with dataframe_type=None behaves exactly like finalize()."""
+    import pandas as pd
+
+    with config_context(dataframe_backend="pandas", lazy=False):
+        frame = build_frame(data={"UNINUM": [1, 2]})
+        result = finalize_as(frame=frame, dataframe_type=None)
+    assert isinstance(result, pd.DataFrame)
+
+
+def test_finalize_as_is_keyword_only() -> None:
+    """finalize_as takes no positional arguments."""
+    with config_context(dataframe_backend="pandas"):
+        frame = build_frame(data={"UNINUM": [1]})
+    with pytest.raises(TypeError):
+        finalize_as(frame, None)  # type: ignore[call-overload]
+
+
+# ---------------------------------------------------------------------------
+# pivot / _manual_pivot / _join_on_index
+# ---------------------------------------------------------------------------
+
+
+def _build_long_frame(*, backend: str) -> nw.DataFrame[Any]:
+    with config_context(dataframe_backend=backend):
+        return build_frame(
+            data={
+                "UNINUM": [1, 1, 2, 2],
+                "period": ["2026-03-31"] * 4,
+                "key": ["A", "B", "A", "B"],
+                "value": [10, 20, 30, 40],
+            }
+        )
+
+
+def _build_duplicate_grain_frame(*, backend: str) -> nw.DataFrame[Any]:
+    with config_context(dataframe_backend=backend):
+        return build_frame(
+            data={
+                "UNINUM": [1, 1, 1],
+                "period": ["2026-03-31"] * 3,
+                "key": ["A", "A", "B"],
+                "value": [10, 99, 20],
+            }
+        )
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+def test_pivot_native_path_pivots_correctly(backend: str) -> None:
+    """The native pivot path produces the expected wide shape and values."""
+    frame = _build_long_frame(backend=backend)
+    result = pivot(frame=frame, on="key", index=["UNINUM", "period"], values="value")
+    rows = {row["UNINUM"]: row for row in result.sort(["UNINUM"]).rows(named=True)}
+    assert result.columns == ["UNINUM", "period", "A", "B"]
+    assert rows[1]["A"] == 10
+    assert rows[1]["B"] == 20
+    assert rows[2]["A"] == 30
+    assert rows[2]["B"] == 40
+
+
+def test_pivot_pyarrow_path_dispatches_to_manual_pivot() -> None:
+    """Pyarrow input is routed through _manual_pivot and produces the same result."""
+    frame = _build_long_frame(backend="pyarrow")
+    assert frame.implementation is nw.Implementation.PYARROW
+    result = pivot(frame=frame, on="key", index=["UNINUM", "period"], values="value")
+    rows = {row["UNINUM"]: row for row in result.sort(["UNINUM"]).rows(named=True)}
+    assert set(result.columns) == {"UNINUM", "period", "A", "B"}
+    assert rows[1]["A"] == 10
+    assert rows[1]["B"] == 20
+    assert rows[2]["A"] == 30
+    assert rows[2]["B"] == 40
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars", "pyarrow"])
+def test_pivot_matches_across_backends(backend: str) -> None:
+    """Every backend's pivot path (native or manual) agrees on the same input."""
+    reference = pivot(
+        frame=_build_long_frame(backend="pandas"),
+        on="key",
+        index=["UNINUM", "period"],
+        values="value",
+    )
+    result = pivot(
+        frame=_build_long_frame(backend=backend),
+        on="key",
+        index=["UNINUM", "period"],
+        values="value",
+    )
+    reference_rows = reference.sort(["UNINUM"]).rows(named=True)
+    result_rows = result.sort(["UNINUM"]).select(reference.columns).rows(named=True)
+    assert result_rows == reference_rows
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+def test_pivot_duplicate_grain_raises_reshape_error_native(backend: str) -> None:
+    """A genuine duplicate (index, on) grain raises ReshapeError on the native path."""
+    frame = _build_duplicate_grain_frame(backend=backend)
+    with pytest.raises(ReshapeError, match="Could not pivot"):
+        pivot(frame=frame, on="key", index=["UNINUM", "period"], values="value")
+
+
+def test_pivot_duplicate_grain_raises_reshape_error_manual() -> None:
+    """A genuine duplicate (index, on) grain raises ReshapeError on the manual path."""
+    frame = _build_duplicate_grain_frame(backend="pyarrow")
+    with pytest.raises(ReshapeError, match="not a unique grain"):
+        pivot(frame=frame, on="key", index=["UNINUM", "period"], values="value")
+
+
+def test_manual_pivot_matches_native_pivot_output() -> None:
+    """_manual_pivot produces output identical to the native pandas pivot path."""
+    native_result = _build_long_frame(backend="pandas").pivot(
+        on="key", index=["UNINUM", "period"], values="value", sort_columns=True
+    )
+    manual_result = _manual_pivot(
+        frame=_build_long_frame(backend="pandas"),
+        on="key",
+        index=["UNINUM", "period"],
+        values="value",
+    )
+    assert manual_result.sort(["UNINUM"]).rows(named=True) == native_result.sort(
+        ["UNINUM"]
+    ).rows(named=True)
+
+
+def test_pivot_is_keyword_only() -> None:
+    """Pivot takes no positional arguments."""
+    frame = _build_long_frame(backend="pandas")
+    with pytest.raises(TypeError):
+        pivot(frame, "key", ["UNINUM", "period"], "value")  # type: ignore[call-arg]
+
+
+def test_join_on_index_coalesces_shared_join_keys() -> None:
+    """_join_on_index drops every backend's `{col}_right` join-key duplicate."""
+    with config_context(dataframe_backend="pandas"):
+        left = build_frame(data={"UNINUM": [1, 2], "period": ["a", "a"], "A": [10, 20]})
+        right = build_frame(
+            data={"UNINUM": [2, 3], "period": ["a", "a"], "B": [30, 40]}
+        )
+    joined = _join_on_index(left=left, right=right, index=["UNINUM", "period"])
+    assert set(joined.columns) == {"UNINUM", "period", "A", "B"}
+    rows = {row["UNINUM"]: row for row in joined.rows(named=True)}
+
+    def _is_missing(value: object) -> bool:
+        return value is None or value != value  # NaN is the only value != itself
+
+    assert rows[1]["A"] == 10
+    assert _is_missing(rows[1]["B"])
+    assert _is_missing(rows[3]["A"])
+    assert rows[3]["B"] == 40
