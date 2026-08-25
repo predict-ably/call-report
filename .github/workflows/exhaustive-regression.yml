@@ -1,0 +1,77 @@
+name: exhaustive-regression
+
+# Loads every archived FCA release against every dataframe backend, and
+# compares all three backends value-for-value on every release. That is the
+# full cross product the pull-request suite deliberately samples, so it is
+# minutes of work rather than seconds and never runs on an ordinary pull
+# request.
+#
+# Triggers:
+#   workflow_dispatch  run it by hand from the Actions tab, before a release
+#                      or after adding a quarter's archive to data/.
+#   push (v* tags)     runs alongside a release tag so the published version
+#                      has a full-history result recorded against it. This
+#                      does not block publish.yml, which triggers on the same
+#                      tag independently.
+on:
+  workflow_dispatch:
+    inputs:
+      python-version:
+        description: "Python version to run against"
+        required: false
+        default: "3.12"
+      os:
+        description: "Runner to use"
+        required: false
+        default: "ubuntu-latest"
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: exhaustive-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exhaustive:
+    name: exhaustive archive regression
+    runs-on: ${{ inputs.os || 'ubuntu-latest' }}
+    # The full cross product across ~105 releases is long-running by design.
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ inputs.python-version || '3.12' }}
+
+      - name: Install package with dev extras
+        run: pip install -e ".[dev]"
+
+      - name: Confirm the archive is present
+        # The regression is only meaningful against real release zips. The
+        # test fixture skips when they are absent, and a silently skipped
+        # exhaustive run would be worse than a failed one.
+        run: |
+          count=$(find data/fca-call-report -name '*.zip' | wc -l)
+          echo "Found $count archived release zips."
+          if [ "$count" -eq 0 ]; then
+            echo "::error::No archived FCA release zips found under data/fca-call-report."
+            exit 1
+          fi
+
+      - name: Run the exhaustive regression
+        run: |
+          python -m pytest tests/fca/test_release_archive.py \
+            --run-exhaustive \
+            -m exhaustive \
+            -p no:randomly \
+            -v \
+            --durations=25

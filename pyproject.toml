@@ -85,6 +85,7 @@ addopts = [
 ]
 markers = [
     "slow: real-archive regression tests over the full FCA release history (deselect with '-m \"not slow\"')",
+    "exhaustive: every archived release against every dataframe backend, skipped unless --run-exhaustive is passed",
 ]
 filterwarnings = [
     # A warning from pandas/polars/pyarrow, or from this package, is a

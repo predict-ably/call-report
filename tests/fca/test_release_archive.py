@@ -590,3 +590,97 @@ def test_wide_and_long_format_round_trip_agree_on_real_data(
         other=sorted(non_null_converted_long, key=_long_format_sort_key),
         label=f"long-round-trip:{period.label}",
     )
+
+
+# ---------------------------------------------------------------------------
+# Exhaustive: every archived release against every backend.
+#
+# The tests above sample: the full history runs under pandas alone, a seeded
+# stratified sample of 20 periods runs under all three backends, and 4 evenly
+# spaced periods are compared value-for-value across backends. That keeps
+# ordinary pull requests to a few minutes.
+#
+# The tests below drop the sampling and run the whole cross product. They are
+# skipped unless --run-exhaustive is passed (see tests/conftest.py), so they
+# cost nothing on a normal run, and are wired to a manually dispatched
+# workflow in .github/workflows/exhaustive-regression.yml for use before a
+# release.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.exhaustive
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize(
+    "period", ALL_KNOWN_PERIODS, ids=[period.label for period in ALL_KNOWN_PERIODS]
+)
+def test_exhaustive_every_release_loads_under_every_backend(
+    archive_report: FCACallReport, period: ReportingPeriod, backend: str
+) -> None:
+    """Every schedule of every archived release parses under every backend.
+
+    The sampled version of this test covers 20 periods. Sampling is a
+    reasonable trade for pull requests, but a parsing quirk confined to one
+    quarter is exactly the kind of thing a sample misses.
+    """
+    with config_context(dataframe_backend=backend):
+        _assert_all_schedules_load(report=archive_report, period=period)
+
+
+@pytest.mark.exhaustive
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
+@pytest.mark.parametrize(
+    "period", ALL_KNOWN_PERIODS, ids=[period.label for period in ALL_KNOWN_PERIODS]
+)
+def test_exhaustive_every_release_institutions_load_under_every_backend(
+    archive_report: FCACallReport, period: ReportingPeriod, backend: str
+) -> None:
+    """Every archived release's institution roster parses under every backend."""
+    with config_context(dataframe_backend=backend):
+        _assert_institutions_load(report=archive_report, period=period)
+
+
+@pytest.mark.exhaustive
+@pytest.mark.parametrize(
+    "period", ALL_KNOWN_PERIODS, ids=[period.label for period in ALL_KNOWN_PERIODS]
+)
+def test_exhaustive_every_release_matches_across_backends(
+    archive_report: FCACallReport, period: ReportingPeriod
+) -> None:
+    """Every archived release parses to identical values under all backends.
+
+    The strongest check in this module, and the most expensive: it loads
+    each release three times and compares every value. The sampled version
+    covers 4 periods. A backend-specific dtype or null-handling difference
+    that only shows up on one quarter's data would pass that sample and
+    fail here.
+    """
+    manifest = archive_report.releases_.get(period)
+    assert manifest is not None, f"{period.label} was not resolved by fetch()."
+    schedule_roots = tuple(
+        sorted(root for root in manifest.files if root != INSTITUTIONS_ROOT)
+    )
+    assert schedule_roots, f"{period.label} has no non-institution schedules."
+
+    reference = _load_schedule_rows(
+        report=archive_report,
+        period=period,
+        schedule_roots=schedule_roots,
+        backend="pandas",
+    )
+    for backend in ("polars", "pyarrow"):
+        other = _load_schedule_rows(
+            report=archive_report,
+            period=period,
+            schedule_roots=schedule_roots,
+            backend=backend,
+        )
+        assert set(other) == set(reference), (
+            f"{period.label}: {backend} produced schedules {sorted(other)}, "
+            f"expected {sorted(reference)}."
+        )
+        for root in schedule_roots:
+            _assert_rows_equal(
+                reference=reference[root],
+                other=other[root],
+                label=f"{period.label}:{backend}:{root}",
+            )

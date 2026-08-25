@@ -256,6 +256,25 @@ so contributors can iterate with `pytest -m "not slow"` (seconds instead of
 minutes) while CI still runs everything. Register any new marker in
 `[tool.pytest.ini_options]`; `--strict-markers` rejects unregistered ones.
 
+**Know the three tiers of the archive regression.** Real-data testing is
+layered so each tier costs what it is worth:
+
+1. *Every pull request.* The full release history under pandas, a seeded
+   stratified sample of 20 periods under all three backends, and 4 evenly
+   spaced periods compared value-for-value across backends.
+2. *`pytest -m "not slow"`.* None of the above. Seconds, for the edit-test
+   loop.
+3. *`pytest --run-exhaustive`.* Every archived release against every
+   backend, plus a cross-backend value comparison on every release. Minutes,
+   and skipped unless the flag is passed, so it never slows a pull request.
+   Run before a release, or after adding a quarter to `data/`, by
+   dispatching `.github/workflows/exhaustive-regression.yml`.
+
+Tier 3 is gated by a flag rather than a marker alone because a marker can be
+selected by accident with the wrong `-m` expression, while an unpassed flag
+cannot. The tests stay collected either way, so `--collect-only` shows what
+an exhaustive run would cover.
+
 **Reach for property-based tests on laws.** Where behavior has an invariant
 that should hold for every input, not just chosen examples, use `hypothesis`
 (see `tests/core/test_periods_properties.py`). Round trips, inverses, and
