@@ -311,6 +311,10 @@ def test_context_manager_closes_when_the_block_raises(
         )
         raise _BoomError
 
+    # `pytest.raises.__exit__` returns True, so it swallows _BoomError and
+    # execution continues here. Flow analysis that does not model that
+    # reports these two lines as unreachable and `resolved` as unused. They
+    # are not: forcing either assertion to a false value fails this test.
     assert resolved is not None
     assert not resolved.exists()
 
