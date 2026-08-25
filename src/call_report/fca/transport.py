@@ -9,12 +9,14 @@ so it is always clear which files a given instance will read.
 
 from __future__ import annotations
 
+import shutil
 import tempfile
+import weakref
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, Self
 
 from call_report.core import ReportingPeriod
 from call_report.exceptions import DownloadError
@@ -156,8 +158,19 @@ class PackagedArchiveTransport:
     after FCA's own download filename (e.g. ``"2026March.zip"``). A
     checkout of this repository therefore has ready-to-use historical data
     with no network access required. Each zip is extracted, once per
-    period, into a private temporary directory that is cleaned up when this
-    transport is garbage collected.
+    period, into a private temporary directory.
+
+    That extraction directory is a real resource, so prefer using the
+    transport as a context manager, which removes it on exit::
+
+        with PackagedArchiveTransport() as transport:
+            report = FCACallReport(start=..., end=..., transport=transport)
+
+    `close` does the same thing for callers that cannot use a ``with``
+    block, and is safe to call more than once. A transport that is never
+    closed still cleans up when it is garbage collected, but only at
+    whatever moment the interpreter happens to collect it, which emits a
+    `ResourceWarning` under ``-W error``.
 
     That archive is not included in the distributed wheel (see
     ``pyproject.toml``'s ``[tool.hatch.build.targets.wheel]``), so this
@@ -178,11 +191,11 @@ class PackagedArchiveTransport:
 
     Examples
     --------
-    >>> transport = PackagedArchiveTransport()
-    >>> resolved = transport.resolve(
-    ...     period=ReportingPeriod.from_period_end(value="2026-03-31")
-    ... )
-    >>> resolved.name
+    >>> with PackagedArchiveTransport() as transport:
+    ...     resolved = transport.resolve(
+    ...         period=ReportingPeriod.from_period_end(value="2026-03-31")
+    ...     )
+    ...     resolved.name
     '2026March'
     """  # numpydoc ignore=PR01
 
@@ -191,7 +204,16 @@ class PackagedArchiveTransport:
     _extracted: dict[ReportingPeriod, Path] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
-    _extract_root: tempfile.TemporaryDirectory[str] | None = field(
+    _extract_root: Path | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    # The extraction directory is managed with mkdtemp plus an explicit
+    # weakref.finalize rather than tempfile.TemporaryDirectory. Both clean
+    # up on garbage collection, but TemporaryDirectory's finalizer also
+    # emits a ResourceWarning, which for this class fires in whichever
+    # unrelated code happens to trigger the collection. Cleanup here is a
+    # documented fallback behind `close`, not a leak worth warning about.
+    _finalizer: weakref.finalize | None = field(
         default=None, init=False, repr=False, compare=False
     )
 
@@ -230,10 +252,71 @@ class PackagedArchiveTransport:
             )
 
         if self._extract_root is None:
-            self._extract_root = tempfile.TemporaryDirectory(prefix="call_report_fca_")
-        target_dir = Path(self._extract_root.name) / stem
+            root = Path(tempfile.mkdtemp(prefix="call_report_fca_"))
+            self._extract_root = root
+            self._finalizer = weakref.finalize(
+                self, shutil.rmtree, root, ignore_errors=True
+            )
+        target_dir = self._extract_root / stem
         with zipfile.ZipFile(archive_path) as archive:
             archive.extractall(target_dir)
 
         self._extracted[period] = target_dir
         return target_dir
+
+    def close(self) -> None:
+        """Remove the temporary directory this transport extracted zips into.
+
+        Safe to call more than once, and safe to call on a transport that
+        never resolved anything, since neither creates an extraction
+        directory to remove. After `close`, a further `resolve` call
+        extracts into a fresh directory rather than failing, so a closed
+        transport stays usable.
+
+        Examples
+        --------
+        >>> transport = PackagedArchiveTransport()
+        >>> resolved = transport.resolve(
+        ...     period=ReportingPeriod.from_period_end(value="2026-03-31")
+        ... )
+        >>> resolved.is_dir()
+        True
+        >>> transport.close()
+        >>> resolved.is_dir()
+        False
+        """
+        if self._finalizer is not None:
+            # A weakref.finalize object runs at most once, so calling close
+            # twice removes the directory once and is otherwise a no-op.
+            self._finalizer()
+            self._finalizer = None
+        self._extract_root = None
+        self._extracted.clear()
+
+    def __enter__(self) -> Self:
+        """Return this transport for use in a ``with`` block.
+
+        Entering does no work of its own. The extraction directory is
+        created lazily by the first `resolve` call, and removed by the
+        matching `__exit__`.
+
+        Returns
+        -------
+        Self
+            This instance, so ``with PackagedArchiveTransport() as t`` binds
+            the transport itself.
+        """
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        """Close the transport when leaving a ``with`` block.
+
+        Cleanup runs whether the block completed normally or raised. The
+        exception, if any, is left to propagate.
+
+        Parameters
+        ----------
+        *exc_info : object
+            The exception type, value, and traceback, ignored here.
+        """
+        self.close()
