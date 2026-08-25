@@ -52,7 +52,7 @@ jobs:
               exit 1
             fi
           done
-          echo "Both requirements files are tracked."
+          echo "Every requirements file is tracked."
 
       - name: Regenerate the requirements files
         run: scripts/generate_requirements.sh
