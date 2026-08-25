@@ -7,6 +7,7 @@ on:
       - "pyproject.toml"
       - "requirements.txt"
       - "requirements-dev.txt"
+      - "requirements-docs.txt"
       - "scripts/generate_requirements.sh"
       - ".github/workflows/check-requirements.yml"
   pull_request:
@@ -15,6 +16,7 @@ on:
       - "pyproject.toml"
       - "requirements.txt"
       - "requirements-dev.txt"
+      - "requirements-docs.txt"
       - "scripts/generate_requirements.sh"
       - ".github/workflows/check-requirements.yml"
 
@@ -44,7 +46,7 @@ jobs:
       # requirements.txt was never committed, so assert tracking first.
       - name: Assert the requirements files are tracked
         run: |
-          for file in requirements.txt requirements-dev.txt; do
+          for file in requirements.txt requirements-dev.txt requirements-docs.txt; do
             if ! git ls-files --error-unmatch "$file" > /dev/null 2>&1; then
               echo "::error::$file is not tracked by git, so drift in it cannot be detected. Run ./scripts/generate_requirements.sh and commit the result."
               exit 1
@@ -58,7 +60,7 @@ jobs:
       - name: Check for drift and report
         run: |
           drift=0
-          for file in requirements.txt requirements-dev.txt; do
+          for file in requirements.txt requirements-dev.txt requirements-docs.txt; do
             if ! git diff --quiet -- "$file"; then
               echo "::group::$file is out of sync, diff below"
               git diff -- "$file"
