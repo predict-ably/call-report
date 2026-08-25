@@ -11,9 +11,27 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
+from hypothesis import HealthCheck, settings
 
 from call_report.config import config_context, get_config, set_config
 from tests.helpers import ALL_BACKENDS
+
+# hypothesis fails an example that exceeds a 200ms deadline. That is a poor
+# fit here: a property test that builds a dataframe pays the backend's
+# import cost on its first example and microseconds thereafter, so the
+# deadline fires on the timing spread rather than on anything about the
+# code under test. Observed locally at 297ms for a first example against
+# 2.76ms for the next, and CI runners are slower and more variable still.
+#
+# The `too_slow` health check is suppressed for the same reason: building
+# frames per example is inherently slower than generating integers, and
+# that is the work these tests exist to do.
+settings.register_profile(
+    "call_report",
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+settings.load_profile("call_report")
 
 
 @pytest.fixture(autouse=True)
