@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import zipfile
 from pathlib import Path
 
@@ -212,3 +213,141 @@ def test_packaged_archive_transport_is_keyword_only(tmp_path: Path) -> None:
     """PackagedArchiveTransport's constructor takes no positional arguments."""
     with pytest.raises(TypeError):
         PackagedArchiveTransport(tmp_path)  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# PackagedArchiveTransport -- deterministic cleanup
+# ---------------------------------------------------------------------------
+
+
+def test_close_removes_the_extraction_directory(
+    tmp_path: Path, release_2026q1: Path
+) -> None:
+    """close() deletes the temporary directory resolve() extracted into."""
+    archive_root = tmp_path / "archives"
+    archive_root.mkdir()
+    _zip_release(release_2026q1, archive_root=archive_root)
+
+    transport = PackagedArchiveTransport(archive_root=archive_root)
+    resolved = transport.resolve(
+        period=ReportingPeriod.from_period_end(value="2026-03-31")
+    )
+    assert resolved.is_dir()
+
+    transport.close()
+    assert not resolved.exists()
+
+
+def test_close_is_idempotent(tmp_path: Path, release_2026q1: Path) -> None:
+    """Calling close() a second time is a no-op rather than an error."""
+    archive_root = tmp_path / "archives"
+    archive_root.mkdir()
+    _zip_release(release_2026q1, archive_root=archive_root)
+
+    transport = PackagedArchiveTransport(archive_root=archive_root)
+    transport.resolve(period=ReportingPeriod.from_period_end(value="2026-03-31"))
+    transport.close()
+    transport.close()
+
+
+def test_close_on_an_unused_transport_is_a_noop(tmp_path: Path) -> None:
+    """A transport that never resolved anything has nothing to clean up."""
+    PackagedArchiveTransport(archive_root=tmp_path).close()
+
+
+def test_resolve_after_close_extracts_into_a_fresh_directory(
+    tmp_path: Path, release_2026q1: Path
+) -> None:
+    """A closed transport stays usable and re-extracts on the next resolve()."""
+    archive_root = tmp_path / "archives"
+    archive_root.mkdir()
+    _zip_release(release_2026q1, archive_root=archive_root)
+
+    period = ReportingPeriod.from_period_end(value="2026-03-31")
+    transport = PackagedArchiveTransport(archive_root=archive_root)
+    first = transport.resolve(period=period)
+    transport.close()
+
+    second = transport.resolve(period=period)
+    assert second.is_dir()
+    assert second != first
+    transport.close()
+
+
+def test_context_manager_closes_on_normal_exit(
+    tmp_path: Path, release_2026q1: Path
+) -> None:
+    """Leaving a `with` block removes the extraction directory."""
+    archive_root = tmp_path / "archives"
+    archive_root.mkdir()
+    _zip_release(release_2026q1, archive_root=archive_root)
+
+    with PackagedArchiveTransport(archive_root=archive_root) as transport:
+        resolved = transport.resolve(
+            period=ReportingPeriod.from_period_end(value="2026-03-31")
+        )
+        assert resolved.is_dir()
+    assert not resolved.exists()
+
+
+def test_context_manager_closes_when_the_block_raises(
+    tmp_path: Path, release_2026q1: Path
+) -> None:
+    """Cleanup still runs, and the exception still propagates, on an error."""
+    archive_root = tmp_path / "archives"
+    archive_root.mkdir()
+    _zip_release(release_2026q1, archive_root=archive_root)
+
+    class _BoomError(Exception):
+        pass
+
+    resolved: Path | None = None
+    with (
+        pytest.raises(_BoomError),
+        PackagedArchiveTransport(archive_root=archive_root) as transport,
+    ):
+        resolved = transport.resolve(
+            period=ReportingPeriod.from_period_end(value="2026-03-31")
+        )
+        raise _BoomError
+
+    # `pytest.raises.__exit__` returns True, so it swallows _BoomError and
+    # execution continues here. Flow analysis that does not model that
+    # reports these two lines as unreachable and `resolved` as unused. They
+    # are not: forcing either assertion to a false value fails this test.
+    assert resolved is not None
+    assert not resolved.exists()
+
+
+def test_context_manager_yields_the_transport_itself(tmp_path: Path) -> None:
+    """`with PackagedArchiveTransport() as t` binds the transport, not None."""
+    transport = PackagedArchiveTransport(archive_root=tmp_path)
+    with transport as entered:
+        assert entered is transport
+
+
+def test_garbage_collection_cleans_up_without_a_resourcewarning(
+    tmp_path: Path, release_2026q1: Path, recwarn: pytest.WarningsRecorder
+) -> None:
+    """An unclosed transport cleans up on collection, and stays silent doing it.
+
+    The GC path is a documented fallback behind close(), not a leak, so it
+    must not emit the ResourceWarning `tempfile.TemporaryDirectory` would.
+    That warning previously surfaced in whichever unrelated test happened
+    to trigger the collection.
+    """
+    archive_root = tmp_path / "archives"
+    archive_root.mkdir()
+    _zip_release(release_2026q1, archive_root=archive_root)
+
+    transport = PackagedArchiveTransport(archive_root=archive_root)
+    resolved = transport.resolve(
+        period=ReportingPeriod.from_period_end(value="2026-03-31")
+    )
+    assert resolved.is_dir()
+
+    del transport
+    gc.collect()
+
+    assert not resolved.exists()
+    assert [w for w in recwarn if issubclass(w.category, ResourceWarning)] == []

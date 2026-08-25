@@ -162,11 +162,112 @@ sphinx-build -b html docs/source docs/_build/html
   (includes `E,W,F,I,UP,B,C4,SIM,TID,N,A,S,T20,PTH,RUF,D,Q`) — notably `PTH` (use
   `pathlib` over `os.path`), `S` (bandit security), and `T20` (no stray `print`).
 - **Tests** live in `tests/` and run under `pytest`; branch coverage must stay at 100%.
-  Add tests alongside every new feature.
+  Add tests alongside every new feature. See "Writing tests" below.
 - **First-party** import name is `call_report` (underscore); the distribution name is
   `call-report` (hyphen).
 - **Version** is single-sourced from `src/call_report/__init__.py` (`__version__`) via
   hatchling; bump it there.
+
+## Writing docstrings
+
+Beyond the numpy convention and the `numpydoc` gate, this project holds
+docstrings to a specific standard of *voice* and *content*. A docstring
+documents the code for someone reading it later. It is not a place to record
+how the work went.
+
+**Plain language.**
+
+- Do not use dashes as sentence punctuation. That includes the em dash (—),
+  the en dash (–), and the ASCII `--`, which Sphinx renders as an en dash.
+  Use a full stop, a comma, or parentheses instead.
+- Do not use semicolons. Split into two sentences, or use a comma-separated
+  list.
+- Prefer short sentences over one long sentence carrying three clauses. If a
+  summary needs three things said, say them in three sentences or a list.
+
+**No anecdotes.** Do not write notes to the reviewer into a docstring. These
+have all appeared here and have all been removed:
+
+- "confirmed real", "verified", "confirmed directly", "confirmed to vary"
+- "this has not been observed in any real FCA release"
+- narrating how a bug was reproduced, which CI platform surfaced it, or
+  which of two frames happened to be listed first
+
+Keep the *fact* when it constrains the code, stated plainly: "RCO has zero
+rows at 2000Q1" is useful. "Confirmed real: RCO has zero rows at 2000Q1" is
+the same fact with a note about the author's confidence attached.
+
+**Document the contract, not the line.** If a sentence explains why one
+specific statement is written the way it is, it belongs in a code comment
+next to that statement, not in the docstring. A docstring describes what a
+caller can rely on. Rationale for a `collect_schema()` call over `.columns`
+is a comment.
+
+**Keep repeated parameters identical.** When the same parameter appears on
+many functions (`dataframe_type`, `backend`, `schedule`), its description is
+written once and copied verbatim. Three different wordings of one parameter
+is a defect.
+
+**Examples are tests.** `--doctest-modules` runs every `Examples` block, so
+they must execute and match their output. Construct real objects and show
+real, meaningful output. Prefer `# doctest: +ELLIPSIS` for genuinely variable
+output; reserve `+SKIP` for what cannot run in a sandbox, such as live
+network access.
+
+## Writing tests
+
+**State what is being tested and why.** Every test gets a docstring naming
+the behavior under test. When a test exists because of a specific bug, say
+what breaks without it, in one or two sentences, without narrating the
+investigation.
+
+**Never let a test leak global state.** `call_report.config` is
+process-global. The autouse `reset_config` fixture in `tests/conftest.py`
+restores it after every test, so no test needs its own `try/finally` and no
+test can be broken by one that ran before it. Any future global state gets
+the same treatment. Do not hand-roll cleanup.
+
+**Test order is randomized.** `pytest-randomly` shuffles every run, so tests
+must not depend on execution order. A failure under a shuffled order is a
+real bug, not noise; reproduce it with the seed pytest prints
+(`-p randomly --randomly-seed=<seed>`).
+
+**Warnings are errors.** `filterwarnings = ["error"]` is set. A new warning
+from pandas, polars, pyarrow, or this package fails the suite. Fix the cause.
+Add a narrow, commented `ignore` entry only when the warning is genuinely
+outside this project's control, never a blanket category suppression.
+
+**Use fixtures where they earn their place.** A fixture that only returns a
+constant is indirection without benefit; inline it. A fixture that sets up
+state, tears it down, or parametrizes a test is worth having. Prefer the
+`backend`, `polars_backend`, and `lazy_polars_backend` fixtures over an
+inline `config_context` block, and make sure the backend stays active for
+the *whole* test body, not just the arrange step.
+
+**Helpers live in modules, not `conftest.py`.** pytest loads every
+`conftest.py` as a plugin itself, so importing one as a library gives it two
+identities in `sys.modules`. Shared helpers go in `tests/helpers.py` or a
+sibling module such as `tests/fca/layouts.py`. `conftest.py` holds fixtures
+and hooks only.
+
+**Mark slow tests.** `tests/fca/test_release_archive.py` drives real archived
+releases and dominates runtime. It carries `pytestmark = pytest.mark.slow`,
+so contributors can iterate with `pytest -m "not slow"` (seconds instead of
+minutes) while CI still runs everything. Register any new marker in
+`[tool.pytest.ini_options]`; `--strict-markers` rejects unregistered ones.
+
+**Reach for property-based tests on laws.** Where behavior has an invariant
+that should hold for every input, not just chosen examples, use `hypothesis`
+(see `tests/core/test_periods_properties.py`). Round trips, inverses, and
+additivity are the usual candidates. `hypothesis` ships its own pytest
+plugin, so there is no `pytest-hypothesis` package to add. Example-based
+tests stay valuable for specific, known-tricky cases such as the FCA
+2014/2015 era boundary; the two complement each other.
+
+**Prefer real data for regression.** `data/fca-call-report/` holds every
+published FCA release, and the suite regression-tests against all of them.
+Synthetic fixtures cover structural scenarios; real archives catch what
+synthetic data cannot reproduce.
 
 ## Repo layout
 
