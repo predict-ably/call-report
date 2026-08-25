@@ -14,14 +14,17 @@ from pathlib import Path
 from typing import Any
 
 import narwhals as nw
+import pandas as pd
+import polars as pl
+import pyarrow as pa
 import pytest
 
 from call_report.core._backend import DataFrameType
 from call_report.exceptions import LayoutParseError
 from call_report.fca.layout import parse_layout
 from call_report.fca.reader import read_schedule_file
-from tests.conftest import write_data, write_layout
-from tests.fca.conftest import RC_LINES_7COL, RCB_LINES, RCR7_LINES
+from tests.fca.layouts import RC_LINES_7COL, RCB_LINES, RCR7_LINES
+from tests.helpers import write_data, write_layout
 
 
 def _rows(native_frame: Any) -> list[dict[str, Any]]:
@@ -244,10 +247,6 @@ def test_read_schedule_file_honors_dataframe_type_override(
     tmp_path: Path, dataframe_type: DataFrameType
 ) -> None:
     """read_schedule_file() converts its result to `dataframe_type` as a final step."""
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
-
     expected_type = {
         "pandas": pd.DataFrame,
         "pyarrow_table": pa.Table,

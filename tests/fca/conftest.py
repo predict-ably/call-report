@@ -1,10 +1,13 @@
 """Hand-built FCA release-directory fixtures shared across tests/fca/*.
 
-All content here mimics structural quirks confirmed against real FCA
-releases during design (three metadata scenarios, ragged/variable-length
-occurrence groups, line-wrapped single_multiple_single records, legacy vs.
-modern filenames, windows-1252 bytes) but is entirely hand-written -- nothing
-here is read from ``references/``.
+Every fixture here mimics a structural scenario seen in real FCA releases
+(the three metadata scenarios, ragged and variable-length occurrence
+groups, line-wrapped single_multiple_single records, legacy and modern
+filenames, windows-1252 bytes), but is entirely hand-written. Nothing here
+is read from ``references/``.
+
+The layout variable-line blocks these fixtures build on live in
+:mod:`tests.fca.layouts` and are re-exported here for convenience.
 """
 
 from __future__ import annotations
@@ -13,61 +16,21 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import write_data, write_layout
+from tests.fca.layouts import (
+    INST_LINES,
+    RC_LINES_7COL,
+    RC_LINES_8COL,
+    RCB_LINES,
+    RCR7_LINES,
+)
+from tests.helpers import write_data, write_layout
 
-# ---------------------------------------------------------------------------
-# Reusable variable-line blocks
-# ---------------------------------------------------------------------------
-
-RC_LINES_7COL = [
-    "  SYSTEM     Numeric    0  System Code",
-    "  DIST       Numeric    0  District Code",
-    "  ASSOC      Numeric    0  Association Code",
-    "  MONTH      Numeric    0  Month of Report",
-    "  YEAR       Numeric    0  Year of Report",
-    "  UNINUM     Numeric    0  Unique institution number",
-    "  TOTASSETS  Numeric    0  Total Assets",
-]
-
-RC_LINES_8COL = [
-    *RC_LINES_7COL,
-    "  TOTLIAB    Numeric    0  Total Liabilities (added later)",
-]
-
-RCB_LINES = [
-    "  SYSTEM      Numeric    0  System Code",
-    "  DIST        Numeric    0  District Code",
-    "  ASSOC       Numeric    0  Association Code",
-    "  MONTH       Numeric    0  Month of Report",
-    "  YEAR        Numeric    0  Year of Report",
-    "  UNINUM      Numeric    0  Unique institution number",
-    "  **INV_CODE  Numeric    0  Investment code: 10 Cash  20 Securities  30 Loans",
-    "  **AMOUNT    Numeric    0  Amount",
-    "  **AMOUNT2   Numeric    2  Amount 2",
-]
-
-RCR7_LINES = [
-    "  SYSTEM     Numeric   0  System Code",
-    "  DIST       Numeric   0  District Code",
-    "  ASSOC      Numeric   0  Association Code",
-    "  MONTH      Numeric   0  Month of Report",
-    "  YEAR       Numeric   0  Year of Report",
-    "  UNINUM     Numeric   0  Unique institution number",
-    "  **CAPCODE  Numeric   0  Capital code: 10 Beginning  20 Ending",
-    "  **VAL1     Numeric   0  Value 1",
-    "  **VAL2     Numeric   0  Value 2",
-    "  TOTAL      Numeric   0  Total amount",
-]
-
-INST_LINES = [
-    "  SYSTEM     Numeric    0  System Code",
-    "  DIST       Numeric    0  District Code",
-    "  ASSOC      Numeric    0  Association Code",
-    "  MONTH      Numeric    0  Month of Report",
-    "  YEAR       Numeric    0  Year of Report",
-    "  UNINUM     Numeric    0  Unique institution number",
-    "  SHORTNAME  Alphanum.  0  Institution short name",
-    "  STATE      Alphanum.  0  State code",
+__all__ = [
+    "INST_LINES",
+    "RCB_LINES",
+    "RCR7_LINES",
+    "RC_LINES_7COL",
+    "RC_LINES_8COL",
 ]
 
 

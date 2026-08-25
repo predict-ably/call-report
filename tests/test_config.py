@@ -1,6 +1,11 @@
 """Tests for call_report.config.
 
 The config follows the sklearn-style package configuration.
+
+These tests mutate process-global state deliberately and do not clean up
+after themselves. The autouse ``reset_config`` fixture in
+``tests/conftest.py`` restores the previous configuration after every test,
+so no test here needs its own try/finally and none can leak into another.
 """
 
 from __future__ import annotations
@@ -22,11 +27,8 @@ def test_default_config() -> None:
 def test_set_config_updates_backend() -> None:
     """set_config mutates only the keys it is given."""
     set_config(dataframe_backend="pyarrow")
-    try:
-        assert get_config()["dataframe_backend"] == "pyarrow"
-        assert get_config()["lazy"] is False
-    finally:
-        set_config(dataframe_backend="pandas")
+    assert get_config()["dataframe_backend"] == "pyarrow"
+    assert get_config()["lazy"] is False
 
 
 def test_set_config_rejects_unknown_backend() -> None:
@@ -44,22 +46,16 @@ def test_set_config_rejects_lazy_for_non_lazy_capable_backend() -> None:
 def test_set_config_accepts_lazy_for_polars() -> None:
     """Polars is the one shipped lazy-capable backend."""
     set_config(dataframe_backend="polars", lazy=True)
-    try:
-        config = get_config()
-        assert config["dataframe_backend"] == "polars"
-        assert config["lazy"] is True
-    finally:
-        set_config(dataframe_backend="pandas", lazy=False)
+    config = get_config()
+    assert config["dataframe_backend"] == "polars"
+    assert config["lazy"] is True
 
 
 def test_set_config_switching_backend_away_from_polars_requires_clearing_lazy() -> None:
     """Switching to a non-lazy-capable backend while lazy=True is still set errors."""
     set_config(dataframe_backend="polars", lazy=True)
-    try:
-        with pytest.raises(ValueError, match="lazy"):
-            set_config(dataframe_backend="pandas")
-    finally:
-        set_config(dataframe_backend="pandas", lazy=False)
+    with pytest.raises(ValueError, match="lazy"):
+        set_config(dataframe_backend="pandas")
 
 
 def test_config_context_restores_previous_config() -> None:
@@ -114,15 +110,23 @@ def test_config_is_thread_local() -> None:
 def test_set_config_no_args_is_a_noop() -> None:
     """Calling set_config with no arguments changes nothing."""
     set_config(dataframe_backend="pyarrow")
-    try:
-        before = get_config()
-        set_config()
-        assert get_config() == before
-    finally:
-        set_config(dataframe_backend="pandas")
+    before = get_config()
+    set_config()
+    assert get_config() == before
 
 
 def test_config_functions_are_keyword_only() -> None:
     """set_config takes no positional arguments."""
     with pytest.raises(TypeError):
         set_config("pandas")  # type: ignore[call-arg]
+
+
+def test_autouse_reset_config_restores_state_between_tests() -> None:
+    """The autouse fixture is what keeps the tests above from leaking.
+
+    This asserts the default is intact at the *start* of a test, which only
+    holds because ``reset_config`` restored it after whichever config-
+    mutating test ran before this one. Without that fixture, test order
+    would decide whether this passes.
+    """
+    assert get_config() == {"dataframe_backend": "pandas", "lazy": False}

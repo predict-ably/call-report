@@ -5,13 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import narwhals as nw
+import pandas as pd
+import polars as pl
+import pyarrow as pa
 import pytest
 
 from call_report.core._backend import DataFrameType
 from call_report.exceptions import DownloadError
 from call_report.fca.institutions import read_institutions
-from tests.conftest import write_data, write_layout
-from tests.fca.conftest import INST_LINES, RC_LINES_7COL
+from tests.fca.layouts import INST_LINES, RC_LINES_7COL
+from tests.helpers import write_data, write_layout
 
 
 def test_read_institutions_returns_roster(tmp_path: Path) -> None:
@@ -81,10 +84,6 @@ def test_read_institutions_honors_dataframe_type_override(
     tmp_path: Path, dataframe_type: DataFrameType
 ) -> None:
     """read_institutions() converts its result to `dataframe_type` as a final step."""
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
-
     expected_type = {
         "pandas": pd.DataFrame,
         "pyarrow_table": pa.Table,

@@ -13,8 +13,8 @@ from call_report.fca.layout import (
     infer_field_dtype,
     parse_layout,
 )
-from tests.conftest import write_layout
-from tests.fca.conftest import INST_LINES, RC_LINES_7COL, RCB_LINES, RCR7_LINES
+from tests.fca.layouts import INST_LINES, RC_LINES_7COL, RCB_LINES, RCR7_LINES
+from tests.helpers import write_layout
 
 
 def test_parse_layout_single_scenario(tmp_path: Path) -> None:

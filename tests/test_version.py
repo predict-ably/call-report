@@ -7,19 +7,12 @@ forgotten version bump fails the suite. See ``scripts/tag_release.sh``.
 
 from __future__ import annotations
 
-import pytest
 from packaging.version import Version
 
 import call_report
 
 # Bump in lockstep with __version__ (src/call_report/__init__.py) at release time.
 EXPECTED_VERSION = "0.1.0"
-
-
-@pytest.fixture
-def expected_version() -> str:
-    """Return the version this release is expected to publish."""
-    return EXPECTED_VERSION
 
 
 def test_version_is_nonempty_string() -> None:
@@ -34,6 +27,6 @@ def test_version_is_valid_pep440() -> None:
     assert Version(call_report.__version__).release
 
 
-def test_version_matches_expected(expected_version: str) -> None:
+def test_version_matches_expected() -> None:
     """``__version__`` matches the manually maintained release version."""
-    assert call_report.__version__ == expected_version
+    assert call_report.__version__ == EXPECTED_VERSION
