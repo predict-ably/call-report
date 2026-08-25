@@ -15,6 +15,8 @@ is a better fit than any list of examples someone writes by hand.
 
 from __future__ import annotations
 
+import string
+
 import narwhals as nw
 from hypothesis import given
 from hypothesis import strategies as st
@@ -28,13 +30,14 @@ from call_report.core import (
 )
 from call_report.core._schema import _dtype_from_repr
 
-# Names safe to embed in a dtype repr and in JSON: no quotes, no braces, no
-# characters that would need escaping to survive the round trip.
-names = st.text(
-    alphabet=st.characters(whitelist_categories=("Lu", "Nd"), whitelist_characters="_"),
-    min_size=1,
-    max_size=8,
-).filter(lambda value: not value.startswith("_"))
+# Real FCA field names are ASCII uppercase, digits, and underscores. Keeping
+# the alphabet to those is both representative and safe to embed in a dtype
+# repr and in JSON, with nothing needing escaping to survive the round trip.
+_NAME_ALPHABET = string.ascii_uppercase + string.digits + "_"
+
+names = st.text(alphabet=_NAME_ALPHABET, min_size=1, max_size=8).filter(
+    lambda value: not value.startswith("_")
+)
 
 _SIMPLE_DTYPES = [
     nw.Int8(),

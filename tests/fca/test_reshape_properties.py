@@ -19,6 +19,7 @@ violates.
 
 from __future__ import annotations
 
+import string
 from typing import Any
 
 import narwhals as nw
@@ -30,7 +31,9 @@ from call_report.core._backend import build_frame
 from call_report.exceptions import ReshapeError
 from call_report.fca._reshape import _parse_wide_column_key, _with_column_key
 
-_ALPHABET = st.characters(whitelist_categories=("Lu", "Nd"), whitelist_characters="_")
+# Real FCA schedule, code column, and field names are ASCII uppercase,
+# digits, and underscores.
+_ALPHABET = string.ascii_uppercase + string.digits + "_"
 
 
 def _is_safe_name(value: str) -> bool:
