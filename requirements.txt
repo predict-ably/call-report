@@ -1,0 +1,2 @@
+narwhals==2.25.0
+    # via call-report (pyproject.toml)
