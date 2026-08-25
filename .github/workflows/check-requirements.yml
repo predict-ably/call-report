@@ -5,10 +5,18 @@ on:
     branches: [main]
     paths:
       - "pyproject.toml"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - "scripts/generate_requirements.sh"
+      - ".github/workflows/check-requirements.yml"
   pull_request:
     branches: [main]
     paths:
       - "pyproject.toml"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - "scripts/generate_requirements.sh"
+      - ".github/workflows/check-requirements.yml"
 
 permissions:
   contents: read
@@ -30,22 +38,35 @@ jobs:
       - name: Install pip-tools
         run: pip install "pip-tools>=7.4.1"
 
-      - name: Regenerate requirements.txt
+      # `git diff` reports nothing for a path git is not tracking, so an
+      # uncommitted requirements file would make the drift check below pass
+      # unconditionally. That is exactly how this job silently passed while
+      # requirements.txt was never committed, so assert tracking first.
+      - name: Assert the requirements files are tracked
+        run: |
+          for file in requirements.txt requirements-dev.txt; do
+            if ! git ls-files --error-unmatch "$file" > /dev/null 2>&1; then
+              echo "::error::$file is not tracked by git, so drift in it cannot be detected. Run ./scripts/generate_requirements.sh and commit the result."
+              exit 1
+            fi
+          done
+          echo "Both requirements files are tracked."
+
+      - name: Regenerate the requirements files
         run: scripts/generate_requirements.sh
 
-      - name: Check for drift in requirements.txt and report
+      - name: Check for drift and report
         run: |
-          if ! git diff --quiet requirements.txt; then
-            echo "::group::requirements.txt is out of sync — diff below"
-            git diff requirements.txt
-            echo "::endgroup::"
-            echo "::error::requirements.txt is out of sync with pyproject.toml. Fix locally with: ./scripts/generate_requirements.sh && git add requirements.txt && git commit"
-            # Mark that we need to upload the corrected file and fail
-            echo "DRIFT_DETECTED=true" >> "$GITHUB_ENV"
-          else
-            echo "requirements.txt is in sync."
-          fi
-
-      - name: Fail if drift was detected
-        if: env.DRIFT_DETECTED == 'true'
-        run: exit 1
+          drift=0
+          for file in requirements.txt requirements-dev.txt; do
+            if ! git diff --quiet -- "$file"; then
+              echo "::group::$file is out of sync, diff below"
+              git diff -- "$file"
+              echo "::endgroup::"
+              echo "::error::$file is out of sync with pyproject.toml. Fix locally with: ./scripts/generate_requirements.sh && git add $file && git commit"
+              drift=1
+            else
+              echo "$file is in sync."
+            fi
+          done
+          exit "$drift"
