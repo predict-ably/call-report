@@ -28,10 +28,15 @@ jobs:
       - name: Install pip-tools
         run: pip install "pip-tools>=7.4.1"
 
-      - name: Regenerate requirements.txt
+      - name: Regenerate the requirements files
         run: scripts/generate_requirements.sh
 
       - name: Audit dependencies for known vulnerabilities
         uses: pypa/gh-action-pip-audit@v1.1.0
         with:
-          inputs: requirements.txt
+          # All three groups. Their union is every extra, so this scans the
+          # same package set a single --all-extras file would.
+          inputs: >-
+            requirements.txt
+            requirements-dev.txt
+            requirements-docs.txt
