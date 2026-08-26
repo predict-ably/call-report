@@ -38,6 +38,7 @@ from call_report.core import PeriodRange, ReportingPeriod
 from call_report.exceptions import LayoutParseError, ScheduleNotFoundError
 from call_report.fca import (
     FCACallReport,
+    FCASchedule,
     convert_long_format_to_wide_format,
     convert_wide_format_to_long_format,
 )
@@ -227,6 +228,53 @@ def _fetched_full_history_report() -> FCACallReport:
     return report
 
 
+@pytest.fixture(scope="session")
+def loadable_archive_report() -> FCACallReport:
+    """Build a full-history report dedicated to the per-schedule `load` tests.
+
+    Separate from `archive_report` because `load` appends to `errors_`.
+    Keeping the two apart means a per-schedule test can assert on
+    `errors_` without seeing what an unrelated test left there.
+
+    Returns
+    -------
+    FCACallReport
+        Already `fetch`-ed, spanning the whole known release history.
+    """
+    return _fetched_full_history_report()
+
+
+def _assert_schedule_loads(
+    *, report: FCACallReport, schedule: FCASchedule, backend: str
+) -> None:
+    """Load one schedule across every period it appears in, via the public API.
+
+    `load` stacks the schedule across periods and records a period it
+    could not parse in `errors_` rather than raising, so this checks both
+    that rows came back and that nothing was quietly skipped for this
+    schedule.
+
+    Parameters
+    ----------
+    report : FCACallReport
+        Already `fetch`-ed report to load from.
+    schedule : FCASchedule
+        The schedule to load.
+    backend : str
+        The dataframe backend in force, for failure messages.
+    """
+    frame = report.load(schedule=schedule)
+    assert len(_eager(frame)) > 0, (
+        f"{backend}: load(schedule={schedule.value!r}) returned 0 rows."
+    )
+
+    recorded = [issue for issue in report.errors_ if issue.schedule is schedule]
+    assert not recorded, (
+        f"{backend}: load(schedule={schedule.value!r}) recorded "
+        f"{len(recorded)} issue(s): {recorded[:3]}"
+    )
+
+
 def _assert_public_load_api(*, report: FCACallReport, backend: str) -> None:
     """Drive the public load API over the whole archive and check what it returned.
 
@@ -245,6 +293,13 @@ def _assert_public_load_api(*, report: FCACallReport, backend: str) -> None:
     """
     loaded = report.load_all()
     assert loaded, f"{backend}: load_all() returned no schedules."
+    # `load_all` omits a schedule that failed in every period rather than
+    # raising, so checking the result is non-empty is not enough: it has
+    # to carry every schedule `fetch` discovered.
+    assert set(loaded) == set(report.schedules_), (
+        f"{backend}: load_all() dropped "
+        f"{sorted(s.value for s in set(report.schedules_) - set(loaded))}."
+    )
     for schedule, frame in loaded.items():
         assert len(_eager(frame)) > 0, (
             f"{backend}: load_all() returned 0 rows for {schedule}."
@@ -586,6 +641,28 @@ def test_public_load_api_works_across_the_whole_archive() -> None:
     _assert_public_load_api(report=report, backend="pandas")
 
 
+@pytest.mark.parametrize(
+    "schedule", tuple(FCASchedule), ids=[schedule.value for schedule in FCASchedule]
+)
+def test_every_schedule_loads_through_the_public_load_method(
+    loadable_archive_report: FCACallReport, schedule: FCASchedule
+) -> None:
+    """`load` returns stacked data for each schedule across the whole history.
+
+    `load_all` covers the same ground in aggregate, but one failing
+    schedule there is one failing test. Parametrizing names the schedule
+    that broke, and covers the `ScheduleNotFoundError` path for any
+    schedule the archive never contains.
+    """
+    if schedule not in loadable_archive_report.schedules_:
+        with pytest.raises(ScheduleNotFoundError):
+            loadable_archive_report.load(schedule=schedule)
+        return
+    _assert_schedule_loads(
+        report=loadable_archive_report, schedule=schedule, backend="pandas"
+    )
+
+
 def test_public_query_api_agrees_with_the_archive() -> None:
     """The period and schedule query methods describe the archive correctly.
 
@@ -848,6 +925,17 @@ def test_wide_and_long_format_round_trip_agree_on_real_data(
     real-data proof of both the hermetic tests in test_reshape.py and
     test_report.py's small-fixture version.
     """
+    _assert_round_trip(period=period)
+
+
+def _assert_round_trip(*, period: ReportingPeriod) -> None:
+    """Convert one release's wide and long formats into each other and compare.
+
+    Parameters
+    ----------
+    period : ReportingPeriod
+        The release to round trip.
+    """
     report = FCACallReport(
         start=period.period_end,
         end=period.period_end,
@@ -1021,3 +1109,67 @@ def test_exhaustive_every_release_matches_across_backends(
                 other=other[root],
                 label=f"{period.label}:{backend}:{root}",
             )
+
+
+@pytest.mark.exhaustive
+@pytest.mark.parametrize(
+    "period", ALL_KNOWN_PERIODS, ids=[period.label for period in ALL_KNOWN_PERIODS]
+)
+def test_exhaustive_wide_format_matches_across_backends(
+    period: ReportingPeriod,
+) -> None:
+    """Every release's wide format agrees across backends, not just four of them.
+
+    The sampled version covers 4 evenly spaced periods. This is the same
+    check over the whole history, which matters most for the pyarrow
+    backend: it has no native pivot and goes through `_manual_pivot`, a
+    different code path from the one the other two backends use.
+    """
+    reference = _to_wide_format_frame(period=period, backend="pandas")
+    assert len(reference) > 0, f"{period.label}: wide format built 0 rows."
+    for backend in ("polars", "pyarrow"):
+        other = _to_wide_format_frame(period=period, backend=backend)
+        _assert_frames_equal(
+            reference=reference,
+            other=other,
+            label=f"{backend}:{period.label}",
+            allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
+        )
+
+
+@pytest.mark.exhaustive
+@pytest.mark.parametrize(
+    "period", ALL_KNOWN_PERIODS, ids=[period.label for period in ALL_KNOWN_PERIODS]
+)
+def test_exhaustive_long_format_matches_across_backends(
+    period: ReportingPeriod,
+) -> None:
+    """Every release's long format agrees across backends, not just four of them."""
+    reference = _to_long_format_frame(period=period, backend="pandas")
+    assert len(reference) > 0, f"{period.label}: long format built 0 rows."
+    reference_rows = sorted(reference.rows(named=True), key=_long_format_sort_key)
+    for backend in ("polars", "pyarrow"):
+        other = _to_long_format_frame(period=period, backend=backend)
+        label = f"{backend}:{period.label}"
+        _assert_schemas_equivalent(
+            reference=reference,
+            other=other,
+            label=label,
+            allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
+        )
+        _assert_rows_equal(
+            reference=reference_rows,
+            other=sorted(other.rows(named=True), key=_long_format_sort_key),
+            label=label,
+        )
+
+
+@pytest.mark.exhaustive
+@pytest.mark.parametrize(
+    "period", ALL_KNOWN_PERIODS, ids=[period.label for period in ALL_KNOWN_PERIODS]
+)
+def test_exhaustive_wide_and_long_round_trip_on_every_release(
+    period: ReportingPeriod,
+) -> None:
+    """The wide/long round trips hold on every release, not just four of them."""
+    _assert_round_trip(period=period)
