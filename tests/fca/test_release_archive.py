@@ -200,6 +200,67 @@ def archive_report() -> FCACallReport:
     return report
 
 
+def _fetched_full_history_report() -> FCACallReport:
+    """Build and fetch a fresh full-history report.
+
+    The `archive_report` fixture is session-scoped, and `load` records
+    parsing problems by appending to `errors_`. A test that asserts on
+    `errors_` therefore needs an instance of its own, or it would see
+    whatever an earlier test left behind.
+
+    Returns
+    -------
+    FCACallReport
+        Already `fetch`-ed, spanning the whole known release history.
+    """
+    transport = PackagedArchiveTransport()
+    if not transport.archive_root.is_dir():
+        pytest.skip(
+            f"No archived FCA release zips found under {transport.archive_root}."
+        )
+    report = FCACallReport(
+        start=EARLIEST_PERIOD.period_end,
+        end=LATEST_KNOWN_PERIOD.period_end,
+        transport=transport,
+    )
+    report.fetch()
+    return report
+
+
+def _assert_public_load_api(*, report: FCACallReport, backend: str) -> None:
+    """Drive the public load API over the whole archive and check what it returned.
+
+    `load_all` and `load_institutions` skip a period or schedule that
+    fails to parse and record the reason in `errors_` rather than
+    raising, so a caller who never inspects `errors_` sees a partial
+    result as a successful one. Asserting the tuple is empty is what
+    turns that resilience into a regression check.
+
+    Parameters
+    ----------
+    report : FCACallReport
+        A freshly fetched report spanning the whole release history.
+    backend : str
+        The dataframe backend in force, for failure messages.
+    """
+    loaded = report.load_all()
+    assert loaded, f"{backend}: load_all() returned no schedules."
+    for schedule, frame in loaded.items():
+        assert len(_eager(frame)) > 0, (
+            f"{backend}: load_all() returned 0 rows for {schedule}."
+        )
+
+    institutions = report.load_institutions()
+    assert len(_eager(institutions)) > 0, (
+        f"{backend}: load_institutions() returned 0 rows."
+    )
+
+    assert report.errors_ == (), (
+        f"{backend}: the public load API recorded "
+        f"{len(report.errors_)} issue(s): {report.errors_[:5]}"
+    )
+
+
 def _assert_all_schedules_load(
     *, report: FCACallReport, period: ReportingPeriod
 ) -> None:
@@ -508,6 +569,47 @@ def test_release_institutions_load(
 ) -> None:
     """A real release's institution roster loads cleanly."""
     _assert_institutions_load(report=archive_report, period=period)
+
+
+def test_public_load_api_works_across_the_whole_archive() -> None:
+    """`load_all` and `load_institutions` return data for the whole archive.
+
+    The rest of this module reaches past the object-oriented interface,
+    calling `get_layout` and `read_schedule_file` directly, so that a
+    parsing regression fails the test rather than being recorded in
+    `errors_`. That leaves `load`, `load_all`, and `load_institutions`,
+    the methods callers actually use, untested against real data. This
+    covers them, and asserts `errors_` is empty so their resilience
+    cannot hide a regression.
+    """
+    report = _fetched_full_history_report()
+    _assert_public_load_api(report=report, backend="pandas")
+
+
+def test_public_query_api_agrees_with_the_archive() -> None:
+    """The period and schedule query methods describe the archive correctly.
+
+    `periods_available` and `periods_missing` are documented as
+    complements. Checking that against the whole release history covers
+    schedules that FCA introduced or retired part way through, which is
+    where a partition bug would show up.
+    """
+    report = _fetched_full_history_report()
+
+    assert report.available_periods() == ALL_KNOWN_PERIODS
+    assert report.available_schedules(), "available_schedules() returned nothing."
+
+    requested = set(ALL_KNOWN_PERIODS)
+    for schedule in report.schedules_:
+        available = set(report.periods_available(schedule=schedule))
+        missing = set(report.periods_missing(schedule=schedule))
+        assert available, f"{schedule} is in schedules_ but has no periods."
+        assert available | missing == requested, (
+            f"{schedule}: available plus missing is not every requested period."
+        )
+        assert not (available & missing), (
+            f"{schedule}: {sorted(available & missing)} are both available and missing."
+        )
 
 
 @pytest.mark.parametrize("backend", ALL_BACKENDS)
@@ -838,6 +940,40 @@ def test_exhaustive_every_release_institutions_load_under_every_backend(
     """Every archived release's institution roster parses under every backend."""
     with config_context(dataframe_backend=backend):
         _assert_institutions_load(report=archive_report, period=period)
+
+
+@pytest.mark.exhaustive
+@pytest.mark.parametrize(
+    "backend",
+    [
+        "pandas",
+        pytest.param(
+            "polars",
+            marks=pytest.mark.xfail(
+                reason=(
+                    "load_all() raises SchemaError under polars: a column that "
+                    "is all null in one quarter and populated in another gets "
+                    "Null against Int64, and the cross-period concat cannot "
+                    "stack them. See issue #43."
+                ),
+                raises=Exception,
+            ),
+        ),
+        "pyarrow",
+    ],
+)
+def test_exhaustive_public_load_api_works_under_every_backend(backend: str) -> None:
+    """The public load API returns the whole archive under every backend.
+
+    The sampled version of this runs under pandas alone.
+    `load_all` stacks each schedule across all 105 releases with
+    `concat(how=schema_policy)`, so this is the only test that exercises
+    cross-period schema drift through the interface a caller uses. That
+    is how it caught the polars failure marked above.
+    """
+    with config_context(dataframe_backend=backend):
+        report = _fetched_full_history_report()
+        _assert_public_load_api(report=report, backend=backend)
 
 
 @pytest.mark.exhaustive

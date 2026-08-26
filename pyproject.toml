@@ -87,6 +87,11 @@ markers = [
     "slow: real-archive regression tests over the full FCA release history (deselect with '-m \"not slow\"')",
     "exhaustive: every archived release against every dataframe backend, skipped unless --run-exhaustive is passed",
 ]
+# An xfail marks a known bug. Once the bug is fixed the test passes, and
+# strict mode turns that pass into a failure, so the marker has to be
+# removed as part of the fix rather than lingering and hiding a later
+# regression in the same code.
+xfail_strict = true
 filterwarnings = [
     # A warning from pandas/polars/pyarrow, or from this package, is a
     # signal that something is deprecated or misused. Fail on it rather
