@@ -83,6 +83,22 @@ When you add a new public class or function, add it to the relevant
 ``autosummary`` list in ``docs/source/api_reference.rst`` (see :ref:`api_ref`)
 so its docstring is picked up and rendered automatically.
 
+Inherited methods
+-------------------
+
+``autodoc`` documents only the members a class defines itself, so a subclass
+page would otherwise omit everything it inherits. ``docs/source/conf.py``
+collects the classes deriving from
+:class:`~call_report.core.BaseCallReport` and the autosummary class template
+gives those, and only those, autodoc's ``:inherited-members:`` option. A new
+source's entry point therefore documents ``load``, ``load_all``, and the rest
+of the shared interface as soon as it subclasses that base, with nothing to
+configure.
+
+The option stays off everywhere else on purpose. Several public classes
+subclass :class:`~enum.StrEnum`, and documenting their inherited ``str``
+methods fails the ``numpydoc`` validation pass and aborts the build.
+
 Style checks
 =============
 

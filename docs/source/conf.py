@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import datetime
+import importlib
 import inspect
 import os
 import pathlib
+import pkgutil
 import sys
 from typing import Any
 
 import call_report
 from call_report import __version__
+from call_report.core import BaseCallReport
 
 # -- Project information ---------------------------------------------------
 current_year_int = datetime.datetime.now().year
@@ -70,11 +73,66 @@ master_doc = "index"
 # inherited str method (count, find, translate, ...) -- numpydoc then tries
 # to validate those built-in docstrings against the numpydoc convention and
 # fails outright (some have no retrievable source at all), crashing the
-# build with "ExtensionError: ... could not get source code". Opt a specific
-# class into inherited-members individually if it's ever actually needed.
+# build with "ExtensionError: ... could not get source code". Classes that
+# do need it are opted in one at a time, by the autosummary class
+# template, from the set built just below.
 autodoc_default_options = {
     "members": True,
     "member-order": "bysource",
+}
+
+# Bases whose subclasses are opted into ``:inherited-members:`` one class at
+# a time, by the autosummary class template. A BaseCallReport subclass
+# implements only the abstract hooks (``_load``, ``_load_all``, ...), so most
+# of the public surface a user calls (``load``, ``load_all``,
+# ``load_institutions``, ``get_params``, ``set_params``) is defined on the
+# base and is invisible on the subclass's own page without it. See issue #47.
+inherited_member_bases: tuple[type, ...] = (BaseCallReport,)
+
+
+def find_inherited_member_classes() -> frozenset[str]:
+    """Find the classes whose pages should document inherited members.
+
+    Walks every module in the package and collects the classes deriving
+    from one of `inherited_member_bases`, under each name they are a
+    public attribute of. Resolving them by `issubclass` rather than
+    listing class names means a future source's entry point is picked up
+    as soon as it subclasses one of those bases.
+
+    Returns
+    -------
+    frozenset of str
+        Dotted paths, each the module a class is reachable from joined to
+        the name it is reachable under. These are the values the
+        autosummary class template sees as ``{{ module }}.{{ objname }}``,
+        so a class re-exported from a parent package is collected under
+        both its defining module and the re-exporting one.
+    """
+    names: set[str] = set()
+    modules = [call_report.__name__]
+    modules += [
+        module_info.name
+        for module_info in pkgutil.walk_packages(
+            call_report.__path__, prefix=f"{call_report.__name__}."
+        )
+    ]
+    for module_name in modules:
+        module = importlib.import_module(module_name)
+        for attr_name, attr in vars(module).items():
+            if (
+                not attr_name.startswith("_")
+                and isinstance(attr, type)
+                and issubclass(attr, inherited_member_bases)
+            ):
+                names.add(f"{module_name}.{attr_name}")
+    return frozenset(names)
+
+
+# A plain frozenset of strings rather than a predicate callable: Sphinx
+# pickles autosummary_context into its environment cache and warns on any
+# value it cannot pickle, which a function is.
+autosummary_context = {
+    "inherited_member_classes": find_inherited_member_classes(),
 }
 
 

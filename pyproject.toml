@@ -170,7 +170,11 @@ exclude = [
 
 [tool.doc8]
 max-line-length = 88
-ignore_path = ["docs/_build"]
+# docs/source/_templates holds Jinja templates that autosummary renders into
+# reStructuredText. Their control-flow tags are not valid reStructuredText on
+# their own, so linting them as documents reports errors that do not exist in
+# the rendered output.
+ignore_path = ["docs/_build", "docs/source/_templates"]
 
 [tool.codespell]
 # "SME" (subject-matter expert) reads as a typo for "some"/"same" -- a
