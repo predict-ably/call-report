@@ -19,7 +19,7 @@ import narwhals as nw
 
 from call_report.core._backend import DataFrameType, build_frame, finalize_as
 from call_report.exceptions import LayoutParseError
-from call_report.fca.layout import ENCODING, FCALayout
+from call_report.fca.layout import ENCODING, FCALayout, infer_field_dtype
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -123,7 +123,14 @@ def _read_schedule_frame(*, data_path: Path, layout: FCALayout) -> nw.DataFrame[
     """
     raw_text = data_path.read_bytes().decode(ENCODING)
     lines = [line for line in raw_text.splitlines() if line.strip() != ""]
-    type_by_name = {row["name"]: row["type"] for row in layout.variables_as_dicts()}
+    variables = layout.variables_as_dicts()
+    type_by_name = {row["name"]: row["type"] for row in variables}
+    schema = {
+        row["name"]: infer_field_dtype(
+            var_type=row["type"], decimal_position=row["decimal_position"]
+        )
+        for row in variables
+    }
 
     if layout.scenario == "single":
         rows = _read_single(
@@ -144,7 +151,7 @@ def _read_schedule_frame(*, data_path: Path, layout: FCALayout) -> nw.DataFrame[
         )
 
     data = {name: [row[name] for row in rows] for name in columns}
-    return build_frame(data=data)
+    return build_frame(data=data, schema=schema)
 
 
 def _parse_csv_line(*, line: str) -> list[str]:
