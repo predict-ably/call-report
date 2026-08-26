@@ -33,8 +33,8 @@ from typing import Any
 import narwhals as nw
 import pytest
 
-from call_report.config import config_context
-from call_report.core import PeriodRange, ReportingPeriod
+from call_report.config import config_context, get_config
+from call_report.core import FieldSchema, PeriodRange, ReportingPeriod
 from call_report.exceptions import LayoutParseError, ScheduleNotFoundError
 from call_report.fca import (
     FCACallReport,
@@ -42,6 +42,7 @@ from call_report.fca import (
     convert_long_format_to_wide_format,
     convert_wide_format_to_long_format,
     get_fca_file_metadata,
+    get_institutions_file_metadata,
 )
 from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
 from call_report.fca.institutions import INSTITUTIONS_ROOT, read_institutions
@@ -171,6 +172,18 @@ OBJECT_DATE_COLUMNS = frozenset({"period"})
 # raw schedule comparisons do not, so this stays confined to the
 # reshaped output rather than becoming a blanket allowance.
 RESHAPE_PANDAS_OBJECT_DTYPES = True
+
+# pyarrow has no native pivot, so `to_wide_format` goes through
+# `_manual_pivot`, which is superlinear in output width: about 20s per
+# release against polars' 0.4s, and worse for the newer, wider releases.
+# Running that for all 105 releases costs around 28 minutes, roughly the
+# whole exhaustive tier, to re-exercise one code path that the sample
+# below already covers across every structural era of the archive.
+#
+# This carve-out applies to the wide format only. Every other exhaustive
+# comparison keeps full pyarrow coverage, because none of them pivots.
+# Restore the full range once issue #45 makes the pivot cheap.
+WIDE_FORMAT_PYARROW_PERIODS = frozenset(CROSS_BACKEND_SAMPLE_PERIODS)
 
 # `load` raises under polars for these schedules. Each has at least one
 # column that is entirely null in one release and populated in another,
@@ -367,16 +380,75 @@ def _assert_matches_packaged_metadata(
     backend : str
         The dataframe backend in force, for failure messages.
     """
-    metadata = get_fca_file_metadata(schedule=schedule)
-    declared = set(metadata.file_schema.names)
-    loaded = set(frame.columns) - {"period"}
-
-    assert loaded == declared, (
-        f"{backend}: load(schedule={schedule.value!r}) columns disagree with "
-        f"get_fca_file_metadata. Loaded but not declared: "
-        f"{sorted(loaded - declared)}. Declared but not loaded: "
-        f"{sorted(declared - loaded)}."
+    _assert_matches_declared_schema(
+        frame=frame,
+        declared_schema=get_fca_file_metadata(schedule=schedule).file_schema,
+        label=f"{backend}:load({schedule.value})",
+        backend=backend,
     )
+
+
+def _assert_matches_declared_schema(
+    *,
+    frame: nw.DataFrame[Any],
+    declared_schema: FieldSchema,
+    label: str,
+    backend: str,
+) -> None:
+    """Check a loaded frame against the field schema the package declares for it.
+
+    Column names must match the declared fields exactly, ignoring the
+    ``period`` column the public loaders add to identify which release a
+    row came from. Each column's dtype must match one of the dtypes the
+    field is declared to have taken, under the same equivalence
+    `_assert_schemas_equivalent` uses, plus one pandas-only allowance
+    described below.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame
+        The loaded frame to check.
+    declared_schema : FieldSchema
+        The packaged schema describing what the frame should contain.
+    label : str
+        Identifies the call in failure messages.
+    backend : str
+        The dataframe backend in force.
+    """
+    declared = set(declared_schema.names)
+    loaded = set(frame.columns) - {"period"}
+    assert loaded == declared, (
+        f"{label}: columns disagree with the packaged metadata. Loaded but "
+        f"not declared: {sorted(loaded - declared)}. Declared but not "
+        f"loaded: {sorted(declared - loaded)}."
+    )
+
+    actual_schema = frame.collect_schema()
+    uninformative = _uninformative_columns(frame)
+    for name in declared_schema.names:
+        actual = actual_schema[name]
+        if name in uninformative:
+            continue
+        # A field's declared dtype can change over the archive's history,
+        # and a stacked frame spans those versions, so any declared
+        # version is acceptable.
+        declared_dtypes = {
+            str(version.dtype) for version in declared_schema[name].versions
+        }
+        if str(actual) in declared_dtypes:
+            continue
+        if any({str(actual), d} == {"Int64", "Float64"} for d in declared_dtypes):
+            continue
+        if backend == "pandas" and str(actual) in {"String", "Object"}:
+            # Issue #43. A column that is all null in the early releases
+            # and populated later resolves to String, or to Object, under
+            # pandas' concat, so pandas hands back a non-numeric column
+            # where the metadata declares an integer one.
+            continue
+        raise AssertionError(
+            f"{label} column {name!r}: loaded dtype {actual} is not any of the "
+            f"declared dtypes {sorted(declared_dtypes)}."
+        )
 
 
 def _assert_public_load_api(*, report: FCACallReport, backend: str) -> None:
@@ -497,6 +569,13 @@ def _assert_institutions_load(
     institutions = _eager(read_institutions(release_dir=manifest.release_dir))
     assert len(institutions) > 0, f"{period.label}: institution roster parsed 0 rows."
 
+    _assert_matches_declared_schema(
+        frame=institutions,
+        declared_schema=get_institutions_file_metadata().file_schema,
+        label=f"institutions:{period.label}",
+        backend=get_config()["dataframe_backend"],
+    )
+
 
 def _eager(native_frame: Any) -> nw.DataFrame[Any]:
     """Return any backend's native frame as an eager narwhals DataFrame."""
@@ -539,6 +618,7 @@ def _assert_schemas_equivalent(
     other: nw.DataFrame[Any],
     label: str,
     allow_pandas_object: bool = False,
+    ignore_column_order: bool = False,
 ) -> None:
     """Assert two backends built the same schema for one frame.
 
@@ -572,9 +652,15 @@ def _assert_schemas_equivalent(
     """
     reference_schema = reference.collect_schema()
     other_schema = other.collect_schema()
-    assert list(other_schema) == list(reference_schema), (
-        f"{label}: columns {list(other_schema)}, expected {list(reference_schema)}."
-    )
+    if ignore_column_order:
+        assert set(other_schema) == set(reference_schema), (
+            f"{label}: columns {sorted(other_schema)}, expected "
+            f"{sorted(reference_schema)}."
+        )
+    else:
+        assert list(other_schema) == list(reference_schema), (
+            f"{label}: columns {list(other_schema)}, expected {list(reference_schema)}."
+        )
 
     uninformative = _uninformative_columns(reference) | _uninformative_columns(other)
     for name in reference_schema:
@@ -822,6 +908,59 @@ def test_load_agrees_across_backends(
             continue
         _assert_schemas_equivalent(
             reference=reference, other=frame, label=f"{backend}:{schedule.value}"
+        )
+
+
+def _load_institutions_frames(
+    *, report: FCACallReport, period: ReportingPeriod
+) -> dict[str, nw.DataFrame[Any]]:
+    """Load one release's institution roster under every backend.
+
+    Parameters
+    ----------
+    report : FCACallReport
+        Already `fetch`-ed report to locate the release directory.
+    period : ReportingPeriod
+        The release period to load the roster for.
+
+    Returns
+    -------
+    dict[str, narwhals.DataFrame]
+        Backend name to that backend's roster frame.
+    """
+    manifest = report.releases_.get(period)
+    assert manifest is not None, f"{period.label} was not resolved by fetch()."
+
+    frames: dict[str, nw.DataFrame[Any]] = {}
+    for backend in ALL_BACKENDS:
+        with config_context(dataframe_backend=backend):
+            frames[backend] = _eager(
+                read_institutions(release_dir=manifest.release_dir)
+            )
+    return frames
+
+
+@pytest.mark.parametrize(
+    "period",
+    CROSS_BACKEND_SAMPLE_PERIODS,
+    ids=[period.label for period in CROSS_BACKEND_SAMPLE_PERIODS],
+)
+def test_release_institutions_match_across_backends(
+    archive_report: FCACallReport, period: ReportingPeriod
+) -> None:
+    """A release's institution roster is identical no matter which backend parsed it.
+
+    The roster carries the institution names and addresses that the
+    point-in-time lookups are built on, so a backend-specific difference
+    in how a name or ZIP parses would be a data bug, not a cosmetic one.
+    """
+    frames = _load_institutions_frames(report=archive_report, period=period)
+    reference = frames["pandas"]
+    for backend, frame in frames.items():
+        if backend == "pandas":
+            continue
+        _assert_frames_equal(
+            reference=reference, other=frame, label=f"{backend}:institutions"
         )
 
 
@@ -1118,6 +1257,14 @@ def _assert_round_trip(*, period: ReportingPeriod) -> None:
     assert long_rows, f"{period.label}: long format built 0 rows."
 
     # wide -> long -> wide: exact match, no grid-completion gaps to create.
+    # Schema first: a round trip that preserved every value but changed a
+    # column's dtype or dropped a column would otherwise pass.
+    _assert_schemas_equivalent(
+        reference=_eager(wide),
+        other=_eager(convert_long_format_to_wide_format(long=long_)),
+        label=f"wide-round-trip-schema:{period.label}",
+        allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
+    )
     _assert_rows_equal(
         reference=sorted(wide_rows, key=lambda row: row["UNINUM"]),
         other=sorted(converted_wide_rows, key=lambda row: row["UNINUM"]),
@@ -1129,6 +1276,17 @@ def _assert_round_trip(*, period: ReportingPeriod) -> None:
     # grid-completion) -- and the original long_rows can itself already
     # contain real null-value rows (a genuinely blank source field), so
     # both sides are filtered to non-null before comparing.
+    _assert_schemas_equivalent(
+        reference=_eager(long_),
+        other=_eager(convert_wide_format_to_long_format(wide=wide)),
+        label=f"long-round-trip-schema:{period.label}",
+        allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
+        # `to_long_format` and `convert_wide_format_to_long_format` return
+        # the same eight columns in different orders, so the round trip is
+        # not order-stable. Names and dtypes are still compared exactly.
+        ignore_column_order=True,
+    )
+
     non_null_long = [row for row in long_rows if not _is_missing(row["value"])]
     non_null_converted_long = [
         row for row in converted_long_rows if not _is_missing(row["value"])
@@ -1289,7 +1447,11 @@ def test_exhaustive_wide_format_matches_across_backends(
     """
     reference = _to_wide_format_frame(period=period, backend="pandas")
     assert len(reference) > 0, f"{period.label}: wide format built 0 rows."
-    for backend in ("polars", "pyarrow"):
+
+    backends = ["polars"]
+    if period in WIDE_FORMAT_PYARROW_PERIODS:
+        backends.append("pyarrow")
+    for backend in backends:
         other = _to_wide_format_frame(period=period, backend=backend)
         _assert_frames_equal(
             reference=reference,
@@ -1335,3 +1497,28 @@ def test_exhaustive_wide_and_long_round_trip_on_every_release(
 ) -> None:
     """The wide/long round trips hold on every release, not just four of them."""
     _assert_round_trip(period=period)
+
+
+@pytest.mark.exhaustive
+@pytest.mark.parametrize(
+    "period", ALL_KNOWN_PERIODS, ids=[period.label for period in ALL_KNOWN_PERIODS]
+)
+def test_exhaustive_institutions_match_across_backends(
+    archive_report: FCACallReport, period: ReportingPeriod
+) -> None:
+    """Every release's institution roster is identical across backends.
+
+    The sampled version covers 20 releases. The roster is small, so
+    covering all of them costs little, and it carries the names and
+    addresses the institution lineage work depends on.
+    """
+    frames = _load_institutions_frames(report=archive_report, period=period)
+    reference = frames["pandas"]
+    for backend, frame in frames.items():
+        if backend == "pandas":
+            continue
+        _assert_frames_equal(
+            reference=reference,
+            other=frame,
+            label=f"{period.label}:{backend}:institutions",
+        )
