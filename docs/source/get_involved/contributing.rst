@@ -44,6 +44,10 @@ Opening a pull request
 - CI runs the same checks as the local suite (tests, coverage, ``ruff``,
   ``mypy``, ``pre-commit`` hooks); please make sure these pass before
   requesting review.
+- Add the ``run-exhaustive`` label if your change touches the FCA release
+  archive or the code that reads it. See
+  :ref:`the exhaustive archive regression <release_process_exhaustive>` for
+  what it does and when it is worth the wait.
 - Be responsive to review feedback -- reviewers are trying to help land your
   change, not just find problems with it.
 

@@ -256,6 +256,34 @@ so contributors can iterate with `pytest -m "not slow"` (seconds instead of
 minutes) while CI still runs everything. Register any new marker in
 `[tool.pytest.ini_options]`; `--strict-markers` rejects unregistered ones.
 
+**Know the three tiers of the archive regression.** Real-data testing is
+layered so each tier costs what it is worth:
+
+1. *Every pull request.* The full release history under pandas, a seeded
+   stratified sample of 20 periods under all three backends, and 4 evenly
+   spaced periods compared value-for-value across backends.
+2. *`pytest -m "not slow"`.* None of the above. Seconds, for the edit-test
+   loop.
+3. *`pytest --run-exhaustive`.* Every archived release against every
+   backend, plus a cross-backend value comparison on every release. Minutes,
+   and skipped unless the flag is passed, so it never slows an ordinary pull
+   request.
+
+Tier 3 is gated by a flag rather than a marker alone because a marker can be
+selected by accident with the wrong `-m` expression, while an unpassed flag
+cannot. The tests stay collected either way, so `--collect-only` shows what
+an exhaustive run would cover.
+
+`.github/workflows/exhaustive-regression.yml` runs tier 3 in CI. It fires on
+a pull request from a `release/*` branch, and on any pull request carrying
+the `run-exhaustive` label. Both gate the merge, so a release or a new
+quarter of archive data is covered before it reaches `main` rather than
+after. Add the label to any pull request that changes what the archive
+contains or how it is parsed, most obviously one dropping a quarter's zip
+into `data/fca-call-report/`. The workflow can also be dispatched by hand
+against any ref. It fails rather than skips when no archive zips are
+present, because a green run of 735 skipped tests is worse than a red one.
+
 **Reach for property-based tests on laws.** Where behavior has an invariant
 that should hold for every input, not just chosen examples, use `hypothesis`
 (see `tests/core/test_periods_properties.py`). Round trips, inverses, and

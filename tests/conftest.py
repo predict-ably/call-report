@@ -34,6 +34,57 @@ settings.register_profile(
 settings.load_profile("call_report")
 
 
+_EXHAUSTIVE_FLAG = "--run-exhaustive"
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register the flag that opts in to the exhaustive archive regression.
+
+    The exhaustive tests load every archived FCA release against every
+    dataframe backend. That is minutes of work rather than seconds, so it
+    is gated behind a flag rather than a marker alone: a marker can be
+    selected by accident with the wrong ``-m`` expression, while an
+    unpassed flag cannot.
+
+    Parameters
+    ----------
+    parser : pytest.Parser
+        The parser pytest passes to this hook.
+    """
+    parser.addoption(
+        _EXHAUSTIVE_FLAG,
+        action="store_true",
+        default=False,
+        help=(
+            "Run the exhaustive archive regression: every published FCA "
+            "release against every dataframe backend. Takes minutes."
+        ),
+    )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """Skip exhaustive-marked tests unless the opt-in flag was passed.
+
+    The tests stay collected either way, so ``--collect-only`` still shows
+    what the exhaustive run would cover.
+
+    Parameters
+    ----------
+    config : pytest.Config
+        The active configuration, consulted for the opt-in flag.
+    items : list[pytest.Item]
+        The collected items, marked in place.
+    """
+    if config.getoption(_EXHAUSTIVE_FLAG):
+        return
+    skip_exhaustive = pytest.mark.skip(reason=f"pass {_EXHAUSTIVE_FLAG} to run")
+    for item in items:
+        if "exhaustive" in item.keywords:
+            item.add_marker(skip_exhaustive)
+
+
 @pytest.fixture(autouse=True)
 def reset_config() -> Iterator[None]:
     """Restore the package configuration after every test.
