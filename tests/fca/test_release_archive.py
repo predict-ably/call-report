@@ -140,6 +140,36 @@ EQUALITY_CHECK_PERIODS = _evenly_spaced(
     periods=ALL_KNOWN_PERIODS, size=_EQUALITY_CHECK_SAMPLE_SIZE
 )
 
+# FCA ships a zero-byte RCO data file for its first sixteen quarters, so an
+# empty frame is the correct parse of those releases rather than a silent
+# failure. RCO carries rows from 2004Q1 onward, and every other schedule in
+# every other release has rows. Pinning the exception means a schedule that
+# newly parses to nothing fails, instead of passing as a vacuous comparison
+# of two empty frames.
+KNOWN_EMPTY_SCHEDULES = frozenset(
+    (period, "RCO") for period in PeriodRange(start="2000-03-31", end="2003-12-31")
+)
+
+# `period` holds a datetime.date under every backend, but pandas' default
+# dtypes have no date type, so it lands in an Object column while polars
+# and pyarrow report Date. The values are identical, the declared type is
+# not. Pinned by column name rather than allowed for any column, so an
+# Object dtype appearing anywhere else still fails.
+OBJECT_DATE_COLUMNS = frozenset({"period"})
+
+# `to_long_format` builds its `value` column by concatenating schedules
+# whose source columns have different dtypes. polars and pyarrow coerce
+# the result to Float64; pandas falls back to Object. `to_wide_format`
+# pivots that column, so every value column it produces inherits the
+# same Object dtype under pandas. The values are numbers under all three
+# backends, so the row comparisons still hold, but pandas callers get an
+# object-typed frame where the other backends get a numeric one.
+#
+# The reshape comparisons therefore pass allow_pandas_object=True. The
+# raw schedule comparisons do not, so this stays confined to the
+# reshaped output rather than becoming a blanket allowance.
+RESHAPE_PANDAS_OBJECT_DTYPES = True
+
 
 @pytest.fixture(scope="session")
 def archive_report() -> FCACallReport:
@@ -180,6 +210,11 @@ def _assert_all_schedules_load(
     resilience (which would otherwise silently record a genuine regression
     in `errors_` rather than failing the caller's test).
 
+    Each schedule's row count is checked against
+    `KNOWN_EMPTY_SCHEDULES`. Parsing a file to zero rows raises nothing,
+    so without this a reader that stopped returning data would still look
+    like a clean load.
+
     Parameters
     ----------
     report : FCACallReport
@@ -200,9 +235,19 @@ def _assert_all_schedules_load(
             # the dict[ReportingPeriod, FCALayout] overload; assert this so
             # mypy narrows the type without masking a real behavior change.
             assert isinstance(layout, FCALayout)
-            read_schedule_file(data_path=files.data_path, layout=layout)
+            frame = read_schedule_file(data_path=files.data_path, layout=layout)
         except (LayoutParseError, ScheduleNotFoundError) as error:
             failures.append(f"{root}: {error}")
+            continue
+
+        rows = len(_eager(frame))
+        expected_empty = (period, root) in KNOWN_EMPTY_SCHEDULES
+        if rows == 0 and not expected_empty:
+            failures.append(f"{root}: parsed 0 rows")
+        elif rows > 0 and expected_empty:
+            failures.append(
+                f"{root}: parsed {rows} rows, but FCA ships an empty file here"
+            )
 
     assert not failures, "; ".join(failures)
 
@@ -210,7 +255,11 @@ def _assert_all_schedules_load(
 def _assert_institutions_load(
     *, report: FCACallReport, period: ReportingPeriod
 ) -> None:
-    """Load the institution roster for `period`.
+    """Load the institution roster for `period`, and check it has institutions.
+
+    Every release FCA has published names at least 64 institutions, so an
+    empty roster is a parsing failure rather than a quarter with no
+    filers.
 
     Parameters
     ----------
@@ -225,12 +274,103 @@ def _assert_institutions_load(
         f"{period.label} has no {INSTITUTIONS_ROOT} layout/data file pair."
     )
 
-    read_institutions(release_dir=manifest.release_dir)
+    institutions = _eager(read_institutions(release_dir=manifest.release_dir))
+    assert len(institutions) > 0, f"{period.label}: institution roster parsed 0 rows."
+
+
+def _eager(native_frame: Any) -> nw.DataFrame[Any]:
+    """Return any backend's native frame as an eager narwhals DataFrame."""
+    frame = nw.from_native(native_frame)
+    if isinstance(frame, nw.LazyFrame):
+        return frame.collect()
+    return frame
 
 
 def _native_rows(native_frame: Any) -> list[dict[str, Any]]:
     """Convert any backend's native frame into a backend-agnostic list of row dicts."""
-    return nw.from_native(native_frame).rows(named=True)
+    return _eager(native_frame).rows(named=True)
+
+
+def _uninformative_columns(frame: nw.DataFrame[Any]) -> frozenset[str]:
+    """Return the columns this frame gives a backend nothing to infer a dtype from.
+
+    A column is uninformative when the frame has no rows, or when every
+    entry in it is null. Backends disagree about what to call such a
+    column, because nothing in the data decides it.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame
+        The frame to inspect.
+
+    Returns
+    -------
+    frozenset[str]
+        Names of the columns carrying no values.
+    """
+    if len(frame) == 0:
+        return frozenset(frame.columns)
+    return frozenset(name for name in frame.columns if frame[name].is_null().all())
+
+
+def _assert_schemas_equivalent(
+    *,
+    reference: nw.DataFrame[Any],
+    other: nw.DataFrame[Any],
+    label: str,
+    allow_pandas_object: bool = False,
+) -> None:
+    """Assert two backends built the same schema for one frame.
+
+    Column names and their order must match exactly. Dtypes must match
+    too, with three documented exceptions:
+
+    - A column with no values to infer from (every entry null, or the
+      frame has no rows) may carry any dtype. polars and pyarrow report
+      ``Unknown``, pandas falls back to ``String`` or ``Float64``.
+    - An integer column holding at least one null is ``Int64`` under
+      polars and pyarrow, which have a nullable integer, and ``Float64``
+      under pandas, whose default dtypes do not.
+    - A column named in `OBJECT_DATE_COLUMNS` may be ``Object`` under
+      pandas against ``Date`` elsewhere.
+
+    Any other disagreement fails.
+
+    Parameters
+    ----------
+    reference : narwhals.DataFrame
+        The pandas-backend frame to compare against.
+    other : narwhals.DataFrame
+        Another backend's frame for the same schedule and period.
+    label : str
+        Identifies the backend/schedule combination in failure messages.
+    allow_pandas_object : bool, default False
+        Also accept an ``Object`` dtype under pandas against any dtype
+        elsewhere. Set only by the reshape comparisons, whose pandas
+        output is object-typed throughout. See
+        `RESHAPE_PANDAS_OBJECT_DTYPES`.
+    """
+    reference_schema = reference.collect_schema()
+    other_schema = other.collect_schema()
+    assert list(other_schema) == list(reference_schema), (
+        f"{label}: columns {list(other_schema)}, expected {list(reference_schema)}."
+    )
+
+    uninformative = _uninformative_columns(reference) | _uninformative_columns(other)
+    for name in reference_schema:
+        reference_dtype = reference_schema[name]
+        other_dtype = other_schema[name]
+        if reference_dtype == other_dtype or name in uninformative:
+            continue
+        pair = {str(reference_dtype), str(other_dtype)}
+        if pair == {"Object", "Date"} and name in OBJECT_DATE_COLUMNS:
+            continue
+        if allow_pandas_object and "Object" in pair:
+            continue
+        assert pair == {"Int64", "Float64"}, (
+            f"{label} column {name!r}: dtype {other_dtype} is not equivalent to "
+            f"{reference_dtype}."
+        )
 
 
 def _is_missing(value: object) -> bool:
@@ -242,14 +382,17 @@ def _is_missing(value: object) -> bool:
     return value is None or (isinstance(value, float) and math.isnan(value))
 
 
-def _load_schedule_rows(
+def _load_schedule_frames(
     *,
     report: FCACallReport,
     period: ReportingPeriod,
     schedule_roots: tuple[str, ...],
     backend: str,
-) -> dict[str, list[dict[str, Any]]]:
-    """Load every schedule in `schedule_roots` for `period`, under `backend`, as rows.
+) -> dict[str, nw.DataFrame[Any]]:
+    """Load every schedule in `schedule_roots` for `period`, under `backend`.
+
+    Returns frames rather than rows so a caller can compare schemas as
+    well as values. Row dicts alone lose every dtype.
 
     Parameters
     ----------
@@ -264,21 +407,57 @@ def _load_schedule_rows(
 
     Returns
     -------
-    dict[str, list[dict[str, Any]]]
-        Each schedule root's data, as a backend-agnostic list of row dicts.
+    dict[str, narwhals.DataFrame]
+        Each schedule root's data, as a backend-agnostic eager frame.
     """
     manifest = report.releases_.get(period)
     assert manifest is not None, f"{period.label} was not resolved by fetch()."
 
-    rows_by_root: dict[str, list[dict[str, Any]]] = {}
+    frames_by_root: dict[str, nw.DataFrame[Any]] = {}
     with config_context(dataframe_backend=backend):
         for root in schedule_roots:
             files = manifest.files[root]
             layout = report.get_layout(schedule=root, period=period)
             assert isinstance(layout, FCALayout)
             frame = read_schedule_file(data_path=files.data_path, layout=layout)
-            rows_by_root[root] = _native_rows(frame)
-    return rows_by_root
+            frames_by_root[root] = _eager(frame)
+    return frames_by_root
+
+
+def _assert_frames_equal(
+    *,
+    reference: nw.DataFrame[Any],
+    other: nw.DataFrame[Any],
+    label: str,
+    allow_pandas_object: bool = False,
+) -> None:
+    """Assert two backends produced the same schema and the same values.
+
+    Parameters
+    ----------
+    reference : narwhals.DataFrame
+        The pandas-backend frame to compare against.
+    other : narwhals.DataFrame
+        Another backend's frame for the same schedule and period.
+    label : str
+        Identifies the backend/schedule combination in failure messages.
+    allow_pandas_object : bool, default False
+        Also accept an ``Object`` dtype under pandas against any dtype
+        elsewhere. Set only by the reshape comparisons, whose pandas
+        output is object-typed throughout. See
+        `RESHAPE_PANDAS_OBJECT_DTYPES`.
+    """
+    _assert_schemas_equivalent(
+        reference=reference,
+        other=other,
+        label=label,
+        allow_pandas_object=allow_pandas_object,
+    )
+    _assert_rows_equal(
+        reference=reference.rows(named=True),
+        other=other.rows(named=True),
+        label=label,
+    )
 
 
 def _assert_rows_equal(
@@ -367,12 +546,13 @@ def test_release_institutions_load_across_backends(
 def test_release_schedules_match_across_backends(
     archive_report: FCACallReport, period: ReportingPeriod
 ) -> None:
-    """A release's schedule data is identical no matter which backend parsed it.
+    """A release's schedule schema and data are identical across backends.
 
     Loads every schedule for `period` three times -- once per backend --
     through the same production `get_layout`/`read_schedule_file` path the
     other tests in this module use, then asserts pandas, polars, and pyarrow
-    all parsed the exact same values (missing-value representation aside).
+    all built the same columns, in the same order, with equivalent dtypes,
+    holding the same values.
     """
     manifest = archive_report.releases_.get(period)
     assert manifest is not None, f"{period.label} was not resolved by fetch()."
@@ -383,29 +563,29 @@ def test_release_schedules_match_across_backends(
         f"{period.label} has no non-institution schedules to compare."
     )
 
-    reference = _load_schedule_rows(
+    reference = _load_schedule_frames(
         report=archive_report,
         period=period,
         schedule_roots=schedule_roots,
         backend="pandas",
     )
     for backend in ("polars", "pyarrow"):
-        other = _load_schedule_rows(
+        other = _load_schedule_frames(
             report=archive_report,
             period=period,
             schedule_roots=schedule_roots,
             backend=backend,
         )
         for root in schedule_roots:
-            _assert_rows_equal(
+            _assert_frames_equal(
                 reference=reference[root], other=other[root], label=f"{backend}:{root}"
             )
 
 
-def _to_wide_format_rows(
+def _to_wide_format_frame(
     *, period: ReportingPeriod, backend: str
-) -> list[dict[str, Any]]:
-    """Build to_wide_format() for one real release under one backend, as rows.
+) -> nw.DataFrame[Any]:
+    """Build to_wide_format() for one real release under one backend.
 
     Scoped to a single-period `FCACallReport` (rather than reusing the
     full-history `archive_report` fixture) since `to_wide_format()`
@@ -423,8 +603,8 @@ def _to_wide_format_rows(
 
     Returns
     -------
-    list[dict[str, Any]]
-        The wide-format frame's rows, sorted by UNINUM.
+    narwhals.DataFrame
+        The wide-format frame, sorted by UNINUM.
     """
     with config_context(dataframe_backend=backend):
         report = FCACallReport(
@@ -433,8 +613,7 @@ def _to_wide_format_rows(
             transport=PackagedArchiveTransport(),
         )
         wide = report.to_wide_format()
-    rows = _native_rows(wide)
-    return sorted(rows, key=lambda row: row["UNINUM"])
+    return _eager(wide).sort("UNINUM")
 
 
 @pytest.mark.parametrize(
@@ -449,13 +628,18 @@ def test_wide_format_matches_across_backends(period: ReportingPeriod) -> None:
     backend -- including pyarrow, which has no native pivot and instead
     goes through the manual filter-and-join fallback (see
     `call_report.core._backend.pivot`) -- and asserts pandas, polars, and
-    pyarrow all produced the exact same columns and values.
+    pyarrow all produced the same columns, in the same order, with
+    equivalent dtypes, holding the same values.
     """
-    reference = _to_wide_format_rows(period=period, backend="pandas")
+    reference = _to_wide_format_frame(period=period, backend="pandas")
+    assert len(reference) > 0, f"{period.label}: wide format built 0 rows."
     for backend in ("polars", "pyarrow"):
-        other = _to_wide_format_rows(period=period, backend=backend)
-        _assert_rows_equal(
-            reference=reference, other=other, label=f"{backend}:{period.label}"
+        other = _to_wide_format_frame(period=period, backend=backend)
+        _assert_frames_equal(
+            reference=reference,
+            other=other,
+            label=f"{backend}:{period.label}",
+            allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
         )
 
 
@@ -482,13 +666,14 @@ def _long_format_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
-def _to_long_format_rows(
+def _to_long_format_frame(
     *, period: ReportingPeriod, backend: str
-) -> list[dict[str, Any]]:
-    """Build to_long_format() for one real release under one backend, as rows.
+) -> nw.DataFrame[Any]:
+    """Build to_long_format() for one real release under one backend.
 
-    Mirrors `_to_wide_format_rows`; sorted by `_long_format_sort_key`
-    since UNINUM alone isn't unique at the long-format grain.
+    Mirrors `_to_wide_format_frame`. Row order is left to the caller,
+    which sorts by `_long_format_sort_key` since UNINUM alone isn't
+    unique at the long-format grain and the sort has to tolerate nulls.
 
     Parameters
     ----------
@@ -499,8 +684,8 @@ def _to_long_format_rows(
 
     Returns
     -------
-    list[dict[str, Any]]
-        The long-format frame's rows, sorted by `_long_format_sort_key`.
+    narwhals.DataFrame
+        The long-format frame, in whatever order the backend produced.
     """
     with config_context(dataframe_backend=backend):
         report = FCACallReport(
@@ -509,8 +694,7 @@ def _to_long_format_rows(
             transport=PackagedArchiveTransport(),
         )
         long_ = report.to_long_format()
-    rows = _native_rows(long_)
-    return sorted(rows, key=_long_format_sort_key)
+    return _eager(long_)
 
 
 @pytest.mark.parametrize(
@@ -522,14 +706,25 @@ def test_long_format_matches_across_backends(period: ReportingPeriod) -> None:
     """to_long_format()'s schema and data agree no matter which backend built it.
 
     Mirrors `test_wide_format_matches_across_backends` for the long-format
-    path -- pandas, polars, and pyarrow must all produce the exact same
-    rows for the same real release.
+    path -- pandas, polars, and pyarrow must all produce the same columns
+    and the same rows for the same real release.
     """
-    reference = _to_long_format_rows(period=period, backend="pandas")
+    reference = _to_long_format_frame(period=period, backend="pandas")
+    assert len(reference) > 0, f"{period.label}: long format built 0 rows."
+    reference_rows = sorted(reference.rows(named=True), key=_long_format_sort_key)
     for backend in ("polars", "pyarrow"):
-        other = _to_long_format_rows(period=period, backend=backend)
+        other = _to_long_format_frame(period=period, backend=backend)
+        label = f"{backend}:{period.label}"
+        _assert_schemas_equivalent(
+            reference=reference,
+            other=other,
+            label=label,
+            allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
+        )
         _assert_rows_equal(
-            reference=reference, other=other, label=f"{backend}:{period.label}"
+            reference=reference_rows,
+            other=sorted(other.rows(named=True), key=_long_format_sort_key),
+            label=label,
         )
 
 
@@ -563,6 +758,12 @@ def test_wide_and_long_format_round_trip_agree_on_real_data(
     converted_wide_rows = _native_rows(convert_long_format_to_wide_format(long=long_))
     long_rows = _native_rows(long_)
     wide_rows = _native_rows(wide)
+
+    # Both round trips compare one row list against another, and two empty
+    # lists compare equal, so an empty starting frame would make every
+    # assertion below vacuous.
+    assert wide_rows, f"{period.label}: wide format built 0 rows."
+    assert long_rows, f"{period.label}: long format built 0 rows."
 
     # wide -> long -> wide: exact match, no grid-completion gaps to create.
     _assert_rows_equal(
@@ -646,13 +847,13 @@ def test_exhaustive_every_release_institutions_load_under_every_backend(
 def test_exhaustive_every_release_matches_across_backends(
     archive_report: FCACallReport, period: ReportingPeriod
 ) -> None:
-    """Every archived release parses to identical values under all backends.
+    """Every archived release parses to identical schemas and values across backends.
 
     The strongest check in this module, and the most expensive: it loads
-    each release three times and compares every value. The sampled version
-    covers 4 periods. A backend-specific dtype or null-handling difference
-    that only shows up on one quarter's data would pass that sample and
-    fail here.
+    each release three times and compares every column and every value.
+    The sampled version covers 4 periods. A backend-specific dtype or
+    null-handling difference that only shows up on one quarter's data
+    would pass that sample and fail here.
     """
     manifest = archive_report.releases_.get(period)
     assert manifest is not None, f"{period.label} was not resolved by fetch()."
@@ -661,14 +862,14 @@ def test_exhaustive_every_release_matches_across_backends(
     )
     assert schedule_roots, f"{period.label} has no non-institution schedules."
 
-    reference = _load_schedule_rows(
+    reference = _load_schedule_frames(
         report=archive_report,
         period=period,
         schedule_roots=schedule_roots,
         backend="pandas",
     )
     for backend in ("polars", "pyarrow"):
-        other = _load_schedule_rows(
+        other = _load_schedule_frames(
             report=archive_report,
             period=period,
             schedule_roots=schedule_roots,
@@ -679,7 +880,7 @@ def test_exhaustive_every_release_matches_across_backends(
             f"expected {sorted(reference)}."
         )
         for root in schedule_roots:
-            _assert_rows_equal(
+            _assert_frames_equal(
                 reference=reference[root],
                 other=other[root],
                 label=f"{period.label}:{backend}:{root}",
