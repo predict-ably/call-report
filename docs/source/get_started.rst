@@ -148,7 +148,14 @@ the metadata's `definition` documents what those codes mean, and its
    loanstatus.versions[-1].dtype
    # Int64
    rcf1["LOANSTATUS"].dtype
-   # dtype('int64')
+   # Int64Dtype()
+
+The loaded dtype comes from the schedule's layout, not from whatever the
+quarter's values happen to look like, so a field that is empty for one
+quarter and populated the next keeps one type across both. Under pandas
+that means the nullable extension dtypes (``Int64``, ``Float64``,
+``string``) rather than the numpy-backed defaults, since a numpy
+``int64`` column cannot hold a missing value.
 
 A field's metadata can also carry more than one version: FCA revised
 ``LOANSTATUS``'s own code list in 2015 (splitting code ``155`` into a new

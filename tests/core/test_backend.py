@@ -506,3 +506,101 @@ def test_join_on_index_coalesces_shared_join_keys() -> None:
     assert _is_missing(rows[1]["B"])
     assert _is_missing(rows[3]["A"])
     assert rows[3]["B"] == 40
+
+
+def test_build_frame_declares_dtypes_the_values_cannot_supply(backend: str) -> None:
+    """A declared schema types a column the values give no basis to infer.
+
+    Every backend infers a dtype from the values, so a column that is
+    entirely null leaves each of them to guess, and they guess
+    differently: polars and pyarrow report Unknown where pandas reports
+    String. Declaring the dtype is what makes the three agree. See issue
+    #43.
+    """
+    schema: dict[str, nw.dtypes.DType] = {
+        "ALLNULL": nw.Int64(),
+        "TEXT": nw.String(),
+        "AMOUNT": nw.Float64(),
+    }
+    frame = build_frame(
+        data={"ALLNULL": [None, None], "TEXT": [None, "x"], "AMOUNT": [1.5, None]},
+        schema=schema,
+    )
+    assert dict(frame.collect_schema()) == schema
+
+
+def test_build_frame_declares_dtypes_on_a_frame_with_no_rows(backend: str) -> None:
+    """A zero-row frame carries its declared dtypes rather than Unknown.
+
+    FCA publishes a zero-byte RCO data file for 2000Q1 through 2003Q4, so
+    an empty frame with usable dtypes is a real requirement, not a
+    hypothetical one.
+    """
+    schema: dict[str, nw.dtypes.DType] = {"UNINUM": nw.Int64(), "NAME": nw.String()}
+    frame = build_frame(data={"UNINUM": [], "NAME": []}, schema=schema)
+    assert dict(frame.collect_schema()) == schema
+    assert len(frame) == 0
+
+
+def test_build_frame_declared_integers_hold_nulls(backend: str) -> None:
+    """A declared Int64 column keeps that dtype while holding a null.
+
+    pandas' default integer dtype is numpy-backed and cannot hold a null,
+    so honoring the declaration there requires its nullable extension
+    dtype. Without that, `load` hands back Float64 for a field the
+    packaged metadata declares Int64.
+    """
+    frame = build_frame(data={"COUNT": [1, None, 3]}, schema={"COUNT": nw.Int64()})
+    assert frame.collect_schema()["COUNT"] == nw.Int64()
+    # Each backend spells its own missing value, so ask narwhals instead of
+    # comparing against None.
+    assert frame["COUNT"].is_null().to_list() == [False, True, False]
+
+
+def test_build_frame_ignores_a_schema_entry_for_an_absent_column(backend: str) -> None:
+    """A schema naming a column the data lacks does not add that column."""
+    frame = build_frame(
+        data={"UNINUM": [1]}, schema={"UNINUM": nw.Int64(), "ABSENT": nw.String()}
+    )
+    assert frame.columns == ["UNINUM"]
+
+
+def test_build_frame_infers_a_column_the_schema_omits(backend: str) -> None:
+    """A column absent from the schema keeps its inferred dtype."""
+    frame = build_frame(
+        data={"UNINUM": [1], "NOTE": ["a"]}, schema={"UNINUM": nw.Int64()}
+    )
+    assert frame.collect_schema()["UNINUM"] == nw.Int64()
+    assert frame.collect_schema()["NOTE"] == nw.String()
+
+
+def test_build_frame_falls_back_for_a_column_the_values_contradict(
+    backend: str,
+) -> None:
+    """An unrepresentable value costs one column's declared dtype, not the frame's.
+
+    `fca.reader._cast` keeps a non-numeric value in a Numeric-typed field
+    as a string rather than discarding it. That value cannot be held as
+    the declared Int64, so that one column infers instead, while every
+    other column still gets what the layout declares.
+    """
+    frame = build_frame(
+        data={"UNINUM": [1, 2], "TOTASSETS": ["NA", "n/a"], "ALLNULL": [None, None]},
+        schema={
+            "UNINUM": nw.Int64(),
+            "TOTASSETS": nw.Int64(),
+            "ALLNULL": nw.Int64(),
+        },
+    )
+    schema = frame.collect_schema()
+    assert schema["TOTASSETS"] == nw.String()
+    assert schema["UNINUM"] == nw.Int64()
+    assert schema["ALLNULL"] == nw.Int64()
+    assert frame["TOTASSETS"].to_list() == ["NA", "n/a"]
+
+
+def test_build_frame_without_a_schema_still_infers(backend: str) -> None:
+    """Omitting the schema leaves every column to the backend's inference."""
+    frame = build_frame(data={"UNINUM": [1, 2], "NAME": ["a", "b"]})
+    assert frame.collect_schema()["UNINUM"] == nw.Int64()
+    assert frame.collect_schema()["NAME"] == nw.String()

@@ -31,6 +31,10 @@ def _rows(native_frame: Any) -> list[dict[str, Any]]:
     return nw.from_native(native_frame).rows(named=True)
 
 
+def _frame(native_frame: Any) -> nw.DataFrame[Any]:
+    return nw.from_native(native_frame, eager_only=True)
+
+
 def test_read_single_scenario(tmp_path: Path) -> None:
     """A 'single' schedule parses to one row per institution."""
     layout_path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
@@ -312,3 +316,62 @@ def test_single_multiple_single_non_divisible_middle_raises(tmp_path: Path) -> N
     layout = parse_layout(path=layout_path)
     with pytest.raises(LayoutParseError):
         read_schedule_file(data_path=data_path, layout=layout)
+
+
+def test_declared_dtypes_survive_an_all_null_column(
+    tmp_path: Path, backend: str
+) -> None:
+    """A column with no values still carries the dtype its layout declares.
+
+    A Numeric field FCA had not started collecting yet is empty for every
+    row of that quarter, which leaves each backend to guess a dtype from
+    nothing and the three guess differently. Reading the declared type
+    from the layout is what makes them agree, and is what lets `load`
+    stack that quarter onto a later one where the field is populated.
+    See issue #43.
+    """
+    layout_path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    data_path = write_data(
+        tmp_path,
+        root="RC",
+        year=2026,
+        month=3,
+        rows=["6,10,0,3,2026,610000,", "6,20,0,3,2026,620000,"],
+    )
+    layout = parse_layout(path=layout_path)
+    frame = _frame(read_schedule_file(data_path=data_path, layout=layout))
+    assert frame.collect_schema()["TOTASSETS"] == nw.Int64()
+
+
+def test_declared_dtypes_survive_a_file_with_no_rows(
+    tmp_path: Path, backend: str
+) -> None:
+    """A schedule file with no rows still carries its layout's declared dtypes.
+
+    FCA publishes a zero-byte RCO data file for 2000Q1 through 2003Q4, so
+    this is the shape of a real release rather than a hypothetical.
+    """
+    layout_path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    data_path = write_data(tmp_path, root="RC", year=2026, month=3, rows=[])
+    layout = parse_layout(path=layout_path)
+    frame = _frame(read_schedule_file(data_path=data_path, layout=layout))
+    schema = frame.collect_schema()
+    assert len(frame) == 0
+    assert schema["UNINUM"] == nw.Int64()
+    assert schema["TOTASSETS"] == nw.Int64()
+
+
+def test_alphanumeric_fields_are_declared_string(tmp_path: Path, backend: str) -> None:
+    """An Alphanum. field is String even when every value in it is empty."""
+    lines = [*RC_LINES_7COL, "  NAME  Alphanum.  0  Institution name"]
+    layout_path = write_layout(tmp_path, root="RC", variable_lines=lines)
+    data_path = write_data(
+        tmp_path,
+        root="RC",
+        year=2026,
+        month=3,
+        rows=["6,10,0,3,2026,610000,1000000,"],
+    )
+    layout = parse_layout(path=layout_path)
+    frame = _frame(read_schedule_file(data_path=data_path, layout=layout))
+    assert frame.collect_schema()["NAME"] == nw.String()

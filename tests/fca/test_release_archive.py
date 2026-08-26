@@ -33,7 +33,7 @@ from typing import Any
 import narwhals as nw
 import pytest
 
-from call_report.config import config_context, get_config
+from call_report.config import config_context
 from call_report.core import FieldSchema, PeriodRange, ReportingPeriod
 from call_report.exceptions import LayoutParseError, ScheduleNotFoundError
 from call_report.fca import (
@@ -159,60 +159,6 @@ KNOWN_EMPTY_SCHEDULES = frozenset(
 # not. Pinned by column name rather than allowed for any column, so an
 # Object dtype appearing anywhere else still fails.
 OBJECT_DATE_COLUMNS = frozenset({"period"})
-
-# `to_long_format` builds its `value` column by concatenating schedules
-# whose source columns have different dtypes. polars and pyarrow coerce
-# the result to Float64; pandas falls back to Object. `to_wide_format`
-# pivots that column, so every value column it produces inherits the
-# same Object dtype under pandas. The values are numbers under all three
-# backends, so the row comparisons still hold, but pandas callers get an
-# object-typed frame where the other backends get a numeric one.
-#
-# The reshape comparisons therefore pass allow_pandas_object=True. The
-# raw schedule comparisons do not, so this stays confined to the
-# reshaped output rather than becoming a blanket allowance.
-RESHAPE_PANDAS_OBJECT_DTYPES = True
-
-# `load` raises under polars for these schedules. Each has at least one
-# column that is entirely null in one release and populated in another,
-# which polars types Null against Int64 and refuses to vstack, so the
-# cross-period concat fails. See issue #43.
-#
-# Pinned as a set rather than as xfail markers so that the count cannot
-# drift unnoticed in either direction: a sixteenth schedule breaking
-# fails the test, and so does fixing #43, which forces this constant and
-# the branch reading it to be deleted as part of that fix.
-POLARS_LOAD_FAILURES = frozenset(
-    {
-        "RC",
-        "RC1",
-        "RCB",
-        "RCB4",
-        "RCB5",
-        "RCF1",
-        "RCG",
-        "RCH",
-        "RCI",
-        "RCO",
-        "RCR4",
-        "RI",
-        "RIB",
-        "RID",
-        "RIE",
-    }
-)
-
-# The same columns that make polars raise also make the stacked schema
-# disagree between pandas and pyarrow. A column that is all null in the
-# early releases and populated later resolves to String under pandas'
-# concat and Int64 under pyarrow's, so pandas hands back a string column
-# for numeric data. Also issue #43.
-#
-# RCO is the one member of the set above that does not reach this: its
-# empty releases are empty frames rather than all-null columns, so
-# nothing survives to disagree about. Expressed as a difference rather
-# than a second hand-maintained list, so fixing #43 empties both at once.
-LOAD_SCHEMA_DIVERGENCE = POLARS_LOAD_FAILURES - {"RCO"}
 
 
 @pytest.fixture(scope="session")
@@ -372,25 +318,18 @@ def _assert_matches_packaged_metadata(
         frame=frame,
         declared_schema=get_fca_file_metadata(schedule=schedule).file_schema,
         label=f"{backend}:load({schedule.value})",
-        backend=backend,
     )
 
 
 def _assert_matches_declared_schema(
-    *,
-    frame: nw.DataFrame[Any],
-    declared_schema: FieldSchema,
-    label: str,
-    backend: str,
+    *, frame: nw.DataFrame[Any], declared_schema: FieldSchema, label: str
 ) -> None:
     """Check a loaded frame against the field schema the package declares for it.
 
     Column names must match the declared fields exactly, ignoring the
     ``period`` column the public loaders add to identify which release a
     row came from. Each column's dtype must match one of the dtypes the
-    field is declared to have taken, under the same equivalence
-    `_assert_schemas_equivalent` uses, plus one pandas-only allowance
-    described below.
+    field is declared to have taken.
 
     Parameters
     ----------
@@ -400,8 +339,6 @@ def _assert_matches_declared_schema(
         The packaged schema describing what the frame should contain.
     label : str
         Identifies the call in failure messages.
-    backend : str
-        The dataframe backend in force.
     """
     declared = set(declared_schema.names)
     loaded = set(frame.columns) - {"period"}
@@ -412,11 +349,8 @@ def _assert_matches_declared_schema(
     )
 
     actual_schema = frame.collect_schema()
-    uninformative = _uninformative_columns(frame)
     for name in declared_schema.names:
         actual = actual_schema[name]
-        if name in uninformative:
-            continue
         # A field's declared dtype can change over the archive's history,
         # and a stacked frame spans those versions, so any declared
         # version is acceptable.
@@ -424,14 +358,6 @@ def _assert_matches_declared_schema(
             str(version.dtype) for version in declared_schema[name].versions
         }
         if str(actual) in declared_dtypes:
-            continue
-        if any({str(actual), d} == {"Int64", "Float64"} for d in declared_dtypes):
-            continue
-        if backend == "pandas" and str(actual) in {"String", "Object"}:
-            # Issue #43. A column that is all null in the early releases
-            # and populated later resolves to String, or to Object, under
-            # pandas' concat, so pandas hands back a non-numeric column
-            # where the metadata declares an integer one.
             continue
         raise AssertionError(
             f"{label} column {name!r}: loaded dtype {actual} is not any of the "
@@ -476,7 +402,6 @@ def _assert_public_load_api(*, report: FCACallReport, backend: str) -> None:
             frame=eager,
             declared_schema=get_fca_file_metadata(schedule=schedule).file_schema,
             label=f"{backend}:load_all()[{schedule.value}]",
-            backend=backend,
         )
 
     institutions = _eager(report.load_institutions())
@@ -485,7 +410,6 @@ def _assert_public_load_api(*, report: FCACallReport, backend: str) -> None:
         frame=institutions,
         declared_schema=get_institutions_file_metadata().file_schema,
         label=f"{backend}:load_institutions()",
-        backend=backend,
     )
 
     assert report.errors_ == (), (
@@ -575,7 +499,6 @@ def _assert_institutions_load(
         frame=institutions,
         declared_schema=get_institutions_file_metadata().file_schema,
         label=f"institutions:{period.label}",
-        backend=get_config()["dataframe_backend"],
     )
 
 
@@ -592,51 +515,25 @@ def _native_rows(native_frame: Any) -> list[dict[str, Any]]:
     return _eager(native_frame).rows(named=True)
 
 
-def _uninformative_columns(frame: nw.DataFrame[Any]) -> frozenset[str]:
-    """Return the columns this frame gives a backend nothing to infer a dtype from.
-
-    A column is uninformative when the frame has no rows, or when every
-    entry in it is null. Backends disagree about what to call such a
-    column, because nothing in the data decides it.
-
-    Parameters
-    ----------
-    frame : narwhals.DataFrame
-        The frame to inspect.
-
-    Returns
-    -------
-    frozenset[str]
-        Names of the columns carrying no values.
-    """
-    if len(frame) == 0:
-        return frozenset(frame.columns)
-    return frozenset(name for name in frame.columns if frame[name].is_null().all())
-
-
 def _assert_schemas_equivalent(
     *,
     reference: nw.DataFrame[Any],
     other: nw.DataFrame[Any],
     label: str,
-    allow_pandas_object: bool = False,
     ignore_column_order: bool = False,
 ) -> None:
     """Assert two backends built the same schema for one frame.
 
     Column names and their order must match exactly. Dtypes must match
-    too, with three documented exceptions:
+    too, with one documented exception: a column named in
+    `OBJECT_DATE_COLUMNS` may be ``Object`` under pandas against ``Date``
+    elsewhere.
 
-    - A column with no values to infer from (every entry null, or the
-      frame has no rows) may carry any dtype. polars and pyarrow report
-      ``Unknown``, pandas falls back to ``String`` or ``Float64``.
-    - An integer column holding at least one null is ``Int64`` under
-      polars and pyarrow, which have a nullable integer, and ``Float64``
-      under pandas, whose default dtypes do not.
-    - A column named in `OBJECT_DATE_COLUMNS` may be ``Object`` under
-      pandas against ``Date`` elsewhere.
-
-    Any other disagreement fails.
+    Any other disagreement fails. Every column a schedule file produces
+    carries its layout-declared dtype under all three backends, so the
+    comparison is exact even for a column that is entirely null or that
+    belongs to a frame with no rows, and for the reshaped output that
+    inherits those dtypes.
 
     Parameters
     ----------
@@ -646,11 +543,10 @@ def _assert_schemas_equivalent(
         Another backend's frame for the same schedule and period.
     label : str
         Identifies the backend/schedule combination in failure messages.
-    allow_pandas_object : bool, default False
-        Also accept an ``Object`` dtype under pandas against any dtype
-        elsewhere. Set only by the reshape comparisons, whose pandas
-        output is object-typed throughout. See
-        `RESHAPE_PANDAS_OBJECT_DTYPES`.
+    ignore_column_order : bool, default False
+        Compare column names as a set rather than as an ordered list.
+        Set only by the long-format round trip, whose two routes return
+        the same columns in different orders. See issue #46.
     """
     reference_schema = reference.collect_schema()
     other_schema = other.collect_schema()
@@ -664,18 +560,15 @@ def _assert_schemas_equivalent(
             f"{label}: columns {list(other_schema)}, expected {list(reference_schema)}."
         )
 
-    uninformative = _uninformative_columns(reference) | _uninformative_columns(other)
     for name in reference_schema:
         reference_dtype = reference_schema[name]
         other_dtype = other_schema[name]
-        if reference_dtype == other_dtype or name in uninformative:
+        if reference_dtype == other_dtype:
             continue
         pair = {str(reference_dtype), str(other_dtype)}
         if pair == {"Object", "Date"} and name in OBJECT_DATE_COLUMNS:
             continue
-        if allow_pandas_object and "Object" in pair:
-            continue
-        assert pair == {"Int64", "Float64"}, (
+        raise AssertionError(
             f"{label} column {name!r}: dtype {other_dtype} is not equivalent to "
             f"{reference_dtype}."
         )
@@ -733,11 +626,7 @@ def _load_schedule_frames(
 
 
 def _assert_frames_equal(
-    *,
-    reference: nw.DataFrame[Any],
-    other: nw.DataFrame[Any],
-    label: str,
-    allow_pandas_object: bool = False,
+    *, reference: nw.DataFrame[Any], other: nw.DataFrame[Any], label: str
 ) -> None:
     """Assert two backends produced the same schema and the same values.
 
@@ -749,18 +638,8 @@ def _assert_frames_equal(
         Another backend's frame for the same schedule and period.
     label : str
         Identifies the backend/schedule combination in failure messages.
-    allow_pandas_object : bool, default False
-        Also accept an ``Object`` dtype under pandas against any dtype
-        elsewhere. Set only by the reshape comparisons, whose pandas
-        output is object-typed throughout. See
-        `RESHAPE_PANDAS_OBJECT_DTYPES`.
     """
-    _assert_schemas_equivalent(
-        reference=reference,
-        other=other,
-        label=label,
-        allow_pandas_object=allow_pandas_object,
-    )
+    _assert_schemas_equivalent(reference=reference, other=other, label=label)
     _assert_rows_equal(
         reference=reference.rows(named=True),
         other=other.rows(named=True),
@@ -882,12 +761,6 @@ def test_load_agrees_across_backends(
     frames: dict[str, nw.DataFrame[Any]] = {}
     for backend, report in backend_archive_reports.items():
         with config_context(dataframe_backend=backend):
-            if backend == "polars" and schedule.value in POLARS_LOAD_FAILURES:
-                # Issue #43. Asserting it still raises is what makes the
-                # pinned set self-correcting: fixing #43 fails here.
-                with pytest.raises(Exception, match=r"(?i)schema|null|int64"):
-                    report.load(schedule=schedule)
-                continue
             frames[backend] = _eager(report.load(schedule=schedule))
 
     reference = frames["pandas"]
@@ -898,16 +771,6 @@ def test_load_agrees_across_backends(
             f"{backend}: load(schedule={schedule.value!r}) returned "
             f"{len(frame)} rows, pandas returned {len(reference)}."
         )
-        if schedule.value in LOAD_SCHEMA_DIVERGENCE:
-            # Issue #43. Assert the disagreement is still there, so that
-            # fixing it fails this test and forces the pin out.
-            with pytest.raises(AssertionError):
-                _assert_schemas_equivalent(
-                    reference=reference,
-                    other=frame,
-                    label=f"{backend}:{schedule.value}",
-                )
-            continue
         _assert_schemas_equivalent(
             reference=reference, other=frame, label=f"{backend}:{schedule.value}"
         )
@@ -1121,7 +984,6 @@ def test_wide_format_matches_across_backends(period: ReportingPeriod) -> None:
             reference=reference,
             other=other,
             label=f"{backend}:{period.label}",
-            allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
         )
 
 
@@ -1201,7 +1063,6 @@ def test_long_format_matches_across_backends(period: ReportingPeriod) -> None:
             reference=reference,
             other=other,
             label=label,
-            allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
         )
         _assert_rows_equal(
             reference=reference_rows,
@@ -1265,7 +1126,6 @@ def _assert_round_trip(*, period: ReportingPeriod) -> None:
         reference=_eager(wide),
         other=_eager(convert_long_format_to_wide_format(long=long_)),
         label=f"wide-round-trip-schema:{period.label}",
-        allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
     )
     _assert_rows_equal(
         reference=sorted(wide_rows, key=lambda row: row["UNINUM"]),
@@ -1282,7 +1142,6 @@ def _assert_round_trip(*, period: ReportingPeriod) -> None:
         reference=_eager(long_),
         other=_eager(convert_wide_format_to_long_format(wide=wide)),
         label=f"long-round-trip-schema:{period.label}",
-        allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
         # `to_long_format` and `convert_wide_format_to_long_format` return
         # the same eight columns in different orders, so the round trip is
         # not order-stable. Names and dtypes are still compared exactly.
@@ -1353,25 +1212,7 @@ def test_exhaustive_every_release_institutions_load_under_every_backend(
 
 
 @pytest.mark.exhaustive
-@pytest.mark.parametrize(
-    "backend",
-    [
-        "pandas",
-        pytest.param(
-            "polars",
-            marks=pytest.mark.xfail(
-                reason=(
-                    "load_all() raises SchemaError under polars: a column that "
-                    "is all null in one quarter and populated in another gets "
-                    "Null against Int64, and the cross-period concat cannot "
-                    "stack them. See issue #43."
-                ),
-                raises=Exception,
-            ),
-        ),
-        "pyarrow",
-    ],
-)
+@pytest.mark.parametrize("backend", ALL_BACKENDS)
 def test_exhaustive_public_load_api_works_under_every_backend(backend: str) -> None:
     """The public load API returns the whole archive under every backend.
 
@@ -1456,7 +1297,6 @@ def test_exhaustive_wide_format_matches_across_backends(
             reference=reference,
             other=other,
             label=f"{backend}:{period.label}",
-            allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
         )
 
 
@@ -1478,7 +1318,6 @@ def test_exhaustive_long_format_matches_across_backends(
             reference=reference,
             other=other,
             label=label,
-            allow_pandas_object=RESHAPE_PANDAS_OBJECT_DTYPES,
         )
         _assert_rows_equal(
             reference=reference_rows,

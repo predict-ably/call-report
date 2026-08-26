@@ -7,12 +7,12 @@ configured via :mod:`call_report.config`.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar, overload
 
 import narwhals as nw
 
-from call_report.config import get_config
+from call_report.config import DataFrameBackend, get_config
 from call_report.exceptions import LayoutParseError, ReshapeError
 
 if TYPE_CHECKING:
@@ -48,7 +48,11 @@ _SUPPORTED_DATAFRAME_TYPES: frozenset[str] = frozenset(
 )
 
 
-def build_frame(*, data: dict[str, list[Any]]) -> nw.DataFrame[Any]:
+def build_frame(
+    *,
+    data: dict[str, list[Any]],
+    schema: Mapping[str, nw.dtypes.DType] | None = None,
+) -> nw.DataFrame[Any]:
     """Build an eager narwhals DataFrame from columnar data.
 
     Uses the dataframe library named by the current
@@ -56,18 +60,132 @@ def build_frame(*, data: dict[str, list[Any]]) -> nw.DataFrame[Any]:
     regardless of the ``"lazy"`` setting, because laziness is applied
     once, at the public return boundary, by :func:`finalize`.
 
+    Pass `schema` whenever the caller already knows what the columns are
+    supposed to be. Without it each backend infers a dtype from the
+    values, which is not a decision the values can always support: a
+    column that is entirely null, or that belongs to a frame with no
+    rows, gives every backend nothing to infer from, and the three
+    disagree about what to call the result.
+
+    A declared dtype is a statement about the source, not a guarantee
+    about the values. A column whose values cannot all be represented as
+    the dtype declared for it keeps its inferred dtype instead, so one
+    unparsable value costs that one column's declared dtype rather than
+    the whole frame's.
+
     Parameters
     ----------
     data : dict[str, list[Any]]
         Column name to column values, as produced by a parser.
+    schema : Mapping[str, narwhals.dtypes.DType], optional
+        The dtype each column should have. A column of `data` absent from
+        `schema` keeps its inferred dtype. ``None`` (the default) infers
+        every column.
 
     Returns
     -------
     narwhals.DataFrame
         An eager narwhals-wrapped frame of the configured backend.
     """
-    backend = get_config()["dataframe_backend"]
-    return nw.from_dict(data, backend=backend)
+    backend: DataFrameBackend = get_config()["dataframe_backend"]
+    if schema is None:
+        return nw.from_dict(data, backend=backend)
+    declared = {name: schema[name] for name in data if name in schema}
+    try:
+        return _build_declared_frame(data=data, schema=declared, backend=backend)
+    except Exception:
+        # Each backend signals an unrepresentable value with its own
+        # exception type (TypeError, ValueError, pyarrow.ArrowInvalid,
+        # polars.InvalidOperationError), so the catch is by position in
+        # the pipeline rather than by type.
+        representable = {
+            name: dtype
+            for name, dtype in declared.items()
+            if _is_representable(values=data[name], dtype=dtype, backend=backend)
+        }
+        return _build_declared_frame(data=data, schema=representable, backend=backend)
+
+
+def _build_declared_frame(
+    *,
+    data: dict[str, list[Any]],
+    schema: Mapping[str, nw.dtypes.DType],
+    backend: DataFrameBackend,
+) -> nw.DataFrame[Any]:
+    """Build an eager frame whose columns carry the dtypes `schema` declares.
+
+    pandas cannot be handed a declared schema the way polars and pyarrow
+    can. Its default dtypes are numpy-backed, so a declared ``Int64``
+    column holding a null has no representation and
+    ``narwhals.from_dict`` raises. For that backend this builds with
+    inferred dtypes and then casts to the nullable (masked) equivalents,
+    which gives pandas a null it can hold. narwhals reports those
+    extension dtypes under the same names polars and pyarrow use, so all
+    three agree on the result.
+
+    Parameters
+    ----------
+    data : dict[str, list[Any]]
+        Column name to column values, as produced by a parser.
+    schema : Mapping[str, narwhals.dtypes.DType]
+        The dtype each column should have. A column of `data` absent from
+        it keeps its inferred dtype.
+    backend : {"pandas", "polars", "pyarrow"}
+        The configured dataframe backend to build with.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        An eager narwhals-wrapped frame of `backend`.
+    """
+    if backend != "pandas":
+        # narwhals.from_dict requires the schema to name every column, so a
+        # schema covering only some of them is completed from what the
+        # backend infers for the rest.
+        complete = dict(schema)
+        if len(complete) != len(data):
+            inferred = nw.from_dict(data, backend=backend).collect_schema()
+            complete = {
+                name: complete.get(name, dtype) for name, dtype in inferred.items()
+            }
+        return nw.from_dict(data, schema=nw.Schema(complete), backend=backend)
+    native = nw.from_dict(data, backend=backend).to_native()
+    # Schema.to_pandas() maps the narwhals dtypes onto pandas' nullable
+    # dtype names, so this reaches pandas' own extension dtypes without
+    # importing pandas.
+    pandas_dtypes = nw.Schema(schema).to_pandas(dtype_backend="numpy_nullable")
+    return nw.from_native(native.astype(pandas_dtypes), eager_only=True)
+
+
+def _is_representable(
+    *, values: list[Any], dtype: nw.dtypes.DType, backend: DataFrameBackend
+) -> bool:
+    """Report whether one column's values can be held as `dtype`.
+
+    Used only after a whole-frame build against the declared schema has
+    already failed, to find which columns are responsible.
+
+    Parameters
+    ----------
+    values : list[Any]
+        One column's values.
+    dtype : narwhals.dtypes.DType
+        The dtype declared for that column.
+    backend : {"pandas", "polars", "pyarrow"}
+        The configured dataframe backend to build with.
+
+    Returns
+    -------
+    bool
+        True if a single-column frame of `values` can be built as `dtype`.
+    """
+    try:
+        _build_declared_frame(
+            data={"column": values}, schema={"column": dtype}, backend=backend
+        )
+    except Exception:
+        return False
+    return True
 
 
 def finalize(*, frame: FrameOrLazy) -> NativeDataFrame:
