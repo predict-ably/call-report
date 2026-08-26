@@ -173,18 +173,6 @@ OBJECT_DATE_COLUMNS = frozenset({"period"})
 # reshaped output rather than becoming a blanket allowance.
 RESHAPE_PANDAS_OBJECT_DTYPES = True
 
-# pyarrow has no native pivot, so `to_wide_format` goes through
-# `_manual_pivot`, which is superlinear in output width: about 20s per
-# release against polars' 0.4s, and worse for the newer, wider releases.
-# Running that for all 105 releases costs around 28 minutes, roughly the
-# whole exhaustive tier, to re-exercise one code path that the sample
-# below already covers across every structural era of the archive.
-#
-# This carve-out applies to the wide format only. Every other exhaustive
-# comparison keeps full pyarrow coverage, because none of them pivots.
-# Restore the full range once issue #45 makes the pivot cheap.
-WIDE_FORMAT_PYARROW_PERIODS = frozenset(CROSS_BACKEND_SAMPLE_PERIODS)
-
 # `load` raises under polars for these schedules. Each has at least one
 # column that is entirely null in one release and populated in another,
 # which polars types Null against Int64 and refuses to vstack, so the
@@ -1448,10 +1436,7 @@ def test_exhaustive_wide_format_matches_across_backends(
     reference = _to_wide_format_frame(period=period, backend="pandas")
     assert len(reference) > 0, f"{period.label}: wide format built 0 rows."
 
-    backends = ["polars"]
-    if period in WIDE_FORMAT_PYARROW_PERIODS:
-        backends.append("pyarrow")
-    for backend in backends:
+    for backend in ("polars", "pyarrow"):
         other = _to_wide_format_frame(period=period, backend=backend)
         _assert_frames_equal(
             reference=reference,
