@@ -266,14 +266,23 @@ layered so each tier costs what it is worth:
    loop.
 3. *`pytest --run-exhaustive`.* Every archived release against every
    backend, plus a cross-backend value comparison on every release. Minutes,
-   and skipped unless the flag is passed, so it never slows a pull request.
-   Run before a release, or after adding a quarter to `data/`, by
-   dispatching `.github/workflows/exhaustive-regression.yml`.
+   and skipped unless the flag is passed, so it never slows an ordinary pull
+   request.
 
 Tier 3 is gated by a flag rather than a marker alone because a marker can be
 selected by accident with the wrong `-m` expression, while an unpassed flag
 cannot. The tests stay collected either way, so `--collect-only` shows what
 an exhaustive run would cover.
+
+`.github/workflows/exhaustive-regression.yml` runs tier 3 in CI. It fires on
+a pull request from a `release/*` branch, and on any pull request carrying
+the `run-exhaustive` label. Both gate the merge, so a release or a new
+quarter of archive data is covered before it reaches `main` rather than
+after. Add the label to any pull request that changes what the archive
+contains or how it is parsed, most obviously one dropping a quarter's zip
+into `data/fca-call-report/`. The workflow can also be dispatched by hand
+against any ref. It fails rather than skips when no archive zips are
+present, because a green run of 735 skipped tests is worse than a red one.
 
 **Reach for property-based tests on laws.** Where behavior has an invariant
 that should hold for every input, not just chosen examples, use `hypothesis`

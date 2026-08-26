@@ -7,12 +7,16 @@ name: exhaustive-regression
 # request.
 #
 # Triggers:
-#   workflow_dispatch  run it by hand from the Actions tab, before a release
-#                      or after adding a quarter's archive to data/.
-#   push (v* tags)     runs alongside a release tag so the published version
-#                      has a full-history result recorded against it. This
-#                      does not block publish.yml, which triggers on the same
-#                      tag independently.
+#   pull_request       runs on a pull request from a `release/*` branch, and
+#                      on any pull request carrying the `run-exhaustive`
+#                      label. Both gate the merge, so a release or a new
+#                      quarter of archive data is covered before it reaches
+#                      main rather than after.
+#   workflow_dispatch  run it by hand from the Actions tab, against any ref.
+#
+# `labeled` has to be in `types`, or adding the label to an open pull
+# request would not start a run. There is no `paths` filter: a release pull
+# request bumps only `__init__.py`, which no useful filter would match.
 on:
   workflow_dispatch:
     inputs:
@@ -24,9 +28,9 @@ on:
         description: "Runner to use"
         required: false
         default: "ubuntu-latest"
-  push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
@@ -38,6 +42,15 @@ concurrency:
 jobs:
   exhaustive:
     name: exhaustive archive regression
+    # A pull request opts in one of two ways: it comes from a `release/*`
+    # branch, or it carries the `run-exhaustive` label. The branch prefix
+    # makes the release case automatic. The label covers everything else,
+    # most usefully a pull request adding a quarter's archive to `data/`.
+    # A manual dispatch always runs.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.head_ref, 'release/') ||
+      contains(github.event.pull_request.labels.*.name, 'run-exhaustive')
     runs-on: ${{ inputs.os || 'ubuntu-latest' }}
     # The full cross product across ~105 releases is long-running by design.
     timeout-minutes: 120

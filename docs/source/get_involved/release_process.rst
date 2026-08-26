@@ -100,11 +100,52 @@ version automatically for every pushed tag once the project is imported
 
 Commit the version bump (``__init__.py``, ``test_version.py``,
 ``switcher.json``, ``changelog.rst``) and land it on ``main`` through the normal
-:ref:`pull request workflow <how_to_contribute>`. Always tag from ``main``
-after CI (``test``, ``pre-commit``, ``security``) is green on that commit --
-the publish workflows only check that the tag matches ``__version__``, not
-that tests passed, so a red ``main`` will happily get published if you tag
-it.
+:ref:`pull request workflow <how_to_contribute>`.
+
+Name the branch ``release/<version>`` (for example ``release/0.1.0``). The
+prefix is what triggers the exhaustive archive regression, described in
+:ref:`release_process_exhaustive` below. Watch for ``exhaustive archive
+regression`` to appear alongside the usual checks. If it is missing, the
+branch name is wrong and the run did not happen.
+
+Always tag from ``main`` after CI (``test``, ``pre-commit``, ``security``,
+``exhaustive archive regression``) is green on that commit. The publish
+workflows only check that the tag matches ``__version__``, not that tests
+passed, so a red ``main`` will happily get published if you tag it.
+
+.. _release_process_exhaustive:
+
+The exhaustive archive regression
+-----------------------------------
+
+The pull request suite samples the FCA release archive: the full history
+under pandas, 20 seeded periods under all three dataframe backends, and 4
+periods compared value-for-value across backends. The exhaustive run does
+the whole cross product instead, every published release against every
+backend, which takes tens of minutes rather than seconds. It is defined in
+``.github/workflows/exhaustive-regression.yml``.
+
+It runs on a pull request in two cases:
+
+- The branch name starts with ``release/``. This makes the release case
+  automatic, so it cannot be forgotten.
+- The pull request carries the ``run-exhaustive`` label. Apply the label to
+  an already-open pull request and the run starts immediately, no push
+  needed.
+
+Use the label on any pull request that changes what the archive contains or
+how it is parsed. Adding a quarter's zip to ``data/fca-call-report/`` is the
+clearest case, and it is not a release, so nothing else would trigger the
+run.
+
+The workflow can also be dispatched by hand from the `Actions tab
+<https://github.com/predict-ably/call-report/actions/workflows/exhaustive-regression.yml>`_
+against any ref, with a Python version and runner of your choosing. Locally,
+the same tests run with:
+
+.. code-block:: bash
+
+   pytest tests/fca/test_release_archive.py --run-exhaustive -m exhaustive
 
 3. Publish to TestPyPI first
 ===============================
