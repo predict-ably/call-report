@@ -448,6 +448,11 @@ def _assert_public_load_api(*, report: FCACallReport, backend: str) -> None:
     result as a successful one. Asserting the tuple is empty is what
     turns that resilience into a regression check.
 
+    Both results are also checked against the schemas the package ships,
+    so what these methods hand back has to match what
+    `get_fca_file_metadata` and `get_institutions_file_metadata` tell a
+    caller to expect.
+
     Parameters
     ----------
     report : FCACallReport
@@ -465,13 +470,22 @@ def _assert_public_load_api(*, report: FCACallReport, backend: str) -> None:
         f"{sorted(s.value for s in set(report.schedules_) - set(loaded))}."
     )
     for schedule, frame in loaded.items():
-        assert len(_eager(frame)) > 0, (
-            f"{backend}: load_all() returned 0 rows for {schedule}."
+        eager = _eager(frame)
+        assert len(eager) > 0, f"{backend}: load_all() returned 0 rows for {schedule}."
+        _assert_matches_declared_schema(
+            frame=eager,
+            declared_schema=get_fca_file_metadata(schedule=schedule).file_schema,
+            label=f"{backend}:load_all()[{schedule.value}]",
+            backend=backend,
         )
 
-    institutions = report.load_institutions()
-    assert len(_eager(institutions)) > 0, (
-        f"{backend}: load_institutions() returned 0 rows."
+    institutions = _eager(report.load_institutions())
+    assert len(institutions) > 0, f"{backend}: load_institutions() returned 0 rows."
+    _assert_matches_declared_schema(
+        frame=institutions,
+        declared_schema=get_institutions_file_metadata().file_schema,
+        label=f"{backend}:load_institutions()",
+        backend=backend,
     )
 
     assert report.errors_ == (), (
