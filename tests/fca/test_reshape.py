@@ -14,6 +14,7 @@ from call_report.config import config_context
 from call_report.core._backend import build_frame, concat
 from call_report.exceptions import ReshapeError
 from call_report.fca._reshape import (
+    LONG_FORMAT_COLUMNS,
     _cast_numeric_to_float64,
     _parse_wide_column_key,
     _with_column_key,
@@ -938,3 +939,145 @@ def test_long_to_wide_to_long_round_trip_matches_non_nullsorted_rows() -> None:
     original_rows = original_frame.select(cols).sort(cols).rows(named=True)
     assert non_null_rows == original_rows
     assert round_tripped.shape[0] == original_frame.shape[0] + 1
+
+
+# ---------------------------------------------------------------------------
+# Canonical long-format column order (issue #46)
+# ---------------------------------------------------------------------------
+
+
+def _reshape_inputs(*, coded_first: bool = False, coded: bool = True) -> dict[str, Any]:
+    """Build one plain and (optionally) one coded schedule's melt inputs.
+
+    `coded_first` controls which schedule the reshape sees first, and
+    `coded` whether a coded schedule is present at all. Both change the
+    column order the concat would otherwise produce, so a test can pin the
+    canonical order against every shape that used to diverge.
+    """
+    rc = build_frame(
+        data={
+            "UNINUM": [1, 2],
+            "period": ["2026-03-31", "2026-03-31"],
+            "TOTASSETS": [1000, 2000],
+        }
+    )
+    if not coded:
+        return {
+            "frames": {"RC": rc},
+            "code_columns": {"RC": None},
+            "trailing_columns": {"RC": ()},
+        }
+    rcb = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "INV_CODE": [10, 20],
+            "BKVAL": [100.5, 150.5],
+        }
+    )
+    frames = {"RCB": rcb, "RC": rc} if coded_first else {"RC": rc, "RCB": rcb}
+    return {
+        "frames": frames,
+        "code_columns": {"RC": None, "RCB": "INV_CODE"},
+        "trailing_columns": {"RC": (), "RCB": ()},
+    }
+
+
+@pytest.mark.parametrize(
+    ("coded_first", "coded"),
+    [(False, True), (True, True), (False, False)],
+    ids=["plain-first", "coded-first", "no-coded-schedule"],
+)
+def test_to_long_format_column_order_is_canonical(
+    backend: str, coded_first: bool, coded: bool
+) -> None:
+    """to_long_format returns LONG_FORMAT_COLUMNS whatever its input looks like.
+
+    Without the final select, the order came from a diagonal concat of the
+    melted pieces, so it depended on whether a coded schedule was melted
+    first, last, or not at all. Three inputs that produced three different
+    orders must now produce one.
+    """
+    result = to_long_format(**_reshape_inputs(coded_first=coded_first, coded=coded))
+    assert tuple(result.columns) == LONG_FORMAT_COLUMNS
+
+
+@pytest.mark.parametrize(
+    ("coded_first", "coded"),
+    [(False, True), (True, True), (False, False)],
+    ids=["plain-first", "coded-first", "no-coded-schedule"],
+)
+def test_both_long_format_routes_agree_on_columns_and_dtypes(
+    backend: str, coded_first: bool, coded: bool
+) -> None:
+    """The two public routes to a long frame return one layout and one schema.
+
+    `to_long_format` and `convert_wide_format_to_long_format` returned the
+    same eight columns in different orders, so a positional read of one
+    did not match the other. Their dtypes diverged too when no schedule
+    was coded, because the wide-to-long lookup inferred rather than
+    declared them.
+    """
+    inputs = _reshape_inputs(coded_first=coded_first, coded=coded)
+    direct = to_long_format(**inputs)
+    wide = to_wide_format(**inputs)
+    converted = nw.from_native(
+        convert_wide_format_to_long_format(wide=wide.to_native())
+    )
+
+    assert tuple(direct.columns) == LONG_FORMAT_COLUMNS
+    assert tuple(converted.columns) == LONG_FORMAT_COLUMNS
+    assert dict(converted.collect_schema()) == dict(direct.collect_schema())
+
+
+def test_convert_wide_format_to_long_format_without_a_coded_schedule(
+    backend: str,
+) -> None:
+    """A wide frame with no coded column converts without inferring its lookup.
+
+    The lookup frame's `code_column` and `code_value` are entirely null in
+    this case. Left to inference, pandas read `code_value` as String and
+    polars as Unknown, while pyarrow built a null-typed column that raised
+    ``pyarrow.lib.ArrowInvalid`` as soon as the lookup was joined.
+    """
+    wide = to_wide_format(**_reshape_inputs(coded=False))
+    result = nw.from_native(convert_wide_format_to_long_format(wide=wide.to_native()))
+    schema = result.collect_schema()
+    assert schema["code_column"] == nw.String
+    assert schema["code_value"] == nw.Float64
+    assert schema["is_multiple"] == nw.Boolean
+    assert result["is_multiple"].to_list() == [False, False]
+
+
+def test_long_format_column_order_holds_when_lazy(lazy_polars_backend: str) -> None:
+    """The canonical select stays lazy-safe on a polars LazyFrame source."""
+    inputs = _reshape_inputs()
+    lazy_inputs = {
+        **inputs,
+        "frames": {name: frame.lazy() for name, frame in inputs["frames"].items()},
+    }
+    result = to_long_format(**lazy_inputs)
+    assert tuple(result.columns) == LONG_FORMAT_COLUMNS
+
+
+# ---------------------------------------------------------------------------
+# Reshaped dtypes (issue #44)
+# ---------------------------------------------------------------------------
+
+
+def test_reshaped_value_columns_are_float64(backend: str) -> None:
+    """Neither long nor wide output carries an untyped measure column.
+
+    Under pandas these used to land in Object columns, which support no
+    numeric aggregation and cost far more memory than a float column of
+    the same length. A single wide frame has one such column per variable,
+    so the whole frame was effectively untyped.
+    """
+    inputs = _reshape_inputs()
+    long_schema = to_long_format(**inputs).collect_schema()
+    wide_schema = to_wide_format(**inputs).collect_schema()
+
+    assert long_schema["value"] == nw.Float64
+    value_columns = [name for name in wide_schema.names() if "__" in name]
+    assert value_columns
+    assert all(wide_schema[name] == nw.Float64 for name in value_columns)

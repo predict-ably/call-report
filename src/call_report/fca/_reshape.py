@@ -57,6 +57,35 @@ _LONG_FORMAT_GRAIN: tuple[str, ...] = (
 )
 """tuple[str, ...]: The grain `to_long_format` guarantees is unique."""
 
+LONG_FORMAT_COLUMNS: tuple[str, ...] = (*_LONG_FORMAT_GRAIN, "value", "is_multiple")
+"""tuple[str, ...]: The column order every long-format frame is returned in.
+
+Both routes to a long frame select this before returning, so
+`FCACallReport.to_long_format` and `convert_wide_format_to_long_format`
+agree on layout and not merely on content. Built from `_LONG_FORMAT_GRAIN`
+so the guaranteed order cannot drift from the guaranteed grain. The grain
+comes first, then the measure, then the flag describing it.
+"""
+
+_LOOKUP_SCHEMA: dict[str, nw.dtypes.DType] = {
+    "column_key": nw.String(),
+    "schedule": nw.String(),
+    "code_column": nw.String(),
+    "code_value": nw.Float64(),
+    "is_multiple": nw.Boolean(),
+    "variable_name": nw.String(),
+}
+"""dict[str, narwhals.dtypes.DType]: Declared dtypes for the wide-to-long lookup.
+
+`convert_wide_format_to_long_format` parses the wide frame's column names
+into a small lookup frame. When no column is coded, `code_column` and
+`code_value` are entirely null, leaving nothing to infer a dtype from, so
+they are declared here instead. Inference gives each backend a different
+answer: pandas reads an all-null `code_value` as String, polars as
+Unknown, and pyarrow builds a null-typed column that then raises
+``pyarrow.lib.ArrowInvalid`` when the lookup is joined.
+"""
+
 
 def _cast_unknown_dtype(
     frame: FrameOrLazy, *, column: str, target: nw.dtypes.DType
@@ -432,7 +461,8 @@ def to_long_format(
     ]
     combined = concat(frames=melted, how="union")
     combined = _with_is_multiple_flag(combined)
-    return assert_unique_grain(frame=combined, columns=_LONG_FORMAT_GRAIN)
+    checked = assert_unique_grain(frame=combined, columns=_LONG_FORMAT_GRAIN)
+    return checked.select(*LONG_FORMAT_COLUMNS)
 
 
 def _parse_wide_column_key(
@@ -532,6 +562,11 @@ def convert_wide_format_to_long_format(
     exactly one `(schedule, code_column, code_value, variable_name)` tuple
     by construction, making the long-format grain unique automatically.
 
+    Columns are always returned in the order ``UNINUM``, ``period``,
+    ``schedule``, ``code_column``, ``code_value``, ``variable_name``,
+    ``value``, ``is_multiple``. That order is part of the contract, so a
+    positional read of this frame matches one built by the other route.
+
     Every row with a non-null `value` matches what
     `FCACallReport.to_long_format` would build directly from the same
     source data, but row *counts* can still differ. Pivoting fills in every
@@ -576,9 +611,9 @@ def convert_wide_format_to_long_format(
     ... )
     >>> wide = report.to_wide_format(schedules=["RC", "RCB"])
     >>> long = convert_wide_format_to_long_format(wide=wide)
-    >>> sorted(long.columns)
-    ['UNINUM', 'code_column', 'code_value', 'is_multiple', 'period', \
-'schedule', 'value', 'variable_name']
+    >>> list(long.columns)
+    ['UNINUM', 'period', 'schedule', 'code_column', 'code_value', \
+'variable_name', 'value', 'is_multiple']
     """
     frame = nw.from_native(wide)
     value_columns = [
@@ -594,7 +629,7 @@ def convert_wide_format_to_long_format(
         "variable_name": [item[4] for item in parsed],
     }
     with config_context(dataframe_backend=frame.implementation.name.lower()):
-        lookup: FrameOrLazy = build_frame(data=lookup_data)
+        lookup: FrameOrLazy = build_frame(data=lookup_data, schema=_LOOKUP_SCHEMA)
     if isinstance(frame, nw.LazyFrame):
         lookup = lookup.lazy()
 
@@ -610,7 +645,7 @@ def convert_wide_format_to_long_format(
     # runtime invariant as `concat`'s type-var mismatch (see
     # core._backend.concat).
     joined = long_frame.join(lookup, on="column_key", how="left")  # type: ignore[arg-type]
-    long_frame = joined.drop("column_key")
+    long_frame = joined.select(*LONG_FORMAT_COLUMNS)
     return finalize_as(frame=long_frame, dataframe_type=dataframe_type)
 
 

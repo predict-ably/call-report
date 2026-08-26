@@ -48,6 +48,38 @@ _SUPPORTED_DATAFRAME_TYPES: frozenset[str] = frozenset(
 )
 
 
+def date_dtype() -> nw.dtypes.DType:
+    """Return the dtype a calendar date should be held as, per backend.
+
+    polars and pyarrow both have a native date type. pandas does not. Its
+    only date-like dtype is ``date32[pyarrow]``, which would make pyarrow
+    a requirement for every pandas user, so pandas gets ``Datetime``
+    instead. A pandas caller therefore gets a ``datetime64`` column whose
+    time component is always midnight, which supports the ``.dt``
+    accessor and round-trips through parquet. Without this, a Python
+    ``datetime.date`` lands in an object column under pandas.
+
+    Returns
+    -------
+    narwhals.dtypes.DType
+        `narwhals.Date` on polars and pyarrow, `narwhals.Datetime` on
+        pandas.
+
+    Examples
+    --------
+    >>> from call_report.config import config_context
+    >>> with config_context(dataframe_backend="polars"):
+    ...     date_dtype()
+    Date
+    >>> with config_context(dataframe_backend="pandas"):
+    ...     date_dtype()
+    Datetime(time_unit='us', time_zone=None)
+    """
+    if get_config()["dataframe_backend"] == "pandas":
+        return nw.Datetime("us")
+    return nw.Date()
+
+
 def build_frame(
     *,
     data: dict[str, list[Any]],
@@ -325,6 +357,33 @@ def _dataframe_type_of(data: NativeDataFrame) -> DataFrameType:
     )
 
 
+def _with_pandas_dates(*, frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
+    """Recast any `narwhals.Date` column to the dtype pandas can hold.
+
+    pandas has no date dtype (see `date_dtype`), so converting a polars or
+    pyarrow frame with a Date column straight to pandas produces an object
+    column of `datetime.date` values, or a datetime of whichever time unit
+    that backend happens to pick. Casting before the conversion gives the
+    same `Datetime` a pandas-native frame would already have. A Date has
+    no time component, so this never loses information.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame
+        The eager frame about to be converted to pandas.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        `frame`, with every Date column cast to `narwhals.Datetime`.
+    """
+    schema = frame.collect_schema()
+    dates = [name for name, dtype in schema.items() if dtype == nw.Date]
+    if not dates:
+        return frame
+    return frame.with_columns(nw.col(name).cast(nw.Datetime("us")) for name in dates)
+
+
 @overload
 def convert_dataframe_type(
     *, data: DataFrameT, dataframe_type: None
@@ -397,7 +456,7 @@ def convert_dataframe_type(
     if isinstance(frame, nw.LazyFrame):
         frame = frame.collect()
     if dataframe_type == "pandas":
-        return frame.to_pandas()
+        return _with_pandas_dates(frame=frame).to_pandas()
     if dataframe_type == "pyarrow_table":
         return frame.to_arrow()
     if dataframe_type == "polars_dataframe":
