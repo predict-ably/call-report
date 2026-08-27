@@ -10,7 +10,13 @@ from typing import TYPE_CHECKING, Any, Literal, Self, overload
 
 import narwhals as nw
 
-from call_report.core import BaseCallReport, PeriodRange, ReportingPeriod
+from call_report.core import (
+    BaseCallReport,
+    FieldSchema,
+    FileMetadata,
+    PeriodRange,
+    ReportingPeriod,
+)
 from call_report.core._backend import (
     DataFrameType,
     FrameOrLazy,
@@ -28,6 +34,7 @@ from call_report.exceptions import (
 )
 from call_report.fca import _reshape
 from call_report.fca._discovery import ReleaseFiles, scan_release
+from call_report.fca._schedule_metadata import get_fca_file_metadata
 from call_report.fca.catalog import construct_fca_download_url
 from call_report.fca.enums import FCASchedule, coerce_fca_call_report_schedule
 from call_report.fca.institutions import INSTITUTIONS_ROOT, _read_institutions_frame
@@ -423,36 +430,208 @@ class FCACallReport(BaseCallReport):
         schedule_enum = coerce_fca_call_report_schedule(value=schedule)
 
         if period is not None:
-            target = (
-                period
-                if isinstance(period, ReportingPeriod)
-                else ReportingPeriod.from_period_end(value=period)
-            )
-            if target not in self.periods_:
-                raise InvalidPeriodError(
-                    f"{target.label} is outside the fetched range "
-                    f"({self.periods_[0].label}-{self.periods_[-1].label}); construct "
-                    "a new FCACallReport(start=..., end=...) to inspect that period."
-                )
-            manifest = self.releases_.get(target)
-            if manifest is None or schedule_enum.value not in manifest.files:
-                raise ScheduleNotFoundError(
-                    f"{schedule_enum.value} was not found in {target.label}."
-                )
+            _, manifest = self._release_for(schedule_enum=schedule_enum, period=period)
             return parse_layout(path=manifest.files[schedule_enum.value].layout_path)
 
+        return {
+            found: parse_layout(
+                path=self.releases_[found].files[schedule_enum.value].layout_path
+            )
+            for found in self._periods_with_schedule(schedule_enum=schedule_enum)
+        }
+
+    def _release_for(
+        self, *, schedule_enum: FCASchedule, period: str | date | ReportingPeriod
+    ) -> tuple[ReportingPeriod, FCAReleaseManifest]:
+        """Resolve one period and the release that has `schedule_enum` in it.
+
+        The single-period validation shared by `get_layout` and `get_schema`,
+        so both reject the same requests with the same messages. Assumes
+        `fetch` has already run.
+
+        Parameters
+        ----------
+        schedule_enum : FCASchedule
+            The schedule that must be present.
+        period : str, datetime.date, or ReportingPeriod
+            The period to resolve.
+
+        Returns
+        -------
+        tuple[ReportingPeriod, FCAReleaseManifest]
+            The resolved period and its manifest.
+
+        Raises
+        ------
+        InvalidPeriodError
+            If `period` falls outside the fetched range.
+        ScheduleNotFoundError
+            If `schedule_enum` is not present for `period`.
+        """
+        target = (
+            period
+            if isinstance(period, ReportingPeriod)
+            else ReportingPeriod.from_period_end(value=period)
+        )
+        if target not in self.periods_:
+            raise InvalidPeriodError(
+                f"{target.label} is outside the fetched range "
+                f"({self.periods_[0].label}-{self.periods_[-1].label}); construct "
+                "a new FCACallReport(start=..., end=...) to inspect that period."
+            )
+        manifest = self.releases_.get(target)
+        if manifest is None or schedule_enum.value not in manifest.files:
+            raise ScheduleNotFoundError(
+                f"{schedule_enum.value} was not found in {target.label}."
+            )
+        return target, manifest
+
+    def _periods_with_schedule(
+        self, *, schedule_enum: FCASchedule
+    ) -> tuple[ReportingPeriod, ...]:
+        """Return every fetched period that has `schedule_enum`, or raise.
+
+        The ``period=None`` counterpart to `_release_for`, shared by
+        `get_layout` and `get_schema`. Unlike `periods_available`, an empty
+        result is an error rather than an empty tuple, since a caller asking
+        for a schedule's layouts or schemas across a range gets nothing
+        usable back. Assumes `fetch` has already run.
+
+        Parameters
+        ----------
+        schedule_enum : FCASchedule
+            The schedule to look for.
+
+        Returns
+        -------
+        tuple[ReportingPeriod, ...]
+            The periods that have `schedule_enum`, oldest first.
+
+        Raises
+        ------
+        ScheduleNotFoundError
+            If `schedule_enum` is absent from every fetched period.
+        """
         periods_with_schedule = self.schedules_.get(schedule_enum, ())
         if not periods_with_schedule:
             raise ScheduleNotFoundError(
                 f"{schedule_enum.value} was not found in any period of "
                 f"{self.periods_[0].label}-{self.periods_[-1].label}."
             )
+        return periods_with_schedule
+
+    def get_schema(
+        self,
+        *,
+        schedule: FCASchedule | str,
+        period: str | date | ReportingPeriod | None = None,
+    ) -> FieldSchema | dict[ReportingPeriod, FieldSchema]:
+        """Return a schedule's canonical schema as of one period, or every period.
+
+        The point-in-time counterpart to `get_file_metadata`: the fields the
+        package believes `schedule` had at a given quarter, each narrowed to
+        the definition that applied then rather than today's. Pairs with
+        `get_layout`, which returns what a fetched release actually
+        declared, so the two can be compared on identical arguments.
+
+        Parameters
+        ----------
+        schedule : FCASchedule or str
+            The schedule to describe. A string is matched
+            case-insensitively.
+        period : str, datetime.date, ReportingPeriod, optional
+            A specific period to describe. If omitted, returns the schema
+            for every period in the requested range that has `schedule`.
+
+        Returns
+        -------
+        FieldSchema or dict[ReportingPeriod, FieldSchema]
+            A single schema if `period` was supplied, otherwise a mapping
+            from period to schema.
+
+        Raises
+        ------
+        InvalidPeriodError
+            If `period` was supplied but falls outside the fetched range.
+        ScheduleNotFoundError
+            If `schedule` is not present for the requested period (or, if
+            `period` was omitted, for any period in range).
+        PeriodNotAvailableError
+            If a fetched release has `schedule` for a period the canonical
+            metadata says it was not published in. That is a disagreement
+            between the release and the shipped metadata, not a missing
+            schedule, so it is reported as its own error.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> schema = report.get_schema(schedule="RCB", period="2026-03-31")
+        >>> schema.names[:3]
+        ('SYSTEM', 'DIST', 'ASSOC')
+        >>> schema["UNINUM"].versions[0].periods[0].label
+        '2026Q1'
+        """
+        self._ensure_fetched()
+        schedule_enum = coerce_fca_call_report_schedule(value=schedule)
+        metadata = get_fca_file_metadata(schedule=schedule_enum)
+
+        if period is not None:
+            target, _ = self._release_for(schedule_enum=schedule_enum, period=period)
+            return metadata.as_of(period=target).file_schema
+
         return {
-            found: parse_layout(
-                path=self.releases_[found].files[schedule_enum.value].layout_path
-            )
-            for found in periods_with_schedule
+            found: metadata.as_of(period=found).file_schema
+            for found in self._periods_with_schedule(schedule_enum=schedule_enum)
         }
+
+    def get_file_metadata(self, *, schedule: FCASchedule | str) -> FileMetadata:
+        """Return a schedule's canonical, cross-time field metadata.
+
+        This is the metadata this package ships, generated from FCA's own
+        published archives, covering the schedule's whole known history
+        rather than one period. It does not depend on this instance's
+        `start`, `end`, or `transport`, so it does not require `fetch` to
+        have run. Use `get_schema` for a single period's snapshot, or
+        `get_layout` for what a fetched release actually declared.
+
+        Parameters
+        ----------
+        schedule : FCASchedule or str
+            The schedule to describe. A string is matched
+            case-insensitively.
+
+        Returns
+        -------
+        FileMetadata
+            `schedule`'s canonical, cross-time field metadata.
+
+        Raises
+        ------
+        ScheduleNotFoundError
+            If `schedule` does not name a known FCA schedule.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> metadata = report.get_file_metadata(schedule="RCB")
+        >>> metadata.first_period.label
+        '2000Q1'
+        >>> metadata.last_period.label
+        '2026Q1'
+        """
+        return get_fca_file_metadata(
+            schedule=coerce_fca_call_report_schedule(value=schedule)
+        )
 
     def available_periods(self) -> tuple[ReportingPeriod, ...]:
         """Return every period FCA is known to publish.

@@ -14,7 +14,7 @@ import pyarrow as pa
 import pytest
 
 from call_report.config import config_context
-from call_report.core import ReportingPeriod
+from call_report.core import FieldSchema, ReportingPeriod
 from call_report.core._backend import DataFrameType, date_dtype
 from call_report.exceptions import (
     DownloadError,
@@ -29,9 +29,13 @@ from call_report.fca import (
     FCASchedule,
     convert_long_format_to_wide_format,
     convert_wide_format_to_long_format,
+    get_fca_file_metadata,
 )
 from call_report.fca.layout import FCALayout
-from call_report.fca.transport import LocalDirectoryTransport
+from call_report.fca.transport import (
+    LocalDirectoryTransport,
+    PackagedArchiveTransport,
+)
 from tests.fca.layouts import RC_LINES_7COL
 from tests.helpers import as_date, is_missing, rows_of, write_data, write_layout
 
@@ -616,6 +620,259 @@ def test_get_layout_is_keyword_only(data_dir: Path, release_2026q1: Path) -> Non
     )
     with pytest.raises(TypeError):
         report.get_layout("RC")  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# get_layout() / get_schema() / to_field_schema() composed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("schedule", ["RC", "RCB", "RCF1"])
+def test_a_real_release_layout_matches_the_shipped_metadata(schedule: str) -> None:
+    """What 2026Q1 shipped agrees field-for-field with the canonical metadata.
+
+    This is the comparison the three methods exist to make, run against real
+    archived data. A non-empty diff means the shipped schedule metadata has
+    drifted from the releases it was generated from, which is a defect in the
+    metadata rather than a reason to relax this test.
+    """
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=PackagedArchiveTransport(),
+    )
+    layout = report.get_layout(schedule=schedule, period="2026-03-31")
+    assert isinstance(layout, FCALayout)
+    canonical = report.get_schema(schedule=schedule, period="2026-03-31")
+    assert isinstance(canonical, FieldSchema)
+
+    diff = layout.to_field_schema(period="2026-03-31").compare(other=canonical)
+    assert diff.added == ()
+    assert diff.removed == ()
+    assert [change.name for change in diff.changed] == []
+    assert diff.is_empty
+
+
+# ---------------------------------------------------------------------------
+# get_schema()
+# ---------------------------------------------------------------------------
+
+
+def test_get_schema_with_period_returns_a_single_schema(
+    data_dir: Path, release_2025q3: Path, release_2025q4: Path
+) -> None:
+    """Passing a specific period returns just that period's canonical FieldSchema."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    schema = report.get_schema(schedule="RC", period="2025-09-30")
+    assert isinstance(schema, FieldSchema)
+    assert schema.names[:6] == (
+        "SYSTEM",
+        "DIST",
+        "ASSOC",
+        "MONTH",
+        "YEAR",
+        "UNINUM",
+    )
+
+
+def test_get_schema_narrows_each_field_to_the_requested_quarter(
+    data_dir: Path, release_2025q3: Path, release_2025q4: Path
+) -> None:
+    """as_of collapses every field to one version covering only that quarter."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    schema = report.get_schema(schedule="RC", period="2025-09-30")
+    assert isinstance(schema, FieldSchema)
+    period = ReportingPeriod.from_period_end(value="2025-09-30")
+    for field in schema.values():
+        assert len(field.versions) == 1
+        assert tuple(field.versions[0].periods) == (period,)
+
+
+def test_get_schema_without_period_returns_dict_across_range(
+    data_dir: Path, release_2025q3: Path, release_2025q4: Path
+) -> None:
+    """Omitting period returns a dict covering each fetched period with the schedule."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    schemas = report.get_schema(schedule="RC")
+    assert isinstance(schemas, dict)
+    q3 = ReportingPeriod.from_period_end(value="2025-09-30")
+    q4 = ReportingPeriod.from_period_end(value="2025-12-31")
+    assert set(schemas) == {q3, q4}
+    assert schemas[q3]["UNINUM"].versions[0].periods[0] == q3
+    assert schemas[q4]["UNINUM"].versions[0].periods[0] == q4
+
+
+def test_get_schema_without_period_skips_periods_lacking_the_schedule(
+    data_dir: Path, release_2025q3: Path, release_2025q4: Path
+) -> None:
+    """RCR7 is only in 2025Q4, so the mapping has that one key, not both."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    schemas = report.get_schema(schedule="RCR7")
+    assert isinstance(schemas, dict)
+    assert set(schemas) == {ReportingPeriod.from_period_end(value="2025-12-31")}
+
+
+def test_get_schema_with_period_outside_fetched_range_raises(
+    data_dir: Path, release_2025q3: Path, release_2025q4: Path
+) -> None:
+    """A period outside the instance's fetched range is rejected, as in get_layout."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(InvalidPeriodError, match="outside the fetched range"):
+        report.get_schema(schedule="RC", period="2026-03-31")
+
+
+def test_get_schema_with_period_missing_schedule_raises(
+    data_dir: Path, release_2025q3: Path, release_2025q4: Path
+) -> None:
+    """A period in range but lacking the requested schedule is rejected clearly."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(ScheduleNotFoundError):
+        report.get_schema(schedule="RCR7", period="2025-09-30")
+
+
+def test_get_schema_without_period_schedule_not_found_anywhere_raises(
+    data_dir: Path, release_2025q3: Path, release_2025q4: Path
+) -> None:
+    """A schedule absent from every period in range raises, even without period=."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(ScheduleNotFoundError):
+        report.get_schema(schedule="RCF1")
+
+
+def test_get_schema_reports_metadata_drift_as_its_own_error(
+    data_dir: Path, release_2025q3: Path
+) -> None:
+    """A release carrying a schedule the shipped metadata retired raises distinctly.
+
+    The canonical metadata has RCI ending at 2017Q4. A 2025Q3 release
+    containing it is a disagreement between the release and the shipped
+    metadata, which must not be flattened into ScheduleNotFoundError: that
+    would read as "this release has no RCI" when the release plainly does.
+    """
+    write_layout(release_2025q3, root="RCI", variable_lines=RC_LINES_7COL)
+    write_data(
+        release_2025q3,
+        root="RCI",
+        year=2025,
+        month=9,
+        rows=["6,10,0,9,2025,610000,1000000"],
+    )
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-09-30",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    assert isinstance(report.get_layout(schedule="RCI", period="2025-09-30"), FCALayout)
+    with pytest.raises(PeriodNotAvailableError, match="was not published"):
+        report.get_schema(schedule="RCI", period="2025-09-30")
+
+
+def test_get_schema_is_keyword_only(data_dir: Path, release_2026q1: Path) -> None:
+    """get_schema takes no positional arguments."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(TypeError):
+        report.get_schema("RC")  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# get_file_metadata()
+# ---------------------------------------------------------------------------
+
+
+def test_get_file_metadata_returns_the_canonical_shipped_metadata(
+    tmp_path: Path,
+) -> None:
+    """The estimator hands back exactly what get_fca_file_metadata returns."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    assert report.get_file_metadata(schedule="RCB") is get_fca_file_metadata(
+        schedule=FCASchedule.RCB
+    )
+
+
+@pytest.mark.parametrize("schedule", ["RCB", "rcb", FCASchedule.RCB], ids=str)
+def test_get_file_metadata_accepts_a_schedule_or_a_string(
+    tmp_path: Path, schedule: FCASchedule | str
+) -> None:
+    """A string is matched case-insensitively, the same as everywhere else."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    assert report.get_file_metadata(schedule=schedule).name == "RCB"
+
+
+def test_get_file_metadata_does_not_require_fetch(tmp_path: Path) -> None:
+    """The shipped metadata is fetch-independent, so an empty data_dir is fine.
+
+    fetch() against this transport would raise DownloadError, so this also
+    proves get_file_metadata does not call _ensure_fetched on the way through.
+    """
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    assert report.get_file_metadata(schedule="RC").name == "RC"
+    assert not hasattr(report, "periods_")
+
+
+def test_get_file_metadata_rejects_an_unknown_schedule(tmp_path: Path) -> None:
+    """A name that is not an FCA schedule is rejected by the shared coercion."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    with pytest.raises(ScheduleNotFoundError):
+        report.get_file_metadata(schedule="NOPE")
+
+
+def test_get_file_metadata_is_keyword_only(tmp_path: Path) -> None:
+    """get_file_metadata takes no positional arguments."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    with pytest.raises(TypeError):
+        report.get_file_metadata("RCB")  # type: ignore[call-arg]
 
 
 # ---------------------------------------------------------------------------
