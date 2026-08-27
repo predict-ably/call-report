@@ -16,9 +16,9 @@ from call_report.core._backend import DataFrameType, convert_dataframe_type
 from call_report.core._periods import ReportingPeriod
 
 if TYPE_CHECKING:
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
+    import pandas
+    import polars
+    import pyarrow
 
     from call_report.core._backend import NativeDataFrame
 
@@ -137,22 +137,22 @@ class BaseCallReport(ABC):
     @overload
     def load(
         self, *, schedule: Any, dataframe_type: Literal["pandas"]
-    ) -> pd.DataFrame:  # numpydoc ignore=GL08
+    ) -> pandas.DataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load(
         self, *, schedule: Any, dataframe_type: Literal["pyarrow_table"]
-    ) -> pa.Table:  # numpydoc ignore=GL08
+    ) -> pyarrow.Table:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load(
         self, *, schedule: Any, dataframe_type: Literal["polars_dataframe"]
-    ) -> pl.DataFrame:  # numpydoc ignore=GL08
+    ) -> polars.DataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load(
         self, *, schedule: Any, dataframe_type: Literal["polars_lazyframe"]
-    ) -> pl.LazyFrame:  # numpydoc ignore=GL08
+    ) -> polars.LazyFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @final
     def load(
@@ -226,22 +226,22 @@ class BaseCallReport(ABC):
     @overload
     def load_all(
         self, *, dataframe_type: Literal["pandas"]
-    ) -> dict[Any, pd.DataFrame]:  # numpydoc ignore=GL08
+    ) -> dict[Any, pandas.DataFrame]:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load_all(
         self, *, dataframe_type: Literal["pyarrow_table"]
-    ) -> dict[Any, pa.Table]:  # numpydoc ignore=GL08
+    ) -> dict[Any, pyarrow.Table]:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load_all(
         self, *, dataframe_type: Literal["polars_dataframe"]
-    ) -> dict[Any, pl.DataFrame]:  # numpydoc ignore=GL08
+    ) -> dict[Any, polars.DataFrame]:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load_all(
         self, *, dataframe_type: Literal["polars_lazyframe"]
-    ) -> dict[Any, pl.LazyFrame]:  # numpydoc ignore=GL08
+    ) -> dict[Any, polars.LazyFrame]:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @final
     def load_all(
@@ -310,22 +310,22 @@ class BaseCallReport(ABC):
     @overload
     def load_institutions(
         self, *, dataframe_type: Literal["pandas"]
-    ) -> pd.DataFrame:  # numpydoc ignore=GL08
+    ) -> pandas.DataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load_institutions(
         self, *, dataframe_type: Literal["pyarrow_table"]
-    ) -> pa.Table:  # numpydoc ignore=GL08
+    ) -> pyarrow.Table:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load_institutions(
         self, *, dataframe_type: Literal["polars_dataframe"]
-    ) -> pl.DataFrame:  # numpydoc ignore=GL08
+    ) -> polars.DataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @overload
     def load_institutions(
         self, *, dataframe_type: Literal["polars_lazyframe"]
-    ) -> pl.LazyFrame:  # numpydoc ignore=GL08
+    ) -> polars.LazyFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
     @final
     def load_institutions(

@@ -16,11 +16,13 @@ from call_report.config import DataFrameBackend, get_config
 from call_report.exceptions import LayoutParseError, ReshapeError
 
 if TYPE_CHECKING:
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
+    import pandas
+    import polars
+    import pyarrow
 
-    NativeDataFrame: TypeAlias = pd.DataFrame | pa.Table | pl.DataFrame | pl.LazyFrame
+    NativeDataFrame: TypeAlias = (
+        pandas.DataFrame | pyarrow.Table | polars.DataFrame | polars.LazyFrame
+    )
     """The closed set of native dataframe types this package converts between.
 
     Type-checking only. It is never imported at runtime, so referencing it
@@ -408,22 +410,22 @@ def convert_dataframe_type(
 @overload
 def convert_dataframe_type(
     *, data: NativeDataFrame, dataframe_type: Literal["pandas"]
-) -> pd.DataFrame:  # numpydoc ignore=GL08
+) -> pandas.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def convert_dataframe_type(
     *, data: NativeDataFrame, dataframe_type: Literal["pyarrow_table"]
-) -> pa.Table:  # numpydoc ignore=GL08
+) -> pyarrow.Table:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def convert_dataframe_type(
     *, data: NativeDataFrame, dataframe_type: Literal["polars_dataframe"]
-) -> pl.DataFrame:  # numpydoc ignore=GL08
+) -> polars.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def convert_dataframe_type(
     *, data: NativeDataFrame, dataframe_type: Literal["polars_lazyframe"]
-) -> pl.LazyFrame:  # numpydoc ignore=GL08
+) -> polars.LazyFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 def convert_dataframe_type(
     *, data: NativeDataFrame, dataframe_type: DataFrameType | None
@@ -493,22 +495,22 @@ def finalize_as(
 @overload
 def finalize_as(
     *, frame: FrameOrLazy, dataframe_type: Literal["pandas"]
-) -> pd.DataFrame:  # numpydoc ignore=GL08
+) -> pandas.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
     *, frame: FrameOrLazy, dataframe_type: Literal["pyarrow_table"]
-) -> pa.Table:  # numpydoc ignore=GL08
+) -> pyarrow.Table:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
     *, frame: FrameOrLazy, dataframe_type: Literal["polars_dataframe"]
-) -> pl.DataFrame:  # numpydoc ignore=GL08
+) -> polars.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
     *, frame: FrameOrLazy, dataframe_type: Literal["polars_lazyframe"]
-) -> pl.LazyFrame:  # numpydoc ignore=GL08
+) -> polars.LazyFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 def finalize_as(
     *, frame: FrameOrLazy, dataframe_type: DataFrameType | None

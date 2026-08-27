@@ -304,8 +304,16 @@ copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: 
 copybutton_prompt_is_regexp = True
 copybutton_selector = ":not(.prompt) > div.highlight pre"
 
+# One entry per dataframe library named in a rendered signature. The
+# overloads on every dataframe-returning function annotate the backend types
+# by their full import path (pandas.DataFrame, pyarrow.Table, ...), so each
+# renders as a link into that library's own reference rather than as inert
+# text. narwhals is deliberately absent: it publishes its API reference with
+# mkdocs, whose inventory does not carry the module paths this package
+# annotates with, so its targets are handled by nitpick_ignore below.
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "pandas": ("https://pandas.pydata.org/docs/", None),
     "polars": ("https://docs.pola.rs/api/python/stable/", None),
+    "pyarrow": ("https://arrow.apache.org/docs/", None),
 }
