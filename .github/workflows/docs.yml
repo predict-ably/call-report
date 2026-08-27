@@ -1,0 +1,80 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      # Every docstring under src/ is rendered into the API reference, and
+      # docs/source/conf.py imports and walks the whole package to decide
+      # which classes get :inherited-members:. A source-only change can
+      # therefore break the docs on its own.
+      - "src/call_report/**"
+      - "pyproject.toml"
+      # This job exists to catch what the Read the Docs build would catch,
+      # so a change to how RTD builds needs to re-run it.
+      - ".readthedocs.yaml"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sphinx:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        # Matches build.tools.python in .readthedocs.yaml, so a failure here
+        # means the hosted build fails too.
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install package with docs dependencies
+        run: pip install -e ".[docs]"
+
+      - name: Show dependencies
+        run: python -m pip list
+
+      # -W matches `sphinx.fail_on_warning: true` in .readthedocs.yaml, so
+      # a numpydoc validation failure, an autodoc import error, malformed
+      # reStructuredText, or a toctree problem fails the job instead of
+      # scrolling past. --keep-going reports every warning in one run
+      # rather than stopping at the first.
+      #
+      # Note what this does NOT catch: an unresolved Python cross-reference
+      # renders as plain text without warning unless Sphinx runs nitpicky
+      # (-n). Turning that on today reports ~128 unresolved targets, mostly
+      # this package's own type aliases (NativeDataFrame, DataFrameType) and
+      # the abbreviated backend names in docstring type fields (pd.DataFrame
+      # and friends), so it needs its own pass over the docstrings plus a
+      # nitpick_ignore list before it can be enabled.
+      #
+      # conf.py's intersphinx_mapping fetches three external inventories
+      # (python, pandas, polars) on every build, and an unreachable host is
+      # a warning -- so with -W, an outage at one of them fails this job for
+      # reasons unrelated to the pull request. Re-run the job to confirm
+      # before looking for a real cause.
+      - name: Build the documentation
+        run: sphinx-build -b html -W --keep-going docs/source docs/_build/html
+
+      # Lets a reviewer read the rendered result even on a fork pull
+      # request, where the Read the Docs preview is not available.
+      - name: Upload the rendered documentation
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-html
+          path: docs/_build/html
+          retention-days: 14

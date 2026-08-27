@@ -19,7 +19,7 @@ To build and read the documentation locally:
 
 ```bash
 pip install -e ".[docs]"
-sphinx-build -b html docs/source docs/_build/html
+sphinx-build -b html -W --keep-going docs/source docs/_build/html
 ```
 
 By participating in this project, you agree to abide by our

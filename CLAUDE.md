@@ -148,8 +148,18 @@ Docs (Sphinx, numpydoc, pydata theme):
 
 ```bash
 pip install -e ".[docs]"
-sphinx-build -b html docs/source docs/_build/html
+sphinx-build -b html -W --keep-going docs/source docs/_build/html
 ```
+
+`-W` makes any Sphinx warning a build failure. `.github/workflows/docs.yml`
+builds the same way on every pull request touching `docs/` or
+`src/call_report/`, and `.readthedocs.yaml` sets `fail_on_warning: true`, so a
+warning that passes locally without `-W` still fails CI and the hosted build.
+The one warning that is not the repo's own fault is an unreachable
+`intersphinx` inventory (the Python, pandas, and polars object inventories are
+fetched on every build). Re-run before looking for a cause in the change
+itself. Note that `-W` does not catch an unresolved cross-reference, which
+needs nitpicky mode (`-n`); that is not enabled yet.
 
 ## Conventions
 
