@@ -32,7 +32,10 @@ from call_report.fca import (
     get_fca_file_metadata,
 )
 from call_report.fca.layout import FCALayout
-from call_report.fca.transport import LocalDirectoryTransport
+from call_report.fca.transport import (
+    LocalDirectoryTransport,
+    PackagedArchiveTransport,
+)
 from tests.fca.layouts import RC_LINES_7COL
 from tests.helpers import as_date, is_missing, rows_of, write_data, write_layout
 
@@ -617,6 +620,37 @@ def test_get_layout_is_keyword_only(data_dir: Path, release_2026q1: Path) -> Non
     )
     with pytest.raises(TypeError):
         report.get_layout("RC")  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# get_layout() / get_schema() / to_field_schema() composed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("schedule", ["RC", "RCB", "RCF1"])
+def test_a_real_release_layout_matches_the_shipped_metadata(schedule: str) -> None:
+    """What 2026Q1 shipped agrees field-for-field with the canonical metadata.
+
+    This is the comparison the three methods exist to make, run against real
+    archived data. A non-empty diff means the shipped schedule metadata has
+    drifted from the releases it was generated from, which is a defect in the
+    metadata rather than a reason to relax this test.
+    """
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=PackagedArchiveTransport(),
+    )
+    layout = report.get_layout(schedule=schedule, period="2026-03-31")
+    assert isinstance(layout, FCALayout)
+    canonical = report.get_schema(schedule=schedule, period="2026-03-31")
+    assert isinstance(canonical, FieldSchema)
+
+    diff = layout.to_field_schema(period="2026-03-31").compare(other=canonical)
+    assert diff.added == ()
+    assert diff.removed == ()
+    assert [change.name for change in diff.changed] == []
+    assert diff.is_empty
 
 
 # ---------------------------------------------------------------------------
