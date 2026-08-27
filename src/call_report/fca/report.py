@@ -423,36 +423,95 @@ class FCACallReport(BaseCallReport):
         schedule_enum = coerce_fca_call_report_schedule(value=schedule)
 
         if period is not None:
-            target = (
-                period
-                if isinstance(period, ReportingPeriod)
-                else ReportingPeriod.from_period_end(value=period)
-            )
-            if target not in self.periods_:
-                raise InvalidPeriodError(
-                    f"{target.label} is outside the fetched range "
-                    f"({self.periods_[0].label}-{self.periods_[-1].label}); construct "
-                    "a new FCACallReport(start=..., end=...) to inspect that period."
-                )
-            manifest = self.releases_.get(target)
-            if manifest is None or schedule_enum.value not in manifest.files:
-                raise ScheduleNotFoundError(
-                    f"{schedule_enum.value} was not found in {target.label}."
-                )
+            _, manifest = self._release_for(schedule_enum=schedule_enum, period=period)
             return parse_layout(path=manifest.files[schedule_enum.value].layout_path)
 
+        return {
+            found: parse_layout(
+                path=self.releases_[found].files[schedule_enum.value].layout_path
+            )
+            for found in self._periods_with_schedule(schedule_enum=schedule_enum)
+        }
+
+    def _release_for(
+        self, *, schedule_enum: FCASchedule, period: str | date | ReportingPeriod
+    ) -> tuple[ReportingPeriod, FCAReleaseManifest]:
+        """Resolve one period and the release that has `schedule_enum` in it.
+
+        The single-period validation shared by `get_layout` and `get_schema`,
+        so both reject the same requests with the same messages. Assumes
+        `fetch` has already run.
+
+        Parameters
+        ----------
+        schedule_enum : FCASchedule
+            The schedule that must be present.
+        period : str, datetime.date, or ReportingPeriod
+            The period to resolve.
+
+        Returns
+        -------
+        tuple[ReportingPeriod, FCAReleaseManifest]
+            The resolved period and its manifest.
+
+        Raises
+        ------
+        InvalidPeriodError
+            If `period` falls outside the fetched range.
+        ScheduleNotFoundError
+            If `schedule_enum` is not present for `period`.
+        """
+        target = (
+            period
+            if isinstance(period, ReportingPeriod)
+            else ReportingPeriod.from_period_end(value=period)
+        )
+        if target not in self.periods_:
+            raise InvalidPeriodError(
+                f"{target.label} is outside the fetched range "
+                f"({self.periods_[0].label}-{self.periods_[-1].label}); construct "
+                "a new FCACallReport(start=..., end=...) to inspect that period."
+            )
+        manifest = self.releases_.get(target)
+        if manifest is None or schedule_enum.value not in manifest.files:
+            raise ScheduleNotFoundError(
+                f"{schedule_enum.value} was not found in {target.label}."
+            )
+        return target, manifest
+
+    def _periods_with_schedule(
+        self, *, schedule_enum: FCASchedule
+    ) -> tuple[ReportingPeriod, ...]:
+        """Return every fetched period that has `schedule_enum`, or raise.
+
+        The ``period=None`` counterpart to `_release_for`, shared by
+        `get_layout` and `get_schema`. Unlike `periods_available`, an empty
+        result is an error rather than an empty tuple, since a caller asking
+        for a schedule's layouts or schemas across a range gets nothing
+        usable back. Assumes `fetch` has already run.
+
+        Parameters
+        ----------
+        schedule_enum : FCASchedule
+            The schedule to look for.
+
+        Returns
+        -------
+        tuple[ReportingPeriod, ...]
+            The periods that have `schedule_enum`, oldest first.
+
+        Raises
+        ------
+        ScheduleNotFoundError
+            If `schedule_enum` is absent from every fetched period.
+        """
         periods_with_schedule = self.schedules_.get(schedule_enum, ())
         if not periods_with_schedule:
             raise ScheduleNotFoundError(
                 f"{schedule_enum.value} was not found in any period of "
                 f"{self.periods_[0].label}-{self.periods_[-1].label}."
             )
-        return {
-            found: parse_layout(
-                path=self.releases_[found].files[schedule_enum.value].layout_path
-            )
-            for found in periods_with_schedule
-        }
+        return periods_with_schedule
 
     def available_periods(self) -> tuple[ReportingPeriod, ...]:
         """Return every period FCA is known to publish.
