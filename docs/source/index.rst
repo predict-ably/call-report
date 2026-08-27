@@ -20,6 +20,7 @@ later releases.
    :hidden:
 
    get_started
+   user_guide
    api_reference
    get_involved
    changelog
@@ -33,6 +34,13 @@ later releases.
         :link-type: doc
 
         Install ``call-report`` and load your first schedule.
+
+    .. grid-item-card:: User Guide
+        :text-align: left
+        :link: user_guide
+        :link-type: doc
+
+        Task-oriented guides to each capability, with runnable examples.
 
     .. grid-item-card:: API Reference
         :text-align: left

@@ -179,6 +179,29 @@ recovers whichever definition applied at a given quarter:
    metadata.file_schema.as_of(period="2020-03-31")["LOANSTATUS"].versions[0].definition
    # "...150 Discounted loans to OFIs 152 Other loans 155 Total"
 
+Comparing a release against the shipped metadata
+------------------------------------------------
+
+:class:`~call_report.fca.FCACallReport` reaches the same metadata directly,
+so what a release actually declared can be checked against what the package
+expects in three lines:
+
+.. code-block:: python
+
+   report = FCACallReport(
+       start="2015-03-31", end="2015-03-31", transport=PackagedArchiveTransport()
+   )
+   layout = report.get_layout(schedule="RI", period="2015-03-31")
+   canonical = report.get_schema(schedule="RI", period="2015-03-31")
+   layout.to_field_schema(period="2015-03-31").compare(other=canonical).is_empty
+   # True
+
+:meth:`~call_report.fca.FCACallReport.get_file_metadata` gives a schedule's
+whole history, and :meth:`~call_report.fca.FCACallReport.get_schema` a single
+quarter's snapshot. See :doc:`user_guide/schema_and_metadata` for the full
+treatment, including reading a diff and tracking a schedule's drift across
+quarters.
+
 Reshaping to wide format
 ==========================
 
