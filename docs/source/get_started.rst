@@ -161,8 +161,9 @@ The ``period`` column the loader adds names a calendar quarter end.
 polars and pyarrow hold it as a ``Date``. pandas has no date dtype, so it
 holds the same value as a ``Datetime`` whose time component is always
 midnight, which keeps the ``.dt`` accessor and a parquet round trip
-working. Requesting ``dataframe_type="pandas"`` from any backend gives
-the same ``Datetime``.
+working. A ``dataframe_type`` override follows the same rule, so the
+dtype depends on the type you ask for rather than on the backend that
+built the frame.
 
 A field's metadata can also carry more than one version: FCA revised
 ``LOANSTATUS``'s own code list in 2015 (splitting code ``155`` into a new

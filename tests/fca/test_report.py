@@ -1239,23 +1239,22 @@ def test_period_column_carries_a_date_dtype_on_every_output(
 
 
 @pytest.mark.parametrize(
-    "dataframe_type", ["pandas", "polars_dataframe", "pyarrow_table"]
+    "dataframe_type",
+    ["pandas", "polars_dataframe", "polars_lazyframe", "pyarrow_table"],
 )
 def test_period_stays_typed_when_converted_to_another_dataframe_type(
     backend: str, dataframe_type: DataFrameType, data_dir: Path, release_2025q4: Path
 ) -> None:
-    """A cross-backend dataframe_type conversion never reintroduces an object period.
+    """A dataframe_type's period dtype depends on that type, not on the backend.
 
-    Converting a pyarrow frame's Date column straight to pandas produces
-    an object column of `datetime.date` values, so requesting
-    ``dataframe_type="pandas"`` from a non-pandas backend reproduced the
-    same defect the seam itself fixes.
+    Conversion does not translate between the two representations of a
+    calendar date on its own. A Date handed to pandas becomes an object
+    column of `datetime.date` values, and a Datetime handed to polars
+    stays a Datetime, so the same requested type used to produce
+    different dtypes depending on which backend was configured.
 
-    Any pandas output is Datetime, because pandas has no date dtype.
-    Otherwise the column keeps the dtype the configured backend built it
-    with, so a pandas-built frame converted to polars stays Datetime.
-    Casting it back down to Date would truncate a genuine time component,
-    which is not a guess conversion should make.
+    pandas is Datetime because it has no date dtype. Every other type is
+    Date. Both hold the same quarter end.
     """
     report = FCACallReport(
         start="2025-12-31",
@@ -1264,7 +1263,5 @@ def test_period_stays_typed_when_converted_to_another_dataframe_type(
     )
     result = report.load(schedule="RC", dataframe_type=dataframe_type)
     dtype = nw.from_native(result).collect_schema()["period"]
-    if dataframe_type == "pandas" or backend == "pandas":
-        assert dtype == nw.Datetime("us")
-    else:
-        assert dtype == nw.Date()
+    expected = nw.Datetime("us") if dataframe_type == "pandas" else nw.Date()
+    assert dtype == expected

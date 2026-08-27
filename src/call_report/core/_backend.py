@@ -357,31 +357,47 @@ def _dataframe_type_of(data: NativeDataFrame) -> DataFrameType:
     )
 
 
-def _with_pandas_dates(*, frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
-    """Recast any `narwhals.Date` column to the dtype pandas can hold.
+def _with_target_dates(
+    *, frame: nw.DataFrame[Any], dataframe_type: DataFrameType
+) -> nw.DataFrame[Any]:
+    """Recast every date-like column to `dataframe_type`'s own date dtype.
 
-    pandas has no date dtype (see `date_dtype`), so converting a polars or
-    pyarrow frame with a Date column straight to pandas produces an object
-    column of `datetime.date` values, or a datetime of whichever time unit
-    that backend happens to pick. Casting before the conversion gives the
-    same `Datetime` a pandas-native frame would already have. A Date has
-    no time component, so this never loses information.
+    A calendar date has no single representation across backends. polars
+    and pyarrow hold one as `narwhals.Date`, and pandas has no date dtype
+    at all, so it holds one as `narwhals.Datetime` (see `date_dtype`).
+    Converting between backends does not translate between the two, so a
+    Date handed to pandas becomes an object column of `datetime.date`
+    values, and a Datetime handed to polars stays a Datetime.
+
+    Recasting here means a given dataframe type always reports the same
+    dtype for the same column, whichever backend built it. Every frame
+    this package produces holds calendar dates rather than timestamps, so
+    the Datetime side of the pair is always midnight and neither
+    direction loses information. A column holding a genuine time of day
+    would need this revisited, since casting it down to a Date would
+    truncate.
 
     Parameters
     ----------
     frame : narwhals.DataFrame
-        The eager frame about to be converted to pandas.
+        The eager frame about to be converted.
+    dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"}
+        The dataframe type `frame` is being converted to.
 
     Returns
     -------
     narwhals.DataFrame
-        `frame`, with every Date column cast to `narwhals.Datetime`.
+        `frame`, with every date-like column cast to the dtype
+        `dataframe_type` represents a date with.
     """
-    schema = frame.collect_schema()
-    dates = [name for name, dtype in schema.items() if dtype == nw.Date]
-    if not dates:
+    to_pandas = dataframe_type == "pandas"
+    source = nw.Date if to_pandas else nw.Datetime
+    target: nw.dtypes.DType = nw.Datetime("us") if to_pandas else nw.Date()
+    names = [name for name, dtype in frame.collect_schema().items() if dtype == source]
+    if not names:
         return frame
-    return frame.with_columns(nw.col(name).cast(nw.Datetime("us")) for name in dates)
+    return frame.with_columns(nw.col(name).cast(target) for name in names)
 
 
 @overload
@@ -421,6 +437,10 @@ def convert_dataframe_type(
     close to zero-copy as each backend allows. A `data` that is already the
     requested type is returned unchanged.
 
+    Date-like columns are recast to the requested type's own date dtype
+    (see `_with_target_dates`), so a given dataframe type always reports
+    the same dtype for the same column, whichever backend built it.
+
     Parameters
     ----------
     data : NativeDataFrame
@@ -455,8 +475,9 @@ def convert_dataframe_type(
     frame = nw.from_native(data)
     if isinstance(frame, nw.LazyFrame):
         frame = frame.collect()
+    frame = _with_target_dates(frame=frame, dataframe_type=dataframe_type)
     if dataframe_type == "pandas":
-        return _with_pandas_dates(frame=frame).to_pandas()
+        return frame.to_pandas()
     if dataframe_type == "pyarrow_table":
         return frame.to_arrow()
     if dataframe_type == "polars_dataframe":
