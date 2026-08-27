@@ -29,6 +29,7 @@ from call_report.fca import (
     FCASchedule,
     convert_long_format_to_wide_format,
     convert_wide_format_to_long_format,
+    get_fca_file_metadata,
 )
 from call_report.fca.layout import FCALayout
 from call_report.fca.transport import LocalDirectoryTransport
@@ -616,6 +617,75 @@ def test_get_layout_is_keyword_only(data_dir: Path, release_2026q1: Path) -> Non
     )
     with pytest.raises(TypeError):
         report.get_layout("RC")  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# get_file_metadata()
+# ---------------------------------------------------------------------------
+
+
+def test_get_file_metadata_returns_the_canonical_shipped_metadata(
+    tmp_path: Path,
+) -> None:
+    """The estimator hands back exactly what get_fca_file_metadata returns."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    assert report.get_file_metadata(schedule="RCB") is get_fca_file_metadata(
+        schedule=FCASchedule.RCB
+    )
+
+
+@pytest.mark.parametrize("schedule", ["RCB", "rcb", FCASchedule.RCB], ids=str)
+def test_get_file_metadata_accepts_a_schedule_or_a_string(
+    tmp_path: Path, schedule: FCASchedule | str
+) -> None:
+    """A string is matched case-insensitively, the same as everywhere else."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    assert report.get_file_metadata(schedule=schedule).name == "RCB"
+
+
+def test_get_file_metadata_does_not_require_fetch(tmp_path: Path) -> None:
+    """The shipped metadata is fetch-independent, so an empty data_dir is fine.
+
+    fetch() against this transport would raise DownloadError, so this also
+    proves get_file_metadata does not call _ensure_fetched on the way through.
+    """
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    assert report.get_file_metadata(schedule="RC").name == "RC"
+    assert not hasattr(report, "periods_")
+
+
+def test_get_file_metadata_rejects_an_unknown_schedule(tmp_path: Path) -> None:
+    """A name that is not an FCA schedule is rejected by the shared coercion."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    with pytest.raises(ScheduleNotFoundError):
+        report.get_file_metadata(schedule="NOPE")
+
+
+def test_get_file_metadata_is_keyword_only(tmp_path: Path) -> None:
+    """get_file_metadata takes no positional arguments."""
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    with pytest.raises(TypeError):
+        report.get_file_metadata("RCB")  # type: ignore[call-arg]
 
 
 # ---------------------------------------------------------------------------

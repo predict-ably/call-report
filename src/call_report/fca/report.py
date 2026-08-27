@@ -10,7 +10,12 @@ from typing import TYPE_CHECKING, Any, Literal, Self, overload
 
 import narwhals as nw
 
-from call_report.core import BaseCallReport, PeriodRange, ReportingPeriod
+from call_report.core import (
+    BaseCallReport,
+    FileMetadata,
+    PeriodRange,
+    ReportingPeriod,
+)
 from call_report.core._backend import (
     DataFrameType,
     FrameOrLazy,
@@ -28,6 +33,7 @@ from call_report.exceptions import (
 )
 from call_report.fca import _reshape
 from call_report.fca._discovery import ReleaseFiles, scan_release
+from call_report.fca._schedule_metadata import get_fca_file_metadata
 from call_report.fca.catalog import construct_fca_download_url
 from call_report.fca.enums import FCASchedule, coerce_fca_call_report_schedule
 from call_report.fca.institutions import INSTITUTIONS_ROOT, _read_institutions_frame
@@ -512,6 +518,50 @@ class FCACallReport(BaseCallReport):
                 f"{self.periods_[0].label}-{self.periods_[-1].label}."
             )
         return periods_with_schedule
+
+    def get_file_metadata(self, *, schedule: FCASchedule | str) -> FileMetadata:
+        """Return a schedule's canonical, cross-time field metadata.
+
+        This is the metadata this package ships, generated from FCA's own
+        published archives, covering the schedule's whole known history
+        rather than one period. It does not depend on this instance's
+        `start`, `end`, or `transport`, so it does not require `fetch` to
+        have run. Use `get_schema` for a single period's snapshot, or
+        `get_layout` for what a fetched release actually declared.
+
+        Parameters
+        ----------
+        schedule : FCASchedule or str
+            The schedule to describe. A string is matched
+            case-insensitively.
+
+        Returns
+        -------
+        FileMetadata
+            `schedule`'s canonical, cross-time field metadata.
+
+        Raises
+        ------
+        ScheduleNotFoundError
+            If `schedule` does not name a known FCA schedule.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> metadata = report.get_file_metadata(schedule="RCB")
+        >>> metadata.first_period.label
+        '2000Q1'
+        >>> metadata.last_period.label
+        '2026Q1'
+        """
+        return get_fca_file_metadata(
+            schedule=coerce_fca_call_report_schedule(value=schedule)
+        )
 
     def available_periods(self) -> tuple[ReportingPeriod, ...]:
         """Return every period FCA is known to publish.
