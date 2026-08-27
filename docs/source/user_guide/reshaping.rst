@@ -19,7 +19,8 @@ without going back to the source files.
 The examples below use the default ``pandas`` backend, so the indexing is
 pandas'. The reshaping methods themselves work on every configured backend,
 including ``pyarrow``, which has no native pivot and falls back to an
-equivalent filter-and-join reshape automatically.
+equivalent filter-and-join reshape automatically. See
+:doc:`dataframe_backends`.
 
 .. doctest::
 
@@ -130,4 +131,6 @@ has a row for a combination that genuinely appeared in the source.
 Next steps
 ==========
 
+- :doc:`dataframe_backends` covers choosing a backend and the dtypes each
+  one produces.
 - :doc:`schema_and_metadata` covers what the columns in these frames mean.
