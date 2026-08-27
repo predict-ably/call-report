@@ -218,3 +218,61 @@ def test_the_shipped_metadata_reaches_the_latest_catalog_period() -> None:
         f"{LATEST_KNOWN_PERIOD.label}; re-run "
         "scripts/generate_fca_schedule_metadata.py."
     )
+
+
+# ---------------------------------------------------------------------------
+# a full rebuild reproduces the base (expensive: scans every archived release)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+@pytest.mark.exhaustive
+def test_a_full_rebuild_reproduces_the_checked_in_base() -> None:
+    """Regenerating from every archived release reproduces the base exactly.
+
+    The first stage of the pipeline, and the half the cheap checks above
+    cannot reach: they compare the base against what ships, and take the
+    base itself on trust. This re-derives it from the archives, closing
+    the loop from a release zip through to the metadata in the wheel.
+
+    It catches what the sentinels cannot: a republished quarter whose
+    contents changed under a filename that already existed, and any
+    divergence between the script's incremental path (which extends the
+    base in place) and a clean rebuild.
+
+    This is the assertion form of the script's own ``--full`` audit, and
+    uses the same comparison it does.
+    """
+    with PackagedArchiveTransport() as transport:
+        present = sorted(transport.archive_root.glob("*.zip"))
+    # Fail rather than skip on an empty archive. A green run of nothing is
+    # worse than a red one: this test exists to be the guarantee, and an
+    # exhaustive job reporting success having checked no releases would be
+    # actively misleading.
+    assert present, (
+        "No archived release zips found under data/fca-call-report; this test "
+        "cannot verify anything without them."
+    )
+
+    rebuilt = generate._generate_bases(
+        resume_period=EARLIEST_PERIOD, roots_filter=None, seed={}
+    )
+    checked_in = _bases()
+
+    assert set(rebuilt) == set(checked_in), (
+        "roots differ between a full rebuild and the checked-in base: "
+        f"only rebuilt {sorted(set(rebuilt) - set(checked_in))}, "
+        f"only checked in {sorted(set(checked_in) - set(rebuilt))}."
+    )
+    drifted = {
+        root: diff
+        for root, previous in checked_in.items()
+        if not (
+            diff := rebuilt[root].compare(other=previous, check_order=True)
+        ).is_empty
+    }
+    assert not drifted, (
+        f"a full rebuild disagrees with the checked-in base for {sorted(drifted)}; "
+        "re-run scripts/generate_fca_schedule_metadata.py --full. "
+        f"First difference: {next(iter(drifted.values()))}"
+    )
