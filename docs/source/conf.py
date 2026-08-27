@@ -52,6 +52,11 @@ else:
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    # Executes the User Guide's `doctest` blocks under `sphinx-build -b
+    # doctest`. Nothing runs them during an html build, so this is inert
+    # for Read the Docs and for the -W html check; see the doctest step in
+    # .github/workflows/docs.yml.
+    "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
     "sphinx.ext.linkcode",
     "numpydoc",
@@ -268,6 +273,16 @@ html_static_path = ["_static"]
 # regardless of autodoc_default_options or the autosummary template -- which
 # reintroduces every inherited str method for the StrEnum classes (see the
 # autodoc_default_options comment above) and crashes the build the same way.
+# Only explicit `.. doctest::` directives are executed by `-b doctest`.
+# The default ('default') also runs any literal block that merely looks
+# like a doctest, which sweeps in every docstring Examples section autodoc
+# renders into the API reference. Those are already executed by pytest's
+# --doctest-modules, one namespace per docstring; Sphinx instead shares one
+# namespace per document, so a page rendering several methods' examples
+# fails on names defined in a sibling example. Docstrings belong to pytest,
+# narrative pages to this builder.
+doctest_test_doctest_blocks = ""
+
 numpydoc_show_class_members = False
 numpydoc_class_members_toctree = False
 autosummary_generate = True
