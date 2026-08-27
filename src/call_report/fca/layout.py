@@ -11,11 +11,19 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any, Literal
 
 import narwhals as nw
 
+from call_report.core import (
+    FieldAttributes,
+    FieldSchema,
+    FieldVersion,
+    PeriodRange,
+    ReportingPeriod,
+)
 from call_report.core._backend import build_frame, finalize
 from call_report.exceptions import LayoutParseError
 
@@ -141,6 +149,74 @@ class FCALayout:
         if isinstance(frame, nw.LazyFrame):
             frame = frame.collect()
         return frame.rows(named=True)
+
+    def to_field_schema(self, *, period: str | date | ReportingPeriod) -> FieldSchema:
+        """Convert this layout into a FieldSchema covering a single period.
+
+        A layout describes one release, so `period` has to be supplied
+        rather than read off the layout. Every field gets exactly one
+        `call_report.core.FieldVersion`, spanning only that quarter, with
+        its dtype from `infer_field_dtype` and its definition from the
+        layout's own text. Comparing the result against the canonical,
+        cross-time metadata `call_report.fca.get_fca_file_metadata`
+        returns is the cheapest way to notice a release whose layout
+        disagrees with the shipped metadata.
+
+        The multiple-occurrence distinction `multi_columns` records is not
+        carried over. `call_report.core.FieldSchema` describes a file's
+        fields, not how each row is split into occurrence groups.
+
+        Parameters
+        ----------
+        period : str, datetime.date, or ReportingPeriod
+            The quarter-end this layout was published for.
+
+        Returns
+        -------
+        FieldSchema
+            One field per layout variable, in layout order.
+
+        Raises
+        ------
+        InvalidPeriodError
+            If `period` is not a valid quarter-end date.
+        SchemaError
+            If this layout declares the same variable name twice.
+
+        Examples
+        --------
+        >>> from call_report.core import ReportingPeriod
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> transport = PackagedArchiveTransport()
+        >>> release_dir = transport.resolve(
+        ...     period=ReportingPeriod.from_period_end(value="2026-03-31")
+        ... )
+        >>> layout = parse_layout(path=release_dir / "D_RCB.TXT")
+        >>> schema = layout.to_field_schema(period="2026-03-31")
+        >>> schema.names[:3]
+        ('SYSTEM', 'DIST', 'ASSOC')
+        >>> schema["UNINUM"].versions[0].periods[0].label
+        '2026Q1'
+        """
+        span = PeriodRange(start=period, end=period)
+        return FieldSchema(
+            fields=[
+                FieldAttributes(
+                    name=variable["name"],
+                    versions=(
+                        FieldVersion(
+                            dtype=infer_field_dtype(
+                                var_type=variable["type"],
+                                decimal_position=variable["decimal_position"],
+                            ),
+                            definition=variable["definition"],
+                            periods=span,
+                        ),
+                    ),
+                )
+                for variable in self.variables_as_dicts()
+            ]
+        )
 
 
 def parse_layout(*, path: Path) -> FCALayout:

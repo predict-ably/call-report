@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import narwhals as nw
 import pytest
 
-from call_report.exceptions import LayoutParseError
+from call_report.core import ReportingPeriod
+from call_report.exceptions import InvalidPeriodError, LayoutParseError, SchemaError
 from call_report.fca.layout import (
     FIXED_IDENTIFIER_COLUMNS,
     infer_field_dtype,
@@ -193,3 +195,116 @@ def test_fixed_identifier_columns_matches_a_code_bearing_layout(
     )
     layout = parse_layout(path=path)
     assert layout.leading_columns == FIXED_IDENTIFIER_COLUMNS
+
+
+# ---------------------------------------------------------------------------
+# FCALayout.to_field_schema()
+# ---------------------------------------------------------------------------
+
+
+def test_to_field_schema_preserves_names_and_layout_order(tmp_path: Path) -> None:
+    """The schema's fields are the layout's variables, in the order declared."""
+    path = write_layout(
+        tmp_path,
+        root="RCB",
+        variable_lines=RCB_LINES,
+        note="THE RECORD CONTAINS MULTIPLE OCCURRENCES OF THESE VARIABLES.",
+    )
+    schema = parse_layout(path=path).to_field_schema(period="2026-03-31")
+    assert schema.names == (
+        "SYSTEM",
+        "DIST",
+        "ASSOC",
+        "MONTH",
+        "YEAR",
+        "UNINUM",
+        "INV_CODE",
+        "AMOUNT",
+        "AMOUNT2",
+    )
+
+
+def test_to_field_schema_translates_declared_types_to_dtypes(tmp_path: Path) -> None:
+    """Each field's dtype comes from infer_field_dtype, reaching FieldSchema.schema."""
+    path = write_layout(
+        tmp_path,
+        root="RCB",
+        variable_lines=[*RCB_LINES, "  SHORTNAME  Alphanum.  0  Institution name"],
+        note="THE RECORD CONTAINS MULTIPLE OCCURRENCES OF THESE VARIABLES.",
+    )
+    schema = parse_layout(path=path).to_field_schema(period="2026-03-31")
+    assert schema.schema["AMOUNT"] == nw.Int64()
+    assert schema.schema["AMOUNT2"] == nw.Float64()
+    assert schema.schema["SHORTNAME"] == nw.String()
+
+
+def test_to_field_schema_carries_definitions_verbatim(tmp_path: Path) -> None:
+    """A field's definition is the layout's own text, not a summary of it."""
+    path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    schema = parse_layout(path=path).to_field_schema(period="2026-03-31")
+    assert schema["TOTASSETS"].versions[0].definition == "Total Assets"
+
+
+def test_to_field_schema_gives_each_field_one_single_quarter_version(
+    tmp_path: Path,
+) -> None:
+    """A layout describes one release, so every field spans only that quarter."""
+    path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    schema = parse_layout(path=path).to_field_schema(period="2025-09-30")
+    period = ReportingPeriod.from_period_end(value="2025-09-30")
+    for field in schema.values():
+        assert len(field.versions) == 1
+        assert tuple(field.versions[0].periods) == (period,)
+
+
+@pytest.mark.parametrize(
+    "period",
+    [
+        "2025-09-30",
+        date(2025, 9, 30),
+        ReportingPeriod.from_period_end(value="2025-09-30"),
+    ],
+    ids=["str", "date", "reporting_period"],
+)
+def test_to_field_schema_accepts_every_period_form(
+    tmp_path: Path, period: str | date | ReportingPeriod
+) -> None:
+    """The period argument is coerced by PeriodRange, so all three forms agree."""
+    path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    schema = parse_layout(path=path).to_field_schema(period=period)
+    assert schema["UNINUM"].versions[0].periods[0].label == "2025Q3"
+
+
+def test_to_field_schema_rejects_a_non_quarter_end_period(tmp_path: Path) -> None:
+    """A date that is not a quarter end is rejected before any field is built."""
+    path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    layout = parse_layout(path=path)
+    with pytest.raises(InvalidPeriodError):
+        layout.to_field_schema(period="2025-09-15")
+
+
+def test_to_field_schema_rejects_a_layout_with_a_repeated_variable(
+    tmp_path: Path,
+) -> None:
+    """FieldSchema rejects duplicate names, so a malformed layout surfaces as one.
+
+    No release published since 2000 declares a variable twice, but nothing in
+    parse_layout enforces that, so the failure has to be a clear SchemaError
+    rather than a silently dropped column.
+    """
+    path = write_layout(
+        tmp_path,
+        root="RC",
+        variable_lines=[*RC_LINES_7COL, "  TOTASSETS  Numeric  0  Duplicated"],
+    )
+    layout = parse_layout(path=path)
+    with pytest.raises(SchemaError, match="TOTASSETS"):
+        layout.to_field_schema(period="2026-03-31")
+
+
+def test_to_field_schema_is_keyword_only(tmp_path: Path) -> None:
+    """to_field_schema takes no positional arguments."""
+    path = write_layout(tmp_path, root="RC", variable_lines=RC_LINES_7COL)
+    layout = parse_layout(path=path)
+    with pytest.raises(TypeError):
+        layout.to_field_schema("2026-03-31")  # type: ignore[call-arg]
