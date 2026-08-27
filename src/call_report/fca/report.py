@@ -12,6 +12,7 @@ import narwhals as nw
 
 from call_report.core import (
     BaseCallReport,
+    FieldSchema,
     FileMetadata,
     PeriodRange,
     ReportingPeriod,
@@ -518,6 +519,75 @@ class FCACallReport(BaseCallReport):
                 f"{self.periods_[0].label}-{self.periods_[-1].label}."
             )
         return periods_with_schedule
+
+    def get_schema(
+        self,
+        *,
+        schedule: FCASchedule | str,
+        period: str | date | ReportingPeriod | None = None,
+    ) -> FieldSchema | dict[ReportingPeriod, FieldSchema]:
+        """Return a schedule's canonical schema as of one period, or every period.
+
+        The point-in-time counterpart to `get_file_metadata`: the fields the
+        package believes `schedule` had at a given quarter, each narrowed to
+        the definition that applied then rather than today's. Pairs with
+        `get_layout`, which returns what a fetched release actually
+        declared, so the two can be compared on identical arguments.
+
+        Parameters
+        ----------
+        schedule : FCASchedule or str
+            The schedule to describe. A string is matched
+            case-insensitively.
+        period : str, datetime.date, ReportingPeriod, optional
+            A specific period to describe. If omitted, returns the schema
+            for every period in the requested range that has `schedule`.
+
+        Returns
+        -------
+        FieldSchema or dict[ReportingPeriod, FieldSchema]
+            A single schema if `period` was supplied, otherwise a mapping
+            from period to schema.
+
+        Raises
+        ------
+        InvalidPeriodError
+            If `period` was supplied but falls outside the fetched range.
+        ScheduleNotFoundError
+            If `schedule` is not present for the requested period (or, if
+            `period` was omitted, for any period in range).
+        PeriodNotAvailableError
+            If a fetched release has `schedule` for a period the canonical
+            metadata says it was not published in. That is a disagreement
+            between the release and the shipped metadata, not a missing
+            schedule, so it is reported as its own error.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> schema = report.get_schema(schedule="RCB", period="2026-03-31")
+        >>> schema.names[:3]
+        ('SYSTEM', 'DIST', 'ASSOC')
+        >>> schema["UNINUM"].versions[0].periods[0].label
+        '2026Q1'
+        """
+        self._ensure_fetched()
+        schedule_enum = coerce_fca_call_report_schedule(value=schedule)
+        metadata = get_fca_file_metadata(schedule=schedule_enum)
+
+        if period is not None:
+            target, _ = self._release_for(schedule_enum=schedule_enum, period=period)
+            return metadata.as_of(period=target).file_schema
+
+        return {
+            found: metadata.as_of(period=found).file_schema
+            for found in self._periods_with_schedule(schedule_enum=schedule_enum)
+        }
 
     def get_file_metadata(self, *, schedule: FCASchedule | str) -> FileMetadata:
         """Return a schedule's canonical, cross-time field metadata.
