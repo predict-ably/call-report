@@ -20,14 +20,21 @@ if TYPE_CHECKING:
     import polars
     import pyarrow
 
-    NativeDataFrame: TypeAlias = (
-        pandas.DataFrame | pyarrow.Table | polars.DataFrame | polars.LazyFrame
-    )
-    """The closed set of native dataframe types this package converts between.
+NativeDataFrame: TypeAlias = (
+    "pandas.DataFrame | pyarrow.Table | polars.DataFrame | polars.LazyFrame"
+)
+"""The closed set of native dataframe types this package returns.
 
-    Type-checking only. It is never imported at runtime, so referencing it
-    here does not make pandas, polars, or pyarrow hard dependencies.
-    """
+Every public function and method that produces tabular data returns one of
+these four types, never a narwhals wrapper. Which one a caller gets is
+decided by the ``dataframe_backend`` and ``lazy`` settings in
+`call_report.config`, or by an explicit `DataFrameType` override at the
+call site.
+
+The alias is written as a string, so a type checker resolves it against
+the imports above while nothing imports pandas, polars, or pyarrow at
+runtime. All three stay optional dependencies.
+"""
 
 DataFrameT = TypeVar("DataFrameT", bound="NativeDataFrame")
 
@@ -41,9 +48,18 @@ genuinely requires it, such as `pivot`.
 """
 
 SchemaPolicy = Literal["union", "intersection", "strict"]
-DataFrameType = Literal[
+
+DataFrameType: TypeAlias = Literal[
     "pandas", "pyarrow_table", "polars_lazyframe", "polars_dataframe"
 ]
+"""The names a caller can request a specific native dataframe type by.
+
+Every public method that builds a frame accepts a ``dataframe_type``
+argument taking one of these values. It converts the result as a final
+step, whatever backend produced it, so a caller can ask for a pandas
+DataFrame while the package is configured to use polars. Passing ``None``
+instead returns whatever the configured backend produced.
+"""
 
 _SUPPORTED_DATAFRAME_TYPES: frozenset[str] = frozenset(
     {"pandas", "pyarrow_table", "polars_lazyframe", "polars_dataframe"}

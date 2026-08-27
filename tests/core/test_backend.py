@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, get_args
 
 import narwhals as nw
 import pandas as pd
@@ -10,7 +10,9 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
+import call_report.core
 from call_report.config import config_context
+from call_report.core import _backend
 from call_report.core._backend import (
     DataFrameType,
     _dataframe_type_of,
@@ -604,3 +606,38 @@ def test_build_frame_without_a_schema_still_infers(backend: str) -> None:
     frame = build_frame(data={"UNINUM": [1, 2], "NAME": ["a", "b"]})
     assert frame.collect_schema()["UNINUM"] == nw.Int64()
     assert frame.collect_schema()["NAME"] == nw.String()
+
+
+def test_dataframe_aliases_are_public_and_importable() -> None:
+    """NativeDataFrame and DataFrameType are part of the call_report.core API.
+
+    Both appear in the signature of nearly every public dataframe-returning
+    method, and docs/source/api_reference.rst documents them as importable
+    from ``call_report.core``. Without the re-export a reader following the
+    documentation would have to import from a private module instead.
+    """
+    assert call_report.core.NativeDataFrame is _backend.NativeDataFrame
+    assert call_report.core.DataFrameType is _backend.DataFrameType
+    assert "NativeDataFrame" in call_report.core.__all__
+    assert "DataFrameType" in call_report.core.__all__
+
+
+def test_native_dataframe_alias_names_every_supported_backend_type() -> None:
+    """The NativeDataFrame alias covers exactly the types conversion produces.
+
+    The alias is a string rather than a real union, so no type checker
+    verifies it against convert_dataframe_type's overloads. This does.
+    """
+    assert _backend.NativeDataFrame == (
+        "pandas.DataFrame | pyarrow.Table | polars.DataFrame | polars.LazyFrame"
+    )
+
+
+def test_dataframe_type_alias_matches_the_supported_names() -> None:
+    """DataFrameType's members are exactly the names convert_dataframe_type takes.
+
+    The Literal and the frozenset it is validated against are declared
+    separately, so a value added to one and not the other would otherwise
+    only surface as a type-checking or runtime mismatch at a call site.
+    """
+    assert set(get_args(DataFrameType)) == _backend._SUPPORTED_DATAFRAME_TYPES

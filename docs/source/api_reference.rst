@@ -25,8 +25,9 @@ Core
 ====
 
 Shared, source-agnostic building blocks: the quarter-end reporting-period
-vocabulary, the cross-time schema vocabulary, the cross-source enums, and
-the abstract base every source-specific entry point implements.
+vocabulary, the cross-time schema vocabulary, the cross-source enums, the
+dataframe vocabulary every reader returns, and the abstract base every
+source-specific entry point implements.
 
 .. autosummary::
    :toctree: generated
@@ -45,6 +46,37 @@ the abstract base every source-specific entry point implements.
    call_report.core.FieldSchemaDiff
    call_report.core.FileMetadata
    call_report.core.FileMetadataDiff
+
+Dataframe types
+---------------
+
+The two type aliases that describe what a reader hands back. Both are
+importable from ``call_report.core`` for annotating your own code. They are
+written out here rather than generated, because a type alias has no runtime
+object for ``autodoc`` to read a docstring from.
+
+.. py:data:: call_report.core.NativeDataFrame
+
+   The closed set of native dataframe types this package returns.
+
+   Every function and method that produces tabular data returns one of
+   :class:`pandas.DataFrame`, :class:`pyarrow.Table`,
+   :class:`polars.DataFrame`, or :class:`polars.LazyFrame`, never a
+   ``narwhals`` wrapper. Which one you get is decided by the
+   ``dataframe_backend`` and ``lazy`` settings (see
+   :func:`call_report.config.set_config`), or by an explicit
+   ``dataframe_type`` argument at the call site.
+
+.. py:data:: call_report.core.DataFrameType
+
+   The names a caller requests a specific native dataframe type by.
+
+   One of ``"pandas"``, ``"pyarrow_table"``, ``"polars_dataframe"``, or
+   ``"polars_lazyframe"``. Every method that builds a frame takes a
+   ``dataframe_type`` argument accepting one of these values, applied as a
+   final step whatever backend produced the frame. That lets a caller ask
+   for a pandas DataFrame while the package is configured to use polars.
+   ``None`` returns the frame as the configured backend built it.
 
 Exceptions
 ==========
