@@ -12,11 +12,8 @@ for that real-data coverage).
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from pathlib import Path
-from types import ModuleType
 
 import narwhals as nw
 import pytest
@@ -30,34 +27,9 @@ from call_report.core import (
     ReportingPeriod,
 )
 from call_report.exceptions import SchemaError
+from tests.helpers import load_generation_script
 
-_SCRIPT_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "scripts"
-    / "generate_fca_schedule_metadata.py"
-)
-
-
-def _load_script_module() -> ModuleType:
-    """Load the standalone generation script as an importable module.
-
-    Registered in `sys.modules` before execution -- `dataclasses.dataclass`
-    resolves postponed (`from __future__ import annotations`) annotations
-    by looking the defining module up there, which a bare
-    `module_from_spec`/`exec_module` never populates on its own.
-    """
-    spec = importlib.util.spec_from_file_location(
-        "generate_fca_schedule_metadata", _SCRIPT_PATH
-    )
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-generate = _load_script_module()
+generate = load_generation_script()
 
 Q1 = ReportingPeriod.from_period_end(value="2020-03-31")
 Q2 = ReportingPeriod.from_period_end(value="2020-06-30")
