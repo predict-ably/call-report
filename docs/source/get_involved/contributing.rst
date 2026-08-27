@@ -42,8 +42,11 @@ Opening a pull request
 - Keep pull requests focused: prefer several small, reviewable PRs over one
   large one where practical.
 - CI runs the same checks as the local suite (tests, coverage, ``ruff``,
-  ``mypy``, ``pre-commit`` hooks); please make sure these pass before
-  requesting review.
+  ``mypy``, ``pre-commit`` hooks, and a strict documentation build); please
+  make sure these pass before requesting review.
+- A pull request touching ``docs/`` or ``src/call_report/`` also gets a
+  hosted Read the Docs preview, linked from the pull request's checks. See
+  :ref:`the documentation on pull requests <docs_ci>`.
 - Add the ``run-exhaustive`` label if your change touches the FCA release
   archive or the code that reads it. See
   :ref:`the exhaustive archive regression <release_process_exhaustive>` for

@@ -14,4 +14,6 @@ python:
 
 sphinx:
   configuration: docs/source/conf.py
-  fail_on_warning: false
+  # Matches the `-W` that .github/workflows/docs.yml builds with, so the
+  # hosted build and the pull request check agree on what passing means.
+  fail_on_warning: true

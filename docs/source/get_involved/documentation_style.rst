@@ -65,7 +65,12 @@ extension for rendering docstrings.
 
    .. code-block:: bash
 
-      sphinx-build -b html docs/source docs/_build/html
+      sphinx-build -b html -W --keep-going docs/source docs/_build/html
+
+   ``-W`` turns every Sphinx warning into an error, matching what CI and
+   Read the Docs do, so a docstring that fails ``numpydoc`` validation
+   fails here rather than on your pull request. ``--keep-going`` reports
+   every warning in one run instead of stopping at the first.
 
 3. Open ``docs/_build/html/index.html`` in a browser to preview.
 
@@ -110,4 +115,40 @@ source files themselves:
 * `sphinx-lint <https://github.com/sphinx-contrib/sphinx-lint>`_ -- common
   reStructuredText mistakes.
 
+.. _docs_ci:
+
+The documentation on pull requests
+====================================
+
+Two things run against the documentation on every pull request that touches
+``docs/`` or ``src/call_report/``.
+
+* The ``docs`` workflow builds the site with ``-W``, exactly as in step 2
+  above, and fails the pull request if the build emits a single warning. It
+  attaches the rendered HTML to the workflow run as a ``docs-html``
+  artifact, which is the way to read the result on a pull request from a
+  fork.
+* `Read the Docs <https://readthedocs.org/projects/call-report/>`_ builds a
+  hosted preview and reports it as a check, with a link to the rendered
+  pages. Prefer the preview for reviewing prose and layout.
+
+Both builds install the ``docs`` extra on Python 3.12 and run the same
+Sphinx configuration, so a green local build in step 2 should mean a green
+pull request.
+
+What the strict build catches is a ``numpydoc`` validation failure, an
+autodoc import error, malformed reStructuredText, and a toctree that
+references a missing page. It does not catch an unresolved cross-reference:
+a ``:class:`` pointing at something that does not exist renders as plain
+text and emits no warning unless Sphinx runs in nitpicky mode, which this
+project does not enable yet. Check that a new reference actually renders as
+a link when you preview the page.
+
+One failure mode is worth recognizing. ``conf.py`` fetches the Python,
+pandas, and polars `intersphinx`_ inventories on every build, and an
+unreachable host counts as a warning. Under ``-W`` that fails the build for
+a reason unrelated to the change, so re-run the job before hunting for a
+cause in your own edits.
+
 .. _numpydoc: https://numpydoc.readthedocs.io/en/latest/index.html
+.. _intersphinx: https://www.sphinx-doc.org/en/master/usage/extensions/intersphinx.html
