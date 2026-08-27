@@ -81,8 +81,13 @@ jobs:
           fi
 
       - name: Run the exhaustive regression
+        # Selected by marker across the whole suite rather than by naming a
+        # test file. Any module that marks a test `exhaustive` is picked up
+        # here automatically, instead of this step needing an edit each time
+        # one is added -- a new exhaustive test that silently never runs in
+        # the job built to run it would be worse than no test at all.
         run: |
-          python -m pytest tests/fca/test_release_archive.py \
+          python -m pytest tests \
             --run-exhaustive \
             -m exhaustive \
             -p no:randomly \
