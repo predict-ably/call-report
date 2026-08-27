@@ -168,6 +168,33 @@ actually published that quarter. A non-empty one is worth investigating: it
 means the shipped metadata has drifted from the releases it was generated
 from.
 
+A field redefined in place
+==========================
+
+A field can change without ever disappearing. RCF1's ``LOANSTATUS`` holds a
+numeric code for each row's loan-performance category, and FCA revised the
+code list itself in 2015, splitting code ``155`` into a new ``152``/``155``
+pair. The field was present throughout, so its metadata carries two
+versions rather than a presence gap:
+
+.. doctest::
+
+   >>> loanstatus = report.get_file_metadata(schedule="RCF1").file_schema["LOANSTATUS"]
+   >>> len(loanstatus.versions)
+   2
+
+`as_of` recovers whichever definition applied at a given quarter, which is
+what makes a snapshot usable as a description of that quarter's data rather
+than of today's:
+
+.. doctest::
+
+   >>> rcf1 = report.get_file_metadata(schedule="RCF1").file_schema
+   >>> rcf1.as_of(period="2010-03-31")["LOANSTATUS"].versions[0].definition[-32:]
+   'o OFIs 155 Other loans 160 Total'
+   >>> rcf1.as_of(period="2020-03-31")["LOANSTATUS"].versions[0].definition[-32:]
+   'o OFIs 152 Other loans 155 Total'
+
 Tracking drift across quarters
 ==============================
 

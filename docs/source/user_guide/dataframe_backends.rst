@@ -51,6 +51,7 @@ whenever the change is meant to be temporary:
    ... )
    >>> with config_context(dataframe_backend="pyarrow"):
    ...     type(report.load(schedule="RCF1")).__name__
+   ...
    'Table'
 
 :func:`~call_report.config.set_config` changes them for the rest of the
@@ -74,6 +75,7 @@ rather than silently returning an eager frame:
 
    >>> with config_context(dataframe_backend="polars", lazy=True):
    ...     frame = report.load(schedule="RCF1")
+   ...
    >>> type(frame).__name__
    'LazyFrame'
    >>> frame.collect().shape
@@ -130,6 +132,7 @@ polars and pyarrow hold it as a date:
 
    >>> with config_context(dataframe_backend="polars"):
    ...     report.load(schedule="RCF1").schema["period"]
+   ...
    Date
 
 pandas has no date dtype, so it holds the same value as a datetime whose
