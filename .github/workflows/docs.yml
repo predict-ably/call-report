@@ -54,6 +54,17 @@ jobs:
       - name: Show dependencies
         run: python -m pip list
 
+      # TEMPORARY (#53): polars' inventory loads but registers neither
+      # polars.DataFrame nor polars.LazyFrame, while its pandas and pyarrow
+      # neighbours resolve. Dump what it does carry so the reference can be
+      # written the way polars publishes it, then delete this step.
+      - name: Inspect the polars inventory
+        continue-on-error: true
+        run: |
+          python -m sphinx.ext.intersphinx \
+            https://docs.pola.rs/api/python/stable/objects.inv \
+            | grep -iE "dataframe|lazyframe" | head -40 || true
+
       # -W matches `sphinx.fail_on_warning: true` in .readthedocs.yaml, so
       # a numpydoc validation failure, an autodoc import error, malformed
       # reStructuredText, or a toctree problem fails the job instead of

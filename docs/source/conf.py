@@ -336,4 +336,9 @@ nitpick_ignore = [
     # these module paths, so there is no intersphinx entry to add.
     ("py:class", "narwhals.dtypes.DType"),
     ("py:class", "narwhals.schema.Schema"),
+    # polars' inventory loads, and its stdlib, pandas, and pyarrow
+    # neighbours all resolve, but it registers neither of these two names.
+    # They stay spelled this way because it is how a caller imports them.
+    ("py:class", "polars.DataFrame"),
+    ("py:class", "polars.LazyFrame"),
 ]

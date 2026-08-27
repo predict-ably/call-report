@@ -10,7 +10,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
-import call_report.core
+from call_report import core
 from call_report.config import config_context
 from call_report.core import _backend
 from call_report.core._backend import (
@@ -616,10 +616,10 @@ def test_dataframe_aliases_are_public_and_importable() -> None:
     from ``call_report.core``. Without the re-export a reader following the
     documentation would have to import from a private module instead.
     """
-    assert call_report.core.NativeDataFrame is _backend.NativeDataFrame
-    assert call_report.core.DataFrameType is _backend.DataFrameType
-    assert "NativeDataFrame" in call_report.core.__all__
-    assert "DataFrameType" in call_report.core.__all__
+    assert core.NativeDataFrame is _backend.NativeDataFrame
+    assert core.DataFrameType is _backend.DataFrameType
+    assert "NativeDataFrame" in core.__all__
+    assert "DataFrameType" in core.__all__
 
 
 def test_native_dataframe_alias_names_every_supported_backend_type() -> None:
