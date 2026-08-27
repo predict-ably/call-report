@@ -14,8 +14,7 @@ from call_report.config import config_context
 from call_report.core._backend import (
     DataFrameType,
     _dataframe_type_of,
-    _join_on_index,
-    _manual_pivot,
+    _pyarrow_pivot,
     assert_unique_grain,
     build_frame,
     concat,
@@ -376,7 +375,7 @@ def test_finalize_as_is_keyword_only() -> None:
 
 
 # ---------------------------------------------------------------------------
-# pivot / _manual_pivot / _join_on_index
+# pivot / _pyarrow_pivot
 # ---------------------------------------------------------------------------
 
 
@@ -417,8 +416,8 @@ def test_pivot_native_path_pivots_correctly(backend: str) -> None:
     assert rows[2]["B"] == 40
 
 
-def test_pivot_pyarrow_path_dispatches_to_manual_pivot() -> None:
-    """Pyarrow input is routed through _manual_pivot and produces the same result."""
+def test_pivot_pyarrow_path_dispatches_to_pyarrow_pivot() -> None:
+    """Pyarrow input is routed through _pyarrow_pivot and produces the same result."""
     frame = _build_long_frame(backend="pyarrow")
     assert frame.implementation is nw.Implementation.PYARROW
     result = pivot(frame=frame, on="key", index=["UNINUM", "period"], values="value")
@@ -458,27 +457,161 @@ def test_pivot_duplicate_grain_raises_reshape_error_native(backend: str) -> None
         pivot(frame=frame, on="key", index=["UNINUM", "period"], values="value")
 
 
-def test_pivot_duplicate_grain_raises_reshape_error_manual() -> None:
-    """A genuine duplicate (index, on) grain raises ReshapeError on the manual path."""
+def test_pivot_duplicate_grain_raises_reshape_error_pyarrow() -> None:
+    """A genuine duplicate (index, on) grain raises ReshapeError on the pyarrow path."""
     frame = _build_duplicate_grain_frame(backend="pyarrow")
     with pytest.raises(ReshapeError, match="not a unique grain"):
         pivot(frame=frame, on="key", index=["UNINUM", "period"], values="value")
 
 
-def test_manual_pivot_matches_native_pivot_output() -> None:
-    """_manual_pivot produces output identical to the native pandas pivot path."""
+def test_pyarrow_pivot_matches_native_pivot_output() -> None:
+    """_pyarrow_pivot produces output identical to the native pandas pivot path."""
     native_result = _build_long_frame(backend="pandas").pivot(
         on="key", index=["UNINUM", "period"], values="value", sort_columns=True
     )
-    manual_result = _manual_pivot(
-        frame=_build_long_frame(backend="pandas"),
+    pyarrow_result = _pyarrow_pivot(
+        frame=_build_long_frame(backend="pyarrow"),
         on="key",
         index=["UNINUM", "period"],
         values="value",
     )
-    assert manual_result.sort(["UNINUM"]).rows(named=True) == native_result.sort(
+    assert pyarrow_result.sort(["UNINUM"]).rows(named=True) == native_result.sort(
         ["UNINUM"]
     ).rows(named=True)
+
+
+def _pyarrow_frame(table: pa.Table) -> nw.DataFrame[Any]:
+    """Wrap a pyarrow table for the _pyarrow_pivot tests below."""
+    return nw.from_native(table, eager_only=True)
+
+
+def test_pyarrow_pivot_returns_index_only_frame_for_empty_input() -> None:
+    """An empty long frame pivots to an empty frame carrying just the index.
+
+    There is no `on` value to name a column after, so the result has no
+    value columns. Without the zero-row branch the adjacent-row
+    comparison would be asked for a slice of negative length.
+    """
+    result = _pyarrow_pivot(
+        frame=_pyarrow_frame(
+            pa.table(
+                {
+                    "UNINUM": pa.array([], type=pa.int64()),
+                    "key": pa.array([], type=pa.string()),
+                    "value": pa.array([], type=pa.float64()),
+                }
+            )
+        ),
+        on="key",
+        index=["UNINUM"],
+        values="value",
+    )
+    assert result.columns == ["UNINUM"]
+    assert result.shape == (0, 1)
+
+
+def test_pyarrow_pivot_fills_gaps_for_a_key_missing_from_some_rows() -> None:
+    """A key absent from an index row gets null there, not a shifted value.
+
+    A key present for every row is taken straight from the sorted values,
+    while a sparse one has to be realigned against the full row list. The
+    two paths are separate, so a frame needs both to exercise them.
+    """
+    result = _pyarrow_pivot(
+        frame=_pyarrow_frame(
+            pa.table(
+                {
+                    "UNINUM": [1, 1, 2],
+                    "key": ["dense", "sparse", "dense"],
+                    "value": [10.0, 20.0, 30.0],
+                }
+            )
+        ),
+        on="key",
+        index=["UNINUM"],
+        values="value",
+    )
+    assert result.columns == ["UNINUM", "dense", "sparse"]
+    assert result.rows(named=True) == [
+        {"UNINUM": 1, "dense": 10.0, "sparse": 20.0},
+        {"UNINUM": 2, "dense": 30.0, "sparse": None},
+    ]
+
+
+def test_pyarrow_pivot_treats_two_null_index_values_as_one_row() -> None:
+    """Rows sharing a null in an index column belong to the same output row.
+
+    A comparison against null is null rather than true, so without
+    handling nulls explicitly every null-keyed row would look like the
+    start of a new index group and the result would carry a row per long
+    row.
+    """
+    result = _pyarrow_pivot(
+        frame=_pyarrow_frame(
+            pa.table(
+                {
+                    "UNINUM": [1, None, None],
+                    "period": ["2026-03-31"] * 3,
+                    "key": ["A", "A", "B"],
+                    "value": [10.0, 20.0, 30.0],
+                }
+            )
+        ),
+        on="key",
+        index=["UNINUM", "period"],
+        values="value",
+    )
+    assert result.shape == (2, 4)
+    assert result.rows(named=True)[1] == {
+        "UNINUM": None,
+        "period": "2026-03-31",
+        "A": 20.0,
+        "B": 30.0,
+    }
+
+
+def test_pyarrow_pivot_keeps_a_non_numeric_value_column_intact() -> None:
+    """The value column's dtype survives the reshape.
+
+    Each output column is cut from the value column itself, so nothing
+    re-infers a dtype from the values.
+    """
+    result = _pyarrow_pivot(
+        frame=_pyarrow_frame(
+            pa.table({"UNINUM": [1, 2], "key": ["A", "B"], "value": ["x", "y"]})
+        ),
+        on="key",
+        index=["UNINUM"],
+        values="value",
+    )
+    assert result.schema["A"] == nw.String()
+    assert result.rows(named=True) == [
+        {"UNINUM": 1, "A": "x", "B": None},
+        {"UNINUM": 2, "A": None, "B": "y"},
+    ]
+
+
+def test_pyarrow_pivot_handles_a_multi_chunk_table() -> None:
+    """A table whose columns arrive in several chunks pivots correctly.
+
+    Concatenating tables (as stacking a schedule across periods does)
+    leaves each column chunked, and the compute kernels the pivot uses
+    need one contiguous array per column.
+    """
+    table = pa.concat_tables(
+        [
+            pa.table({"UNINUM": [1], "key": ["A"], "value": [10.0]}),
+            pa.table({"UNINUM": [2], "key": ["B"], "value": [20.0]}),
+        ]
+    )
+    assert table.column("UNINUM").num_chunks == 2
+    result = _pyarrow_pivot(
+        frame=_pyarrow_frame(table), on="key", index=["UNINUM"], values="value"
+    )
+    assert result.rows(named=True) == [
+        {"UNINUM": 1, "A": 10.0, "B": None},
+        {"UNINUM": 2, "A": None, "B": 20.0},
+    ]
 
 
 def test_pivot_is_keyword_only() -> None:
@@ -486,26 +619,6 @@ def test_pivot_is_keyword_only() -> None:
     frame = _build_long_frame(backend="pandas")
     with pytest.raises(TypeError):
         pivot(frame, "key", ["UNINUM", "period"], "value")  # type: ignore[call-arg]
-
-
-def test_join_on_index_coalesces_shared_join_keys() -> None:
-    """_join_on_index drops every backend's `{col}_right` join-key duplicate."""
-    with config_context(dataframe_backend="pandas"):
-        left = build_frame(data={"UNINUM": [1, 2], "period": ["a", "a"], "A": [10, 20]})
-        right = build_frame(
-            data={"UNINUM": [2, 3], "period": ["a", "a"], "B": [30, 40]}
-        )
-    joined = _join_on_index(left=left, right=right, index=["UNINUM", "period"])
-    assert set(joined.columns) == {"UNINUM", "period", "A", "B"}
-    rows = {row["UNINUM"]: row for row in joined.rows(named=True)}
-
-    def _is_missing(value: object) -> bool:
-        return value is None or value != value  # NaN is the only value != itself
-
-    assert rows[1]["A"] == 10
-    assert _is_missing(rows[1]["B"])
-    assert _is_missing(rows[3]["A"])
-    assert rows[3]["B"] == 40
 
 
 def test_build_frame_declares_dtypes_the_values_cannot_supply(backend: str) -> None:

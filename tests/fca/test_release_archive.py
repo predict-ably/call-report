@@ -1290,7 +1290,7 @@ def test_exhaustive_wide_format_matches_across_backends(
 
     The sampled version covers 4 evenly spaced periods. This is the same
     check over the whole history, which matters most for the pyarrow
-    backend: it has no native pivot and goes through `_manual_pivot`, a
+    backend: it has no native pivot and goes through `_pyarrow_pivot`, a
     different code path from the one the other two backends use.
     """
     reference = _to_wide_format_frame(period=period, backend="pandas")
