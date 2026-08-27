@@ -42,8 +42,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The three dataframe backends are here for the doctest step below,
+      # not for the html build. The User Guide's examples load real frames,
+      # and every backend appears in dataframe_backends.rst. They are
+      # deliberately not added to the `docs` extra: Read the Docs installs
+      # that extra and only builds html, which imports no backend, so
+      # putting them there would slow every hosted build for nothing.
       - name: Install package with docs dependencies
-        run: pip install -e ".[docs]"
+        run: pip install -e ".[docs,pandas,polars,pyarrow]"
 
       - name: Show dependencies
         run: python -m pip list
