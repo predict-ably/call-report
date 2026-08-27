@@ -15,6 +15,7 @@ real published data. If you are installing for the first time, start with
 
    user_guide/schema_and_metadata
    user_guide/reshaping
+   user_guide/dataframe_backends
 
 .. grid:: 1 2 2 2
     :gutter: 3
@@ -34,3 +35,11 @@ real published data. If you are installing for the first time, start with
 
         Stack every schedule into one wide or long frame, and convert
         between the two shapes.
+
+    .. grid-item-card:: Dataframe Backends
+        :text-align: left
+        :link: user_guide/dataframe_backends
+        :link-type: doc
+
+        Choose pandas, polars, or pyarrow, and know which dtypes each one
+        gives you.
