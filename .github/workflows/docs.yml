@@ -70,6 +70,22 @@ jobs:
       - name: Build the documentation
         run: sphinx-build -b html -W --keep-going docs/source docs/_build/html
 
+      # Executes the User Guide's `.. doctest::` blocks against the real
+      # package. Docstring examples are covered by pytest's
+      # --doctest-modules; narrative prose was covered by nothing, so a
+      # return value, dtype, or column order could change and leave the
+      # documentation quietly wrong.
+      #
+      # This runs here and not on Read the Docs. RTD installs
+      # non-editably (.readthedocs.yaml: method pip, path .), and
+      # PackagedArchiveTransport locates data/fca-call-report relative to
+      # the package's own file, which only resolves to the repository from
+      # an editable install. RTD builds html, which never executes these
+      # blocks, so that stays fine -- but do not add a doctest builder
+      # there.
+      - name: Run the documentation's doctests
+        run: sphinx-build -b doctest docs/source docs/_build/doctest
+
       # Lets a reviewer read the rendered result even on a fork pull
       # request, where the Read the Docs preview is not available.
       - name: Upload the rendered documentation

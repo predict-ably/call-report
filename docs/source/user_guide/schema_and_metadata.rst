@@ -24,14 +24,13 @@ Every example on this page uses
 the release zips checked into this repository, so nothing here needs a
 download:
 
-.. code-block:: python
+.. doctest::
 
-   from call_report.fca import FCACallReport
-   from call_report.fca.transport import PackagedArchiveTransport
-
-   report = FCACallReport(
-       start="2014-12-31", end="2015-03-31", transport=PackagedArchiveTransport()
-   )
+   >>> from call_report.fca import FCACallReport
+   >>> from call_report.fca.transport import PackagedArchiveTransport
+   >>> report = FCACallReport(
+   ...     start="2014-12-31", end="2015-03-31", transport=PackagedArchiveTransport()
+   ... )
 
 A schedule's whole history
 ==========================
@@ -41,34 +40,34 @@ schedule's canonical, cross-time :class:`~call_report.core.FileMetadata`.
 It does not depend on ``start``, ``end``, or ``transport``, so it answers
 even before any file has been read:
 
-.. code-block:: python
+.. doctest::
 
-   metadata = report.get_file_metadata(schedule="RI")
-   metadata.name
-   # 'RI'
-   metadata.first_period.label, metadata.last_period.label
-   # ('2000Q1', '2026Q1')
-   len(metadata.file_schema)
-   # 46
+   >>> metadata = report.get_file_metadata(schedule="RI")
+   >>> metadata.name
+   'RI'
+   >>> metadata.first_period.label, metadata.last_period.label
+   ('2000Q1', '2026Q1')
+   >>> len(metadata.file_schema)
+   46
 
 RI has been published every quarter since 2000, but that does not mean its
 columns held still. ``changed`` reports whether any field's presence
 differs from the file's own:
 
-.. code-block:: python
+.. doctest::
 
-   metadata.changed
-   # True
+   >>> metadata.changed
+   True
 
 Each field carries the periods it was actually present for, so you can see
 which ones came and went. ``NONTEMPIMPAIRN`` stopped being reported after
 2014:
 
-.. code-block:: python
+.. doctest::
 
-   impair = metadata.file_schema["NONTEMPIMPAIRN"]
-   impair.first_period.label, impair.last_period.label
-   # ('2000Q1', '2014Q4')
+   >>> impair = metadata.file_schema["NONTEMPIMPAIRN"]
+   >>> impair.first_period.label, impair.last_period.label
+   ('2000Q1', '2014Q4')
 
 That is why ``len(metadata.file_schema)`` is 46 while no single quarter of
 RI ever had 46 columns. The cross-time schema is the union of every field
@@ -81,35 +80,35 @@ A single quarter
 one quarter, returning a :class:`~call_report.core.FieldSchema` of just the
 fields present then:
 
-.. code-block:: python
+.. doctest::
 
-   schema = report.get_schema(schedule="RI", period="2014-12-31")
-   len(schema)
-   # 44
-   schema.names[:6]
-   # ('SYSTEM', 'DIST', 'ASSOC', 'MONTH', 'YEAR', 'UNINUM')
+   >>> schema = report.get_schema(schedule="RI", period="2014-12-31")
+   >>> len(schema)
+   44
+   >>> schema.names[:6]
+   ('SYSTEM', 'DIST', 'ASSOC', 'MONTH', 'YEAR', 'UNINUM')
 
 The snapshot is historically accurate, not merely filtered. Each field is
 narrowed to the one version that applied at that date, so a field revised
 later still shows the definition in force at the quarter you asked for:
 
-.. code-block:: python
+.. doctest::
 
-   provisions = schema["PROVLNS"]
-   len(provisions.versions)
-   # 1
-   provisions.versions[0].definition
-   # 'Provisions for Losses on Loans,Sales Contracts,Notes,and Leases'
-   provisions.versions[0].periods[0].label
-   # '2014Q4'
+   >>> provisions = schema["PROVLNS"]
+   >>> len(provisions.versions)
+   1
+   >>> provisions.versions[0].definition
+   'Provisions for Losses on Loans,Sales Contracts,Notes,and Leases'
+   >>> provisions.versions[0].periods[0].label
+   '2014Q4'
 
 ``FieldSchema`` also exposes a plain narwhals schema, mapping name to
 dtype, for code that only cares about types:
 
-.. code-block:: python
+.. doctest::
 
-   schema.schema["PROVLNS"]
-   # Int64
+   >>> schema.schema["PROVLNS"]
+   Int64
 
 Every quarter in range
 ======================
@@ -117,18 +116,18 @@ Every quarter in range
 Omit ``period`` to get one schema per fetched quarter that has the
 schedule, keyed by :class:`~call_report.core.ReportingPeriod`:
 
-.. code-block:: python
+.. doctest::
 
-   schemas = report.get_schema(schedule="RI")
-   sorted(period.label for period in schemas)
-   # ['2014Q4', '2015Q1']
+   >>> schemas = report.get_schema(schedule="RI")
+   >>> sorted(period.label for period in schemas)
+   ['2014Q4', '2015Q1']
 
 This is the quickest way to see a schedule's width move over a range:
 
-.. code-block:: python
+.. doctest::
 
-   {period.label: len(schema) for period, schema in schemas.items()}
-   # {'2014Q4': 44, '2015Q1': 45}
+   >>> {period.label: len(schema) for period, schema in schemas.items()}
+   {'2014Q4': 44, '2015Q1': 45}
 
 :meth:`~call_report.fca.FCACallReport.get_layout` has the same shape, so
 the two can be used interchangeably.
@@ -143,12 +142,12 @@ the same ``FieldSchema`` vocabulary the canonical metadata uses. A layout
 describes exactly one release and carries no period of its own, so the
 period has to be supplied:
 
-.. code-block:: python
+.. doctest::
 
-   layout = report.get_layout(schedule="RI", period="2015-03-31")
-   declared = layout.to_field_schema(period="2015-03-31")
-   len(declared)
-   # 45
+   >>> layout = report.get_layout(schedule="RI", period="2015-03-31")
+   >>> declared = layout.to_field_schema(period="2015-03-31")
+   >>> len(declared)
+   45
 
 Comparing the two views
 =======================
@@ -158,11 +157,11 @@ Because both sides are a ``FieldSchema``,
 is the cheapest way to notice a release whose layout disagrees with the
 shipped metadata:
 
-.. code-block:: python
+.. doctest::
 
-   diff = declared.compare(other=report.get_schema(schedule="RI", period="2015-03-31"))
-   diff.is_empty
-   # True
+   >>> canonical = report.get_schema(schedule="RI", period="2015-03-31")
+   >>> declared.compare(other=canonical).is_empty
+   True
 
 An empty diff means the package's belief about 2015Q1 matches what FCA
 actually published that quarter. A non-empty one is worth investigating: it
@@ -175,37 +174,37 @@ Tracking drift across quarters
 The same comparison across two *different* quarters shows how a schedule
 evolved. RI changed between 2014Q4 and 2015Q1:
 
-.. code-block:: python
+.. doctest::
 
-   before = report.get_schema(schedule="RI", period="2014-12-31")
-   after = report.get_schema(schedule="RI", period="2015-03-31")
-   drift = before.compare(other=after)
-   drift.added
-   # ('NONTEMPIMPAIR', 'ProvDebtSec')
-   drift.removed
-   # ('NONTEMPIMPAIRN',)
+   >>> before = report.get_schema(schedule="RI", period="2014-12-31")
+   >>> after = report.get_schema(schedule="RI", period="2015-03-31")
+   >>> drift = before.compare(other=after)
+   >>> drift.added
+   ('NONTEMPIMPAIR', 'ProvDebtSec')
+   >>> drift.removed
+   ('NONTEMPIMPAIRN',)
 
 ``changed`` holds the fields present in both but not identical, each as a
 :class:`~call_report.core.FieldChange` carrying the before and after
 metadata. FCA rewrote ``PROVLNS``'s definition in that same quarter:
 
-.. code-block:: python
+.. doctest::
 
-   change = next(item for item in drift.changed if item.name == "PROVLNS")
-   change.before.versions[0].definition
-   # 'Provisions for Losses on Loans,Sales Contracts,Notes,and Leases'
-   change.after.versions[0].definition
-   # 'Provisions for credit losses: On loans, sales contracts, notes, and leases'
+   >>> change = next(item for item in drift.changed if item.name == "PROVLNS")
+   >>> change.before.versions[0].definition
+   'Provisions for Losses on Loans,Sales Contracts,Notes,and Leases'
+   >>> change.after.versions[0].definition
+   'Provisions for credit losses: On loans, sales contracts, notes, and leases'
 
 One thing to know when comparing two quarters this way: each snapshot
 stamps its fields with its own quarter, so every field common to both
 quarters lands in ``changed`` on the strength of that stamp alone, whether
 or not its dtype or definition moved:
 
-.. code-block:: python
+.. doctest::
 
-   len(drift.changed)
-   # 43
+   >>> len(drift.changed)
+   43
 
 Read ``added`` and ``removed`` for which columns came and went. For content
 changes, compare the ``dtype`` and ``definition`` on each
