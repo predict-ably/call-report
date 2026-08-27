@@ -105,8 +105,8 @@ class FCALayout:
     """A parsed FCA layout, with its scenario, variables, and column groups.
 
     Returned by `parse_layout`. The column groups tell
-    :mod:`call_report.fca.reader` how to split each data row into its
-    single- and multiple-occurrence parts.
+    :func:`~call_report.fca.reader.read_schedule_file` how to split each
+    data row into its single- and multiple-occurrence parts.
 
     Attributes
     ----------

@@ -10,6 +10,9 @@ a task-oriented introduction to the same functionality.
 Package configuration
 ======================
 
+.. py:module:: call_report.config
+.. py:currentmodule:: None
+
 Controls which dataframe library every reader returns native frames of, and
 whether they are returned eager or lazy.
 
@@ -23,6 +26,9 @@ whether they are returned eager or lazy.
 
 Core
 ====
+
+.. py:module:: call_report.core
+.. py:currentmodule:: None
 
 Shared, source-agnostic building blocks: the quarter-end reporting-period
 vocabulary, the cross-time schema vocabulary, the cross-source enums, the
@@ -81,6 +87,9 @@ object for ``autodoc`` to read a docstring from.
 Exceptions
 ==========
 
+.. py:module:: call_report.exceptions
+.. py:currentmodule:: None
+
 The exception hierarchy shared across sources.
 
 .. autosummary::
@@ -97,6 +106,9 @@ The exception hierarchy shared across sources.
 
 FCA Call Report
 ================
+
+.. py:module:: call_report.fca
+.. py:currentmodule:: None
 
 ``FCACallReport`` is the main entry point; the other members below are the
 lower-level building blocks it's composed from, useful on their own for

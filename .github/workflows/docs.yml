@@ -60,19 +60,16 @@ jobs:
       # scrolling past. --keep-going reports every warning in one run
       # rather than stopping at the first.
       #
-      # Note what this does NOT catch: an unresolved Python cross-reference
-      # renders as plain text without warning unless Sphinx runs nitpicky
-      # (-n). Turning that on today reports ~128 unresolved targets, mostly
-      # this package's own type aliases (NativeDataFrame, DataFrameType) and
-      # the abbreviated backend names in docstring type fields (pd.DataFrame
-      # and friends), so it needs its own pass over the docstrings plus a
-      # nitpick_ignore list before it can be enabled.
+      # An unresolved Python cross-reference is caught too, but by
+      # `nitpicky = True` in conf.py rather than by anything here. It lives
+      # there so Read the Docs enforces it as well; -n on this line would
+      # leave the hosted build unguarded. See issue #53.
       #
-      # conf.py's intersphinx_mapping fetches three external inventories
-      # (python, pandas, polars) on every build, and an unreachable host is
-      # a warning -- so with -W, an outage at one of them fails this job for
-      # reasons unrelated to the pull request. Re-run the job to confirm
-      # before looking for a real cause.
+      # conf.py's intersphinx_mapping fetches four external inventories
+      # (python, pandas, polars, pyarrow) on every build, and an unreachable
+      # host is a warning -- so with -W, an outage at one of them fails this
+      # job for reasons unrelated to the pull request. Re-run the job to
+      # confirm before looking for a real cause.
       - name: Build the documentation
         run: sphinx-build -b html -W --keep-going docs/source docs/_build/html
 

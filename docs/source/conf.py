@@ -317,3 +317,23 @@ intersphinx_mapping = {
     "polars": ("https://docs.pola.rs/api/python/stable/", None),
     "pyarrow": ("https://arrow.apache.org/docs/", None),
 }
+
+# Every Python cross-reference must resolve. Without this an unresolved
+# :class: or :mod: renders as plain text and emits no warning at all, so a
+# reference that stops resolving after a rename is invisible. Set here
+# rather than as -n on the command line, so that the `-W` build in
+# .github/workflows/docs.yml and `sphinx.fail_on_warning` on Read the Docs
+# both enforce it.
+nitpicky = True
+
+# Targets that cannot resolve however they are written. Keep this list
+# short and keep each entry's reason with it: an entry that outlives its
+# reason silently re-opens the gap nitpicky mode exists to close.
+nitpick_ignore = [
+    # narwhals is the one hard third-party runtime dependency, and these
+    # are the two of its types that reach a rendered signature. Its API
+    # reference is published with mkdocs, whose inventory does not carry
+    # these module paths, so there is no intersphinx entry to add.
+    ("py:class", "narwhals.dtypes.DType"),
+    ("py:class", "narwhals.schema.Schema"),
+]

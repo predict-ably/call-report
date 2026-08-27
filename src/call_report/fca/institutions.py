@@ -1,9 +1,9 @@
 """Parse the FCA institution roster (the ``INST`` root) from a release.
 
 The roster is handled as its own module rather than through
-:mod:`call_report.fca.enums`'s `FCASchedule`, since it describes
-institutions themselves rather than a financial schedule. It is parsed the
-same way as any other ``"single"``-scenario schedule.
+:class:`~call_report.fca.FCASchedule`, since it describes institutions
+themselves rather than a financial schedule. It is parsed the same way as
+any other ``"single"``-scenario schedule.
 """
 
 from __future__ import annotations
