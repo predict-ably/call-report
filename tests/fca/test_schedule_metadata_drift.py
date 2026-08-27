@@ -21,10 +21,13 @@ here so a failure says which one moved::
       -> _generate_bases()   -> data/fca-schedule-metadata/base/<root>.json
       -> _apply_overrides()  -> src/call_report/fca/data/schedules/<root>.json
 
-The base-to-shipped checks and the latest-period sentinel are cheap (no
-archive scan) and run on every pull request. Only the full rebuild from
-every archived release is expensive, and that one is gated behind
-``--run-exhaustive``.
+Every check here runs on every pull request. The base-to-shipped checks
+and the latest-period sentinels need no archive scan at all and cost
+milliseconds. The full rebuild reads all 105 archived releases, which
+takes a few seconds because it parses layouts rather than data files, so
+it carries ``slow`` to stay out of the ``pytest -m "not slow"`` edit-test
+loop. CI runs an unfiltered ``pytest``, so ``slow`` does not exempt it
+from anything that gates a merge.
 
 `tests.fca.test_report.test_a_real_release_layout_matches_the_shipped_metadata`
 is a related but narrower spot check: one release's layout against the
@@ -226,7 +229,6 @@ def test_the_shipped_metadata_reaches_the_latest_catalog_period() -> None:
 
 
 @pytest.mark.slow
-@pytest.mark.exhaustive
 def test_a_full_rebuild_reproduces_the_checked_in_base() -> None:
     """Regenerating from every archived release reproduces the base exactly.
 
@@ -242,13 +244,17 @@ def test_a_full_rebuild_reproduces_the_checked_in_base() -> None:
 
     This is the assertion form of the script's own ``--full`` audit, and
     uses the same comparison it does.
+
+    Marked `slow` only to keep it out of the ``-m "not slow"`` edit-test
+    loop. It runs on every pull request, since CI runs an unfiltered
+    ``pytest``.
     """
     with PackagedArchiveTransport() as transport:
         present = sorted(transport.archive_root.glob("*.zip"))
     # Fail rather than skip on an empty archive. A green run of nothing is
-    # worse than a red one: this test exists to be the guarantee, and an
-    # exhaustive job reporting success having checked no releases would be
-    # actively misleading.
+    # worse than a red one: this test exists to be the guarantee, and a job
+    # reporting success having checked no releases would be actively
+    # misleading.
     assert present, (
         "No archived release zips found under data/fca-call-report; this test "
         "cannot verify anything without them."
