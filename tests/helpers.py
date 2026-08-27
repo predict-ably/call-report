@@ -16,14 +16,54 @@ access.
 from __future__ import annotations
 
 import datetime
+import functools
+import importlib.util
 import math
+import sys
 from collections.abc import Iterable
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import narwhals as nw
 
 ENCODING = "windows-1252"
+
+_GENERATION_SCRIPT = (
+    Path(__file__).resolve().parents[1]
+    / "scripts"
+    / "generate_fca_schedule_metadata.py"
+)
+
+
+@functools.cache
+def load_generation_script() -> ModuleType:
+    """Load the FCA schedule metadata generation script as a module.
+
+    ``scripts/`` is not a Python package, so the script is loaded from its
+    file path rather than imported. It is registered in `sys.modules`
+    before execution, because `dataclasses.dataclass` resolves postponed
+    annotations by looking the defining module up there, which a bare
+    ``module_from_spec``/``exec_module`` never populates on its own.
+
+    Cached, so every caller shares one module object rather than
+    re-executing the script and replacing the `sys.modules` entry.
+
+    Returns
+    -------
+    types.ModuleType
+        The executed script module.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "generate_fca_schedule_metadata", _GENERATION_SCRIPT
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
 
 ALL_BACKENDS = ("pandas", "polars", "pyarrow")
 """The dataframe backends every cross-backend test runs against."""
