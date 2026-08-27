@@ -26,6 +26,7 @@ just that they load without error.
 
 from __future__ import annotations
 
+import datetime
 import math
 import random
 from typing import Any
@@ -153,12 +154,12 @@ KNOWN_EMPTY_SCHEDULES = frozenset(
     (period, "RCO") for period in PeriodRange(start="2000-03-31", end="2003-12-31")
 )
 
-# `period` holds a datetime.date under every backend, but pandas' default
-# dtypes have no date type, so it lands in an Object column while polars
-# and pyarrow report Date. The values are identical, the declared type is
-# not. Pinned by column name rather than allowed for any column, so an
-# Object dtype appearing anywhere else still fails.
-OBJECT_DATE_COLUMNS = frozenset({"period"})
+# `period` names a calendar date, which polars and pyarrow hold as Date.
+# pandas has no date dtype, so it holds the same value as a Datetime (see
+# call_report.core._backend.date_dtype). The values are identical, the
+# declared type is not. Pinned by column name rather than allowed for any
+# column, so this divergence appearing elsewhere still fails.
+DATE_COLUMNS = frozenset({"period"})
 
 
 @pytest.fixture(scope="session")
@@ -516,18 +517,13 @@ def _native_rows(native_frame: Any) -> list[dict[str, Any]]:
 
 
 def _assert_schemas_equivalent(
-    *,
-    reference: nw.DataFrame[Any],
-    other: nw.DataFrame[Any],
-    label: str,
-    ignore_column_order: bool = False,
+    *, reference: nw.DataFrame[Any], other: nw.DataFrame[Any], label: str
 ) -> None:
     """Assert two backends built the same schema for one frame.
 
     Column names and their order must match exactly. Dtypes must match
-    too, with one documented exception: a column named in
-    `OBJECT_DATE_COLUMNS` may be ``Object`` under pandas against ``Date``
-    elsewhere.
+    too, with one documented exception: a column named in `DATE_COLUMNS`
+    may be ``Datetime`` under pandas against ``Date`` elsewhere.
 
     Any other disagreement fails. Every column a schedule file produces
     carries its layout-declared dtype under all three backends, so the
@@ -543,22 +539,12 @@ def _assert_schemas_equivalent(
         Another backend's frame for the same schedule and period.
     label : str
         Identifies the backend/schedule combination in failure messages.
-    ignore_column_order : bool, default False
-        Compare column names as a set rather than as an ordered list.
-        Set only by the long-format round trip, whose two routes return
-        the same columns in different orders. See issue #46.
     """
     reference_schema = reference.collect_schema()
     other_schema = other.collect_schema()
-    if ignore_column_order:
-        assert set(other_schema) == set(reference_schema), (
-            f"{label}: columns {sorted(other_schema)}, expected "
-            f"{sorted(reference_schema)}."
-        )
-    else:
-        assert list(other_schema) == list(reference_schema), (
-            f"{label}: columns {list(other_schema)}, expected {list(reference_schema)}."
-        )
+    assert list(other_schema) == list(reference_schema), (
+        f"{label}: columns {list(other_schema)}, expected {list(reference_schema)}."
+    )
 
     for name in reference_schema:
         reference_dtype = reference_schema[name]
@@ -566,7 +552,9 @@ def _assert_schemas_equivalent(
         if reference_dtype == other_dtype:
             continue
         pair = {str(reference_dtype), str(other_dtype)}
-        if pair == {"Object", "Date"} and name in OBJECT_DATE_COLUMNS:
+        if pair == {"Datetime(time_unit='us', time_zone=None)", "Date"} and (
+            name in DATE_COLUMNS
+        ):
             continue
         raise AssertionError(
             f"{label} column {name!r}: dtype {other_dtype} is not equivalent to "
@@ -581,6 +569,25 @@ def _is_missing(value: object) -> bool:
     pyarrow use an actual None -- both count as "missing" here.
     """
     return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+def _same_date(first: object, second: object) -> bool:
+    """Return True if two cells name the same calendar date.
+
+    `period` is a Date under polars and pyarrow, which hand back a
+    `datetime.date`. pandas has no date dtype and holds it as a Datetime,
+    which hands back a `pandas.Timestamp`. Both name the same quarter end,
+    and the schema comparison already pins that dtype divergence to
+    `DATE_COLUMNS`, so the value comparison accepts the two spellings of
+    one date rather than requiring one backend's type.
+    """
+    if not isinstance(first, datetime.date) or not isinstance(second, datetime.date):
+        return False
+    as_dates = [
+        value.date() if isinstance(value, datetime.datetime) else value
+        for value in (first, second)
+    ]
+    return as_dates[0] == as_dates[1]
 
 
 def _load_schedule_frames(
@@ -671,6 +678,8 @@ def _assert_rows_equal(
         for key, ref_value in ref_row.items():
             other_value = other_row[key]
             if _is_missing(ref_value) and _is_missing(other_value):
+                continue
+            if _same_date(ref_value, other_value):
                 continue
             assert other_value == ref_value, (
                 f"{label} row {index} column {key!r}: {other_value!r} != {ref_value!r}"
@@ -1142,10 +1151,6 @@ def _assert_round_trip(*, period: ReportingPeriod) -> None:
         reference=_eager(long_),
         other=_eager(convert_wide_format_to_long_format(wide=wide)),
         label=f"long-round-trip-schema:{period.label}",
-        # `to_long_format` and `convert_wide_format_to_long_format` return
-        # the same eight columns in different orders, so the round trip is
-        # not order-stable. Names and dtypes are still compared exactly.
-        ignore_column_order=True,
     )
 
     non_null_long = [row for row in long_rows if not _is_missing(row["value"])]

@@ -15,6 +15,7 @@ from call_report.core._backend import (
     DataFrameType,
     FrameOrLazy,
     concat,
+    date_dtype,
     finalize,
     finalize_as,
 )
@@ -776,6 +777,11 @@ class FCACallReport(BaseCallReport):
         `~call_report.fca.convert_long_format_to_wide_format` to pivot this
         back to `to_wide_format`'s shape.
 
+        Columns are always returned in the order ``UNINUM``, ``period``,
+        ``schedule``, ``code_column``, ``code_value``, ``variable_name``,
+        ``value``, ``is_multiple``. That order is part of the contract, so a
+        positional read of this frame matches one built by the other route.
+
         Parameters
         ----------
         schedules : Iterable[FCASchedule or str], optional
@@ -816,9 +822,9 @@ class FCACallReport(BaseCallReport):
         ...     transport=PackagedArchiveTransport(),
         ... )
         >>> long = report.to_long_format(schedules=["RC", "RCB"])
-        >>> sorted(long.columns)
-        ['UNINUM', 'code_column', 'code_value', 'is_multiple', 'period', \
-'schedule', 'value', 'variable_name']
+        >>> list(long.columns)
+        ['UNINUM', 'period', 'schedule', 'code_column', 'code_value', \
+'variable_name', 'value', 'is_multiple']
         """
         return finalize_as(
             frame=self._to_long_format(schedules=schedules),
@@ -985,9 +991,12 @@ def _with_period_column(
     Returns
     -------
     narwhals.DataFrame
-        `frame` with an added ``period`` column.
+        `frame` with an added ``period`` column, of the backend's own
+        date dtype (see `call_report.core._backend.date_dtype`).
     """
-    return frame.with_columns(nw.lit(period.period_end).alias("period"))
+    return frame.with_columns(
+        nw.lit(period.period_end).cast(date_dtype()).alias("period")
+    )
 
 
 def _build_schedule_presence_map(

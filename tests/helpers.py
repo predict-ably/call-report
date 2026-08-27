@@ -15,6 +15,7 @@ access.
 
 from __future__ import annotations
 
+import datetime
 import math
 from collections.abc import Iterable
 from pathlib import Path
@@ -121,3 +122,19 @@ def is_missing(value: object) -> bool:
     and pyarrow use an actual ``None``. Both count as missing here.
     """
     return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+def as_date(value: object) -> datetime.date:
+    """Return a ``period`` cell as a plain date, however the backend spells it.
+
+    polars and pyarrow hold `period` as a native date and hand back a
+    `datetime.date`. pandas has no date dtype, so it holds the same value
+    as a datetime and hands back a `datetime.datetime`. Both name the same
+    quarter end, so a test comparing periods normalizes through this
+    rather than expecting one backend's spelling.
+    """
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    if isinstance(value, datetime.date):
+        return value
+    raise TypeError(f"expected a date or datetime, got {type(value).__name__}")

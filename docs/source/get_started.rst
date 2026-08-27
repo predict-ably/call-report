@@ -157,6 +157,14 @@ that means the nullable extension dtypes (``Int64``, ``Float64``,
 ``string``) rather than the numpy-backed defaults, since a numpy
 ``int64`` column cannot hold a missing value.
 
+The ``period`` column the loader adds names a calendar quarter end.
+polars and pyarrow hold it as a ``Date``. pandas has no date dtype, so it
+holds the same value as a ``Datetime`` whose time component is always
+midnight, which keeps the ``.dt`` accessor and a parquet round trip
+working. A ``dataframe_type`` override follows the same rule, so the
+dtype depends on the type you ask for rather than on the backend that
+built the frame.
+
 A field's metadata can also carry more than one version: FCA revised
 ``LOANSTATUS``'s own code list in 2015 (splitting code ``155`` into a new
 ``152``/``155`` pair), with no gap in the field's presence -- `as_of`
@@ -222,9 +230,12 @@ variable.
 .. code-block:: python
 
    long = report.to_long_format(schedules=["RC", "RCB"])
-   sorted(long.columns)
-   # ['UNINUM', 'code_column', 'code_value', 'is_multiple', 'period',
-   #  'schedule', 'value', 'variable_name']
+   list(long.columns)
+   # ['UNINUM', 'period', 'schedule', 'code_column', 'code_value',
+   #  'variable_name', 'value', 'is_multiple']
+
+That column order is guaranteed, and both routes to a long-format frame
+produce it, so a positional read of one matches the other.
 
 ``value`` is always ``Float64`` -- the most generic type that
 represents every schedule's measures. A plain (non-code) field has

@@ -15,7 +15,7 @@ import pytest
 
 from call_report.config import config_context
 from call_report.core import ReportingPeriod
-from call_report.core._backend import DataFrameType
+from call_report.core._backend import DataFrameType, date_dtype
 from call_report.exceptions import (
     DownloadError,
     InvalidPeriodError,
@@ -33,7 +33,7 @@ from call_report.fca import (
 from call_report.fca.layout import FCALayout
 from call_report.fca.transport import LocalDirectoryTransport
 from tests.fca.layouts import RC_LINES_7COL
-from tests.helpers import is_missing, rows_of, write_data, write_layout
+from tests.helpers import as_date, is_missing, rows_of, write_data, write_layout
 
 # ---------------------------------------------------------------------------
 # __init__ / sklearn-style conventions
@@ -263,7 +263,7 @@ def test_load_result_carries_period_and_uninum_columns(
     result = report.load(schedule="RC")
     rows = rows_of(result)
     assert {"period", "UNINUM"} <= set(rows[0])
-    periods_seen = {r["period"] for r in rows}
+    periods_seen = {as_date(r["period"]) for r in rows}
     assert periods_seen == {date(2025, 9, 30), date(2025, 12, 31)}
 
 
@@ -279,8 +279,8 @@ def test_load_schema_policy_union_outer_joins_columns(
     )
     rows = rows_of(report.load(schedule="RC"))
     assert "TOTLIAB" in rows[0]
-    q3_rows = [r for r in rows if r["period"] == date(2025, 9, 30)]
-    q4_rows = [r for r in rows if r["period"] == date(2025, 12, 31)]
+    q3_rows = [r for r in rows if as_date(r["period"]) == date(2025, 9, 30)]
+    q4_rows = [r for r in rows if as_date(r["period"]) == date(2025, 12, 31)]
     assert all(is_missing(r["TOTLIAB"]) for r in q3_rows)
     assert all(not is_missing(r["TOTLIAB"]) for r in q4_rows)
 
@@ -326,7 +326,7 @@ def test_load_schedule_missing_in_some_periods_returns_partial_result(
     rows = rows_of(report.load(schedule="RCR7"))
     q3 = ReportingPeriod.from_period_end(value="2025-09-30")
     q4 = ReportingPeriod.from_period_end(value="2025-12-31")
-    assert all(r["period"] == date(2025, 12, 31) for r in rows)
+    assert all(as_date(r["period"]) == date(2025, 12, 31) for r in rows)
     assert report.periods_available(schedule="RCR7") == (q4,)
     assert report.periods_missing(schedule="RCR7") == (q3,)
 
@@ -389,7 +389,7 @@ def test_load_records_layout_parse_error_and_continues(tmp_path: Path) -> None:
     )
     rows = rows_of(report.load(schedule="RC"))
     assert len(rows) == 1
-    assert rows[0]["period"] == date(2025, 9, 30)
+    assert as_date(rows[0]["period"]) == date(2025, 9, 30)
 
     assert len(report.errors_) == 1
     issue = report.errors_[0]
@@ -473,7 +473,7 @@ def test_load_institutions(data_dir: Path, release_2026q1: Path) -> None:
     rows = rows_of(report.load_institutions())
     assert rows[0]["UNINUM"] == 610000
     assert rows[0]["SHORTNAME"] == "Café Ridge FCB"
-    assert rows[0]["period"] == date(2026, 3, 31)
+    assert as_date(rows[0]["period"]) == date(2026, 3, 31)
 
 
 def test_load_institutions_records_parse_error_and_continues(tmp_path: Path) -> None:
@@ -509,7 +509,7 @@ def test_load_institutions_records_parse_error_and_continues(tmp_path: Path) -> 
     )
     rows = rows_of(report.load_institutions())
     assert len(rows) == 1
-    assert rows[0]["period"] == date(2025, 9, 30)
+    assert as_date(rows[0]["period"]) == date(2025, 9, 30)
     assert len(report.errors_) == 1
     assert isinstance(report.errors_[0].error, LayoutParseError)
 
@@ -750,7 +750,7 @@ def test_to_wide_format_default_includes_every_discovered_schedule(
     assert len(rows) == 1
     row = rows[0]
     assert row["UNINUM"] == 610000
-    assert row["period"] == date(2026, 3, 31)
+    assert as_date(row["period"]) == date(2026, 3, 31)
     assert row["RC__TOTASSETS"] == 1100000.0
     assert row["RC__TOTLIAB"] == 950000.0
     assert row["RCB__INV_CODE_10__AMOUNT"] == 120.0
@@ -797,7 +797,7 @@ def test_to_wide_format_multi_period_grain_and_schema_union(
         transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     wide = report.to_wide_format(schedules=["RC"])
-    rows = {(row["UNINUM"], row["period"]): row for row in rows_of(wide)}
+    rows = {(row["UNINUM"], as_date(row["period"])): row for row in rows_of(wide)}
     assert len(rows) == 4
     # release_2025q3's RC layout has no TOTLIAB column yet.
     q3_row = rows[(610000, date(2025, 9, 30))]
@@ -939,7 +939,7 @@ def test_to_long_format_default_includes_every_discovered_schedule(
         r for r in rows if r["schedule"] == "RC" and r["variable_name"] == "TOTASSETS"
     )
     assert rc_row["UNINUM"] == 610000
-    assert rc_row["period"] == date(2026, 3, 31)
+    assert as_date(rc_row["period"]) == date(2026, 3, 31)
     assert rc_row["value"] == 1100000.0
     assert rc_row["is_multiple"] is False
     assert is_missing(rc_row["code_column"])
@@ -1007,7 +1007,7 @@ def test_to_long_format_multi_period_grain_and_schema_union(
     q3_totliab = next(
         r
         for r in rows
-        if r["period"] == date(2025, 9, 30)
+        if as_date(r["period"]) == date(2025, 9, 30)
         and r["variable_name"] == "TOTLIAB"
         and r["UNINUM"] == 610000
     )
@@ -1015,7 +1015,7 @@ def test_to_long_format_multi_period_grain_and_schema_union(
     q4_totassets = next(
         r
         for r in rows
-        if r["period"] == date(2025, 12, 31)
+        if as_date(r["period"]) == date(2025, 12, 31)
         and r["variable_name"] == "TOTASSETS"
         and r["UNINUM"] == 610000
     )
@@ -1209,3 +1209,59 @@ def _normalizerows_of(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {key: (None if is_missing(value) else value) for key, value in row.items()}
         for row in rows
     ]
+
+
+def test_period_column_carries_a_date_dtype_on_every_output(
+    backend: str, data_dir: Path, release_2025q4: Path
+) -> None:
+    """Every frame a report returns carries a typed period, not an object column.
+
+    `period` holds a `datetime.date`, which pandas has no dtype for, so it
+    used to land in an object column under the default backend. That
+    supports no ``.dt`` accessor and does not survive a parquet round
+    trip. `_with_period_column` is the one place period is built, so
+    every entry point below is fixed by the same cast.
+    """
+    report = FCACallReport(
+        start="2025-12-31",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    frames = {
+        "load": report.load(schedule="RC"),
+        "load_institutions": report.load_institutions(),
+        "to_wide_format": report.to_wide_format(schedules=["RC"]),
+        "to_long_format": report.to_long_format(schedules=["RC"]),
+    }
+    for label, frame in frames.items():
+        dtype = nw.from_native(frame).collect_schema()["period"]
+        assert dtype == date_dtype(), f"{label}: period is {dtype}."
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "polars_dataframe", "polars_lazyframe", "pyarrow_table"],
+)
+def test_period_stays_typed_when_converted_to_another_dataframe_type(
+    backend: str, dataframe_type: DataFrameType, data_dir: Path, release_2025q4: Path
+) -> None:
+    """A dataframe_type's period dtype depends on that type, not on the backend.
+
+    Conversion does not translate between the two representations of a
+    calendar date on its own. A Date handed to pandas becomes an object
+    column of `datetime.date` values, and a Datetime handed to polars
+    stays a Datetime, so the same requested type used to produce
+    different dtypes depending on which backend was configured.
+
+    pandas is Datetime because it has no date dtype. Every other type is
+    Date. Both hold the same quarter end.
+    """
+    report = FCACallReport(
+        start="2025-12-31",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    result = report.load(schedule="RC", dataframe_type=dataframe_type)
+    dtype = nw.from_native(result).collect_schema()["period"]
+    expected = nw.Datetime("us") if dataframe_type == "pandas" else nw.Date()
+    assert dtype == expected
