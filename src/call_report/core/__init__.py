@@ -12,6 +12,8 @@ This package collects the small vocabulary every call report source shares:
 - Cross-source enums: :class:`Source` and :class:`FileType`.
 - :class:`BaseCallReport`, the abstract interface every source-specific
   entry point implements.
+- The dataframe vocabulary every reader returns and is steered by:
+  :data:`NativeDataFrame` and :data:`DataFrameType`.
 
 The concrete definitions live in private sub-modules and are re-exported
 here, so import them directly from ``call_report.core``, e.g.
@@ -20,6 +22,7 @@ here, so import them directly from ``call_report.core``, e.g.
 
 from __future__ import annotations
 
+from call_report.core._backend import DataFrameType, NativeDataFrame
 from call_report.core._base import BaseCallReport
 from call_report.core._enums import FileType, Quarter, Source
 from call_report.core._periods import PeriodRange, ReportingPeriod
@@ -35,6 +38,7 @@ from call_report.core._schema import (
 
 __all__ = [
     "BaseCallReport",
+    "DataFrameType",
     "FieldAttributes",
     "FieldChange",
     "FieldSchema",
@@ -43,6 +47,7 @@ __all__ = [
     "FileMetadata",
     "FileMetadataDiff",
     "FileType",
+    "NativeDataFrame",
     "PeriodRange",
     "Quarter",
     "ReportingPeriod",

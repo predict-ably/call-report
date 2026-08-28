@@ -136,3 +136,42 @@ def test_class_template_reads_the_configured_context_variable(
     referenced = set(re.findall(r"{%-?\s*if\s+\S+\s+in\s+(\w+)\s*%}", template))
     assert referenced
     assert referenced <= set(sphinx_conf.autosummary_context)
+
+
+def test_nitpicky_mode_is_enabled(sphinx_conf: ModuleType) -> None:
+    """Nitpicky mode stays on, so an unresolved cross-reference fails the build.
+
+    Without it a ``:class:`` or ``:mod:`` pointing at something that does
+    not exist renders as plain text and emits no warning, so ``-W`` and
+    Read the Docs both pass. A reference that stops resolving after a
+    rename would then be invisible. See issue #53.
+    """
+    assert sphinx_conf.nitpicky is True
+
+
+def test_nitpick_ignore_entries_are_well_formed(sphinx_conf: ModuleType) -> None:
+    """Every nitpick_ignore entry is a well-formed pair naming a foreign target.
+
+    Sphinx silently ignores a malformed entry, so a typo would suppress
+    nothing and the build would fail on a target the list is meant to
+    cover. The second assertion keeps the list to third-party targets:
+    one of this package's own objects that will not resolve should be
+    given a documentation target instead of being hidden here.
+    """
+    for entry in sphinx_conf.nitpick_ignore:
+        role, target = entry
+        assert re.fullmatch(r"\w+:\w+", role), entry
+        assert target and not target.startswith("call_report."), entry
+
+
+def test_every_intersphinx_target_of_a_dataframe_backend_is_mapped(
+    sphinx_conf: ModuleType,
+) -> None:
+    """Each backend annotated in a signature has an intersphinx inventory.
+
+    The overloads on every dataframe-returning function annotate the
+    backend types by their full import path, which resolves only while
+    that library has a mapping. Dropping one would turn 11 links per
+    backend back into inert text.
+    """
+    assert {"pandas", "polars", "pyarrow"} <= set(sphinx_conf.intersphinx_mapping)

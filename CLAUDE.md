@@ -156,10 +156,17 @@ builds the same way on every pull request touching `docs/` or
 `src/call_report/`, and `.readthedocs.yaml` sets `fail_on_warning: true`, so a
 warning that passes locally without `-W` still fails CI and the hosted build.
 The one warning that is not the repo's own fault is an unreachable
-`intersphinx` inventory (the Python, pandas, and polars object inventories are
-fetched on every build). Re-run before looking for a cause in the change
-itself. Note that `-W` does not catch an unresolved cross-reference, which
-needs nitpicky mode (`-n`); that is not enabled yet.
+`intersphinx` inventory (the Python, pandas, polars, and pyarrow object
+inventories are fetched on every build). Re-run before looking for a cause in
+the change itself.
+
+`conf.py` also sets `nitpicky = True`, so every Python cross-reference must
+resolve or the build fails. It is set there rather than passed as `-n` so
+Read the Docs enforces it too. Two consequences when writing a docstring:
+annotate a backend type by its full import path (`pandas.DataFrame`, not
+`pd.DataFrame`), and reference an object this package documents rather than a
+module that only holds it. A target that genuinely cannot resolve goes in
+`nitpick_ignore` in `conf.py`, with its reason.
 
 ## Conventions
 

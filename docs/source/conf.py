@@ -304,8 +304,43 @@ copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: 
 copybutton_prompt_is_regexp = True
 copybutton_selector = ":not(.prompt) > div.highlight pre"
 
+# One entry per dataframe library named in a rendered signature. The
+# overloads on every dataframe-returning function annotate the backend types
+# by their full import path (pandas.DataFrame, pyarrow.Table, ...), so each
+# renders as a link into that library's own reference rather than as inert
+# text. narwhals is deliberately absent: it publishes its API reference with
+# mkdocs, whose inventory does not carry the module paths this package
+# annotates with, so its targets are handled by nitpick_ignore below.
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "pandas": ("https://pandas.pydata.org/docs/", None),
     "polars": ("https://docs.pola.rs/api/python/stable/", None),
+    "pyarrow": ("https://arrow.apache.org/docs/", None),
 }
+
+# Every Python cross-reference must resolve. Without this an unresolved
+# :class: or :mod: renders as plain text and emits no warning at all, so a
+# reference that stops resolving after a rename is invisible. Set here
+# rather than as -n on the command line, so that the `-W` build in
+# .github/workflows/docs.yml and `sphinx.fail_on_warning` on Read the Docs
+# both enforce it.
+nitpicky = True
+
+# Targets that cannot resolve however they are written. Keep this list
+# short and keep each entry's reason with it: an entry that outlives its
+# reason silently re-opens the gap nitpicky mode exists to close.
+nitpick_ignore = [
+    # narwhals is the one hard third-party runtime dependency, and these
+    # are the two of its types that reach a rendered signature. Its API
+    # reference is published with mkdocs, whose inventory does not carry
+    # these module paths, so there is no intersphinx entry to add.
+    ("py:class", "narwhals.dtypes.DType"),
+    ("py:class", "narwhals.schema.Schema"),
+    # polars documents these two classes only through their individual
+    # members, so its inventory carries polars.DataFrame.filter and its
+    # siblings but no class-level entry for either name. There is nothing
+    # to rename them to. They stay spelled this way because it is how a
+    # caller imports them.
+    ("py:class", "polars.DataFrame"),
+    ("py:class", "polars.LazyFrame"),
+]
