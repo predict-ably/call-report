@@ -18,9 +18,8 @@ without going back to the source files.
 
 The examples below use the default ``pandas`` backend, so the indexing is
 pandas'. The reshaping methods themselves work on every configured backend,
-including ``pyarrow``, which has no native pivot and falls back to an
-equivalent filter-and-join reshape automatically. See
-:doc:`dataframe_backends`.
+including ``pyarrow``, which has no native pivot and uses an equivalent
+single-pass reshape automatically. See :doc:`dataframe_backends`.
 
 .. doctest::
 

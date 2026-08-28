@@ -8,17 +8,28 @@ configured via :mod:`call_report.config`.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar, cast, overload
 
 import narwhals as nw
 
 from call_report.config import DataFrameBackend, get_config
+from call_report.core._dependencies import _lazy_import, _LazyModule
 from call_report.exceptions import LayoutParseError, ReshapeError
 
 if TYPE_CHECKING:
     import pandas
     import polars
     import pyarrow
+    import pyarrow.compute as pc
+else:
+    # `_pyarrow_pivot` is the one helper here that drives a backend directly
+    # rather than through narwhals, so it needs pyarrow itself. These proxies
+    # import it on first attribute access, which only happens once a pyarrow
+    # frame has reached that function, so pyarrow stays an optional install.
+    # `pyarrow.compute` gets a proxy built from the parent's availability,
+    # because resolving a submodule's spec would import the parent eagerly.
+    pyarrow, _PYARROW_AVAILABLE = _lazy_import("pyarrow")
+    pc = _LazyModule("pyarrow.compute", module_available=_PYARROW_AVAILABLE)
 
 NativeDataFrame: TypeAlias = (
     "pandas.DataFrame | pyarrow.Table | polars.DataFrame | polars.LazyFrame"
@@ -572,12 +583,12 @@ def pivot(
     for as long as `frame` lets it.
 
     narwhals' native ``pivot`` raises ``NotImplementedError`` on the
-    pyarrow backend, so for that backend this falls back to
-    `_manual_pivot`, a filter-and-join reshape producing the same result.
+    pyarrow backend, so for that backend this hands off to
+    `_pyarrow_pivot`, a single-pass reshape producing the same result.
     `index` plus `on` must be a unique grain. A duplicate raises
     `ReshapeError` on every backend rather than silently aggregating,
     either from narwhals' own error (translated here) or from
-    `_manual_pivot`'s explicit check.
+    `_pyarrow_pivot`'s own check.
 
     Parameters
     ----------
@@ -605,7 +616,7 @@ def pivot(
     if isinstance(frame, nw.LazyFrame):
         frame = frame.collect()
     if frame.implementation is nw.Implementation.PYARROW:
-        return _manual_pivot(frame=frame, on=on, index=index, values=values)
+        return _pyarrow_pivot(frame=frame, on=on, index=index, values=values)
     try:
         return frame.pivot(on=on, index=index, values=values, sort_columns=True)
     except Exception as error:
@@ -648,20 +659,67 @@ def assert_unique_grain(
     return frame
 
 
-def _manual_pivot(
+def _changes_between_rows(
+    column: pyarrow.ChunkedArray, *, length: int
+) -> pyarrow.BooleanArray:
+    """Flag each position where `column` differs from the row before it.
+
+    The result has ``length - 1`` elements. Element ``i`` answers whether
+    row ``i + 1`` differs from row ``i``. Two nulls count as equal and a
+    null beside a non-null counts as a change, which the comparison
+    kernels do not give on their own because comparing against null
+    yields null rather than true.
+
+    Parameters
+    ----------
+    column : pyarrow.ChunkedArray
+        One column of a sorted table.
+    length : int
+        The number of rows in that table.
+
+    Returns
+    -------
+    pyarrow.BooleanArray
+        A boolean array of ``length - 1`` elements.
+    """
+    # The comparison kernels want one contiguous array, and a table built
+    # by concatenation holds each column as several chunks.
+    values = column.combine_chunks()
+    head, tail = values.slice(0, length - 1), values.slice(1)
+    both_known: pyarrow.BooleanArray = pc.and_(pc.is_valid(head), pc.is_valid(tail))
+    one_side_null: pyarrow.BooleanArray = pc.xor(pc.is_null(head), pc.is_null(tail))
+    differs: pyarrow.BooleanArray = pc.not_equal(head, tail)
+    # `not_equal` is null wherever either side is, and Kleene AND turns
+    # that null into False rather than propagating it.
+    return pc.or_(one_side_null, pc.and_kleene(both_known, differs))
+
+
+def _pyarrow_pivot(
     *, frame: nw.DataFrame[Any], on: str, index: list[str], values: str
 ) -> nw.DataFrame[Any]:
-    """Pivot `frame` wide using filter-and-join, for backends without native pivot.
+    """Pivot `frame` wide with pyarrow's compute kernels.
 
-    Runs one filter and join per distinct `on` value, so it costs
-    O(number of distinct columns) rather than native ``pivot``'s single
-    pass. It produces the same output as `nw.DataFrame.pivot` for the
-    same input, and exists only for backends without a native pivot.
+    narwhals has no pivot for pyarrow, so this reshapes the table
+    directly. It gives every row of the long frame an output row position
+    and an output column position, sorts by that pair once, and cuts the
+    `values` column into finished output columns. The cost is two sorts of
+    the long frame plus one pass per output column. The result is never
+    assembled column by column, so a wider result does not make each
+    remaining column more expensive to add.
+
+    A key present for every output row needs no work beyond slicing the
+    sorted `values` column. Only a key missing from some rows pays for a
+    gap-filling take.
+
+    Sorting by `index` then `on` also puts any duplicate of the
+    `index` + `on` grain in adjacent rows, so the uniqueness `pivot`
+    promises is checked from that same sort rather than by a second pass
+    over the data.
 
     Parameters
     ----------
     frame : narwhals.DataFrame
-        The long-shaped frame to pivot.
+        The long-shaped frame to pivot. Must be backed by pyarrow.
     on : str
         The column whose distinct values become new column names.
     index : list[str]
@@ -672,68 +730,85 @@ def _manual_pivot(
     Returns
     -------
     narwhals.DataFrame
-        The pivoted, wide-shaped frame, with columns in a deterministic
-        (sorted) order.
+        The pivoted, wide-shaped frame, with rows sorted by `index` and
+        columns in a deterministic (sorted) order.
 
     Raises
     ------
     ReshapeError
         If `index` + `on` is not a unique grain.
     """
-    try:
-        frame = assert_unique_grain(frame=frame, columns=[*index, on])
-    except ReshapeError as error:
-        raise ReshapeError(
-            f"Could not pivot: index={index!r} + on={on!r} is not a unique grain."
-        ) from error
+    table: pyarrow.Table = frame.to_native().select([*index, on, values])
+    ordered = table.sort_by([(name, "ascending") for name in (*index, on)])
+    length = ordered.num_rows
 
-    key_rows = frame.select(on).unique(subset=[on]).sort(on).rows(named=True)
-    pieces: list[nw.DataFrame[Any]] = []
-    for row in key_rows:
-        key_value = row[on]
-        column_name = str(key_value)
-        piece = (
-            frame.filter(nw.col(on) == key_value)
-            .select(*index, values)
-            .rename({values: column_name})
+    if length == 0:
+        row_starts: pyarrow.BooleanArray = pyarrow.array([], type=pyarrow.bool_())
+    else:
+        starts = _changes_between_rows(ordered.column(index[0]), length=length)
+        for name in index[1:]:
+            starts = pc.or_(
+                starts, _changes_between_rows(ordered.column(name), length=length)
+            )
+        grain_changes = pc.or_(
+            starts, _changes_between_rows(ordered.column(on), length=length)
         )
-        pieces.append(piece)
+        if not pc.all(grain_changes).as_py():
+            raise ReshapeError(
+                f"Could not pivot: index={index!r} + on={on!r} is not a unique grain."
+            )
+        row_starts = pyarrow.concat_arrays([pyarrow.array([True]), starts])
 
-    result = pieces[0]
-    for piece in pieces[1:]:
-        result = _join_on_index(left=result, right=piece, index=index)
-    return result.sort(index)
+    # Each row's output row position: how many index groups have started
+    # at or before it, counting from zero.
+    row_positions = pc.subtract(
+        pc.cumulative_sum(pc.cast(row_starts, pyarrow.int64())), 1
+    )
+    index_table = ordered.select(index).take(pc.indices_nonzero(row_starts))
+    row_count = index_table.num_rows
 
+    keys = ordered.column(on).combine_chunks()
+    distinct_keys = pc.unique(keys)
+    distinct_keys = distinct_keys.take(pc.sort_indices(distinct_keys))
+    column_positions = pc.cast(
+        pc.index_in(keys, value_set=distinct_keys), pyarrow.int64()
+    )
 
-def _join_on_index(
-    *, left: nw.DataFrame[Any], right: nw.DataFrame[Any], index: list[str]
-) -> nw.DataFrame[Any]:
-    """Full-join two frames on `index`, coalescing the duplicated join-key columns.
+    order = pc.sort_indices(
+        pyarrow.table({"column": column_positions, "row": row_positions}),
+        sort_keys=[("column", "ascending"), ("row", "ascending")],
+    )
+    sorted_columns = column_positions.take(order)
+    sorted_rows = row_positions.take(order)
+    sorted_values = ordered.column(values).combine_chunks().take(order)
 
-    narwhals' ``"full"`` join does not coalesce the join keys. On every
-    backend this package supports it produces a ``{col}_right``
-    counterpart for each `index` column instead of merging them. This
-    fills each `index` column from its ``_right`` counterpart wherever
-    the left side is null, then drops the ``_right`` columns.
+    # Every key holds at least one row, so the tallied positions are
+    # exactly 0 to len(distinct_keys) - 1 and sorting them puts each run
+    # length at its own key's place.
+    tally = pc.value_counts(sorted_columns)
+    run_lengths = cast(
+        "list[int]",
+        pyarrow.table(
+            {"position": tally.field("values"), "length": tally.field("counts")}
+        )
+        .sort_by("position")
+        .column("length")
+        .to_pylist(),
+    )
 
-    Parameters
-    ----------
-    left : narwhals.DataFrame
-        The left side of the join.
-    right : narwhals.DataFrame
-        The right side of the join.
-    index : list[str]
-        The shared column(s) to join and coalesce on.
+    every_row = pyarrow.array(range(row_count), type=pyarrow.int64())
+    columns: list[pyarrow.Array | pyarrow.ChunkedArray] = list(index_table.columns)
+    offset = 0
+    for run_length in run_lengths:
+        piece = sorted_values.slice(offset, run_length)
+        if run_length == row_count:
+            columns.append(piece)
+        else:
+            gaps = pc.index_in(
+                every_row, value_set=sorted_rows.slice(offset, run_length)
+            )
+            columns.append(piece.take(gaps))
+        offset += run_length
 
-    Returns
-    -------
-    narwhals.DataFrame
-        The joined frame, with exactly one copy of each `index` column.
-    """
-    joined = left.join(right, on=index, how="full")
-    for column in index:
-        right_column = f"{column}_right"
-        joined = joined.with_columns(
-            nw.col(column).fill_null(nw.col(right_column)).alias(column)
-        ).drop(right_column)
-    return joined
+    names = [*index, *(str(key) for key in distinct_keys.to_pylist())]
+    return nw.from_native(pyarrow.table(columns, names=names), eager_only=True)
