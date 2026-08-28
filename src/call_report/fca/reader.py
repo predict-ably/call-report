@@ -22,9 +22,9 @@ from call_report.exceptions import LayoutParseError
 from call_report.fca.layout import ENCODING, FCALayout, infer_field_dtype
 
 if TYPE_CHECKING:
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
+    import pandas
+    import polars
+    import pyarrow
 
     from call_report.core._backend import NativeDataFrame
 
@@ -37,22 +37,22 @@ def read_schedule_file(
 @overload
 def read_schedule_file(
     *, data_path: Path, layout: FCALayout, dataframe_type: Literal["pandas"]
-) -> pd.DataFrame:  # numpydoc ignore=GL08
+) -> pandas.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def read_schedule_file(
     *, data_path: Path, layout: FCALayout, dataframe_type: Literal["pyarrow_table"]
-) -> pa.Table:  # numpydoc ignore=GL08
+) -> pyarrow.Table:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def read_schedule_file(
     *, data_path: Path, layout: FCALayout, dataframe_type: Literal["polars_dataframe"]
-) -> pl.DataFrame:  # numpydoc ignore=GL08
+) -> polars.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def read_schedule_file(
     *, data_path: Path, layout: FCALayout, dataframe_type: Literal["polars_lazyframe"]
-) -> pl.LazyFrame:  # numpydoc ignore=GL08
+) -> polars.LazyFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 def read_schedule_file(
     *, data_path: Path, layout: FCALayout, dataframe_type: DataFrameType | None = None

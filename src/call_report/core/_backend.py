@@ -17,26 +17,35 @@ from call_report.core._dependencies import _lazy_import, _LazyModule
 from call_report.exceptions import LayoutParseError, ReshapeError
 
 if TYPE_CHECKING:
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
+    import pandas
+    import polars
+    import pyarrow
     import pyarrow.compute as pc
-
-    NativeDataFrame: TypeAlias = pd.DataFrame | pa.Table | pl.DataFrame | pl.LazyFrame
-    """The closed set of native dataframe types this package converts between.
-
-    Type-checking only. It is never imported at runtime, so referencing it
-    here does not make pandas, polars, or pyarrow hard dependencies.
-    """
 else:
     # `_pyarrow_pivot` is the one helper here that drives a backend directly
     # rather than through narwhals, so it needs pyarrow itself. These proxies
     # import it on first attribute access, which only happens once a pyarrow
     # frame has reached that function, so pyarrow stays an optional install.
-    # `pyarrow.compute` gets a proxy built from the parent's availability
+    # `pyarrow.compute` gets a proxy built from the parent's availability,
     # because resolving a submodule's spec would import the parent eagerly.
-    pa, _PYARROW_AVAILABLE = _lazy_import("pyarrow")
+    pyarrow, _PYARROW_AVAILABLE = _lazy_import("pyarrow")
     pc = _LazyModule("pyarrow.compute", module_available=_PYARROW_AVAILABLE)
+
+NativeDataFrame: TypeAlias = (
+    "pandas.DataFrame | pyarrow.Table | polars.DataFrame | polars.LazyFrame"
+)
+"""The closed set of native dataframe types this package returns.
+
+Every public function and method that produces tabular data returns one of
+these four types, never a narwhals wrapper. Which one a caller gets is
+decided by the ``dataframe_backend`` and ``lazy`` settings in
+`call_report.config`, or by an explicit `DataFrameType` override at the
+call site.
+
+The alias is written as a string, so a type checker resolves it against
+the imports above while nothing imports pandas, polars, or pyarrow at
+runtime. All three stay optional dependencies.
+"""
 
 DataFrameT = TypeVar("DataFrameT", bound="NativeDataFrame")
 
@@ -50,9 +59,18 @@ genuinely requires it, such as `pivot`.
 """
 
 SchemaPolicy = Literal["union", "intersection", "strict"]
-DataFrameType = Literal[
+
+DataFrameType: TypeAlias = Literal[
     "pandas", "pyarrow_table", "polars_lazyframe", "polars_dataframe"
 ]
+"""The names a caller can request a specific native dataframe type by.
+
+Every public method that builds a frame accepts a ``dataframe_type``
+argument taking one of these values. It converts the result as a final
+step, whatever backend produced it, so a caller can ask for a pandas
+DataFrame while the package is configured to use polars. Passing ``None``
+instead returns whatever the configured backend produced.
+"""
 
 _SUPPORTED_DATAFRAME_TYPES: frozenset[str] = frozenset(
     {"pandas", "pyarrow_table", "polars_lazyframe", "polars_dataframe"}
@@ -419,22 +437,22 @@ def convert_dataframe_type(
 @overload
 def convert_dataframe_type(
     *, data: NativeDataFrame, dataframe_type: Literal["pandas"]
-) -> pd.DataFrame:  # numpydoc ignore=GL08
+) -> pandas.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def convert_dataframe_type(
     *, data: NativeDataFrame, dataframe_type: Literal["pyarrow_table"]
-) -> pa.Table:  # numpydoc ignore=GL08
+) -> pyarrow.Table:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def convert_dataframe_type(
     *, data: NativeDataFrame, dataframe_type: Literal["polars_dataframe"]
-) -> pl.DataFrame:  # numpydoc ignore=GL08
+) -> polars.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def convert_dataframe_type(
     *, data: NativeDataFrame, dataframe_type: Literal["polars_lazyframe"]
-) -> pl.LazyFrame:  # numpydoc ignore=GL08
+) -> polars.LazyFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 def convert_dataframe_type(
     *, data: NativeDataFrame, dataframe_type: DataFrameType | None
@@ -504,22 +522,22 @@ def finalize_as(
 @overload
 def finalize_as(
     *, frame: FrameOrLazy, dataframe_type: Literal["pandas"]
-) -> pd.DataFrame:  # numpydoc ignore=GL08
+) -> pandas.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
     *, frame: FrameOrLazy, dataframe_type: Literal["pyarrow_table"]
-) -> pa.Table:  # numpydoc ignore=GL08
+) -> pyarrow.Table:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
     *, frame: FrameOrLazy, dataframe_type: Literal["polars_dataframe"]
-) -> pl.DataFrame:  # numpydoc ignore=GL08
+) -> polars.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def finalize_as(
     *, frame: FrameOrLazy, dataframe_type: Literal["polars_lazyframe"]
-) -> pl.LazyFrame:  # numpydoc ignore=GL08
+) -> polars.LazyFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 def finalize_as(
     *, frame: FrameOrLazy, dataframe_type: DataFrameType | None
@@ -641,7 +659,9 @@ def assert_unique_grain(
     return frame
 
 
-def _changes_between_rows(column: pa.ChunkedArray, *, length: int) -> pa.BooleanArray:
+def _changes_between_rows(
+    column: pyarrow.ChunkedArray, *, length: int
+) -> pyarrow.BooleanArray:
     """Flag each position where `column` differs from the row before it.
 
     The result has ``length - 1`` elements. Element ``i`` answers whether
@@ -666,9 +686,9 @@ def _changes_between_rows(column: pa.ChunkedArray, *, length: int) -> pa.Boolean
     # by concatenation holds each column as several chunks.
     values = column.combine_chunks()
     head, tail = values.slice(0, length - 1), values.slice(1)
-    both_known: pa.BooleanArray = pc.and_(pc.is_valid(head), pc.is_valid(tail))
-    one_side_null: pa.BooleanArray = pc.xor(pc.is_null(head), pc.is_null(tail))
-    differs: pa.BooleanArray = pc.not_equal(head, tail)
+    both_known: pyarrow.BooleanArray = pc.and_(pc.is_valid(head), pc.is_valid(tail))
+    one_side_null: pyarrow.BooleanArray = pc.xor(pc.is_null(head), pc.is_null(tail))
+    differs: pyarrow.BooleanArray = pc.not_equal(head, tail)
     # `not_equal` is null wherever either side is, and Kleene AND turns
     # that null into False rather than propagating it.
     return pc.or_(one_side_null, pc.and_kleene(both_known, differs))
@@ -718,12 +738,12 @@ def _pyarrow_pivot(
     ReshapeError
         If `index` + `on` is not a unique grain.
     """
-    table: pa.Table = frame.to_native().select([*index, on, values])
+    table: pyarrow.Table = frame.to_native().select([*index, on, values])
     ordered = table.sort_by([(name, "ascending") for name in (*index, on)])
     length = ordered.num_rows
 
     if length == 0:
-        row_starts: pa.BooleanArray = pa.array([], type=pa.bool_())
+        row_starts: pyarrow.BooleanArray = pyarrow.array([], type=pyarrow.bool_())
     else:
         starts = _changes_between_rows(ordered.column(index[0]), length=length)
         for name in index[1:]:
@@ -737,21 +757,25 @@ def _pyarrow_pivot(
             raise ReshapeError(
                 f"Could not pivot: index={index!r} + on={on!r} is not a unique grain."
             )
-        row_starts = pa.concat_arrays([pa.array([True]), starts])
+        row_starts = pyarrow.concat_arrays([pyarrow.array([True]), starts])
 
     # Each row's output row position: how many index groups have started
     # at or before it, counting from zero.
-    row_positions = pc.subtract(pc.cumulative_sum(pc.cast(row_starts, pa.int64())), 1)
+    row_positions = pc.subtract(
+        pc.cumulative_sum(pc.cast(row_starts, pyarrow.int64())), 1
+    )
     index_table = ordered.select(index).take(pc.indices_nonzero(row_starts))
     row_count = index_table.num_rows
 
     keys = ordered.column(on).combine_chunks()
     distinct_keys = pc.unique(keys)
     distinct_keys = distinct_keys.take(pc.sort_indices(distinct_keys))
-    column_positions = pc.cast(pc.index_in(keys, value_set=distinct_keys), pa.int64())
+    column_positions = pc.cast(
+        pc.index_in(keys, value_set=distinct_keys), pyarrow.int64()
+    )
 
     order = pc.sort_indices(
-        pa.table({"column": column_positions, "row": row_positions}),
+        pyarrow.table({"column": column_positions, "row": row_positions}),
         sort_keys=[("column", "ascending"), ("row", "ascending")],
     )
     sorted_columns = column_positions.take(order)
@@ -764,14 +788,16 @@ def _pyarrow_pivot(
     tally = pc.value_counts(sorted_columns)
     run_lengths = cast(
         "list[int]",
-        pa.table({"position": tally.field("values"), "length": tally.field("counts")})
+        pyarrow.table(
+            {"position": tally.field("values"), "length": tally.field("counts")}
+        )
         .sort_by("position")
         .column("length")
         .to_pylist(),
     )
 
-    every_row = pa.array(range(row_count), type=pa.int64())
-    columns: list[pa.Array | pa.ChunkedArray] = list(index_table.columns)
+    every_row = pyarrow.array(range(row_count), type=pyarrow.int64())
+    columns: list[pyarrow.Array | pyarrow.ChunkedArray] = list(index_table.columns)
     offset = 0
     for run_length in run_lengths:
         piece = sorted_values.slice(offset, run_length)
@@ -785,4 +811,4 @@ def _pyarrow_pivot(
         offset += run_length
 
     names = [*index, *(str(key) for key in distinct_keys.to_pylist())]
-    return nw.from_native(pa.table(columns, names=names), eager_only=True)
+    return nw.from_native(pyarrow.table(columns, names=names), eager_only=True)

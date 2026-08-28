@@ -1,9 +1,9 @@
 """Parse the FCA institution roster (the ``INST`` root) from a release.
 
 The roster is handled as its own module rather than through
-:mod:`call_report.fca.enums`'s `FCASchedule`, since it describes
-institutions themselves rather than a financial schedule. It is parsed the
-same way as any other ``"single"``-scenario schedule.
+:class:`~call_report.fca.FCASchedule`, since it describes institutions
+themselves rather than a financial schedule. It is parsed the same way as
+any other ``"single"``-scenario schedule.
 """
 
 from __future__ import annotations
@@ -20,9 +20,9 @@ from call_report.fca.layout import parse_layout
 from call_report.fca.reader import _read_schedule_frame
 
 if TYPE_CHECKING:
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
+    import pandas
+    import polars
+    import pyarrow
 
     from call_report.core._backend import NativeDataFrame
 
@@ -38,22 +38,22 @@ def read_institutions(
 @overload
 def read_institutions(
     *, release_dir: Path, dataframe_type: Literal["pandas"]
-) -> pd.DataFrame:  # numpydoc ignore=GL08
+) -> pandas.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def read_institutions(
     *, release_dir: Path, dataframe_type: Literal["pyarrow_table"]
-) -> pa.Table:  # numpydoc ignore=GL08
+) -> pyarrow.Table:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def read_institutions(
     *, release_dir: Path, dataframe_type: Literal["polars_dataframe"]
-) -> pl.DataFrame:  # numpydoc ignore=GL08
+) -> polars.DataFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 @overload
 def read_institutions(
     *, release_dir: Path, dataframe_type: Literal["polars_lazyframe"]
-) -> pl.LazyFrame:  # numpydoc ignore=GL08
+) -> polars.LazyFrame:  # numpydoc ignore=GL08
     ...  # pragma: no cover
 def read_institutions(
     *, release_dir: Path, dataframe_type: DataFrameType | None = None
