@@ -336,9 +336,11 @@ nitpick_ignore = [
     # these module paths, so there is no intersphinx entry to add.
     ("py:class", "narwhals.dtypes.DType"),
     ("py:class", "narwhals.schema.Schema"),
-    # polars' inventory loads, and its stdlib, pandas, and pyarrow
-    # neighbours all resolve, but it registers neither of these two names.
-    # They stay spelled this way because it is how a caller imports them.
+    # polars documents these two classes only through their individual
+    # members, so its inventory carries polars.DataFrame.filter and its
+    # siblings but no class-level entry for either name. There is nothing
+    # to rename them to. They stay spelled this way because it is how a
+    # caller imports them.
     ("py:class", "polars.DataFrame"),
     ("py:class", "polars.LazyFrame"),
 ]
