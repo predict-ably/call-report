@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from call_report.fca._reshape import (
+    convert_long_format_to_code_grain_format,
     convert_long_format_to_wide_format,
     convert_wide_format_to_long_format,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "FCACallReport",
     "FCASchedule",
     "all_fca_file_metadata",
+    "convert_long_format_to_code_grain_format",
     "convert_long_format_to_wide_format",
     "convert_wide_format_to_long_format",
     "get_fca_file_metadata",

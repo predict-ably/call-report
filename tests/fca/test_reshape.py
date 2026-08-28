@@ -14,14 +14,18 @@ from call_report.config import config_context
 from call_report.core._backend import build_frame, concat
 from call_report.exceptions import ReshapeError
 from call_report.fca._reshape import (
+    CODE_GRAIN_INDEX,
     LONG_FORMAT_COLUMNS,
     _cast_numeric_to_float64,
     _parse_wide_column_key,
     _with_column_key,
     _with_is_multiple_flag,
+    _with_plain_column_key,
+    convert_long_format_to_code_grain_format,
     convert_long_format_to_wide_format,
     convert_wide_format_to_long_format,
     melt_schedule_frame,
+    to_code_grain_format,
     to_long_format,
     to_wide_format,
 )
@@ -1081,3 +1085,222 @@ def test_reshaped_value_columns_are_float64(backend: str) -> None:
     value_columns = [name for name in wide_schema.names() if "__" in name]
     assert value_columns
     assert all(wide_schema[name] == nw.Float64 for name in value_columns)
+
+
+# ---------------------------------------------------------------------------
+# Code grain (issue #62)
+# ---------------------------------------------------------------------------
+
+
+def _rcr7_frame() -> Any:
+    """Build a single_multiple_single frame: two codes plus one trailing total."""
+    return build_frame(
+        data={
+            "UNINUM": [1, 1, 2],
+            "period": ["2026-03-31"] * 3,
+            "RegCapCode": [10, 20, 10],
+            "CreditEquil": [100.0, 150.0, 300.0],
+            "AvgDailyRWARegCap": [999.0, 999.0, 888.0],
+        }
+    )
+
+
+def test_with_plain_column_key_ignores_the_code() -> None:
+    """A coded row still keys as `{schedule}__{variable}` in the code grain.
+
+    The code stays a row key there, so it must not reach the column name
+    the way `_with_column_key` puts it there for the wide format.
+    """
+    frame = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "schedule": ["RCB"],
+            "variable_name": ["BKVAL"],
+            "value": [100.0],
+            "code_column": ["INV_CODE"],
+            "code_value": [15],
+        }
+    )
+    assert _with_plain_column_key(frame)["column_key"].to_list() == ["RCB__BKVAL"]
+
+
+def test_to_code_grain_format_keys_rows_by_code(backend: str) -> None:
+    """The code becomes a row key and the variable becomes a column."""
+    result = to_code_grain_format(**_reshape_inputs())
+    assert tuple(result.columns) == (*CODE_GRAIN_INDEX, "RCB__BKVAL")
+    rows = sorted_rows(result, by=["UNINUM", "code_value"])
+    assert [row["code_value"] for row in rows] == [10.0, 20.0]
+    assert [row["code_column"] for row in rows] == ["INV_CODE", "INV_CODE"]
+    assert [row["RCB__BKVAL"] for row in rows] == [100.5, 150.5]
+
+
+def test_to_code_grain_format_drops_a_schedule_with_no_code(backend: str) -> None:
+    """A "single"-scenario schedule contributes no row and no column.
+
+    RC reports no code, so it has no code grain. Its rows melt with a null
+    `code_column`, and the one filter that removes them is what keeps the
+    grain honest: without it every institution would gain a null-coded row.
+    """
+    result = to_code_grain_format(**_reshape_inputs())
+    assert "RC__TOTASSETS" not in result.columns
+    assert result.shape[0] == 2
+    assert all(row["code_column"] == "INV_CODE" for row in sorted_rows(result))
+
+
+def test_to_code_grain_format_stacks_different_code_columns(backend: str) -> None:
+    """Two schedules with different code columns stack rather than join.
+
+    `code_column` is part of the grain, so RCB's INV_CODE rows and RCF's
+    LOANSTATUS rows coexist, each populating only its own schedule's
+    columns. The result is deliberately sparse, not a join.
+    """
+    rcb = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "INV_CODE": [10],
+            "BKVAL": [100.0],
+        }
+    )
+    rcf = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "LOANSTATUS": [54],
+            "TOTPDUE": [7.0],
+        }
+    )
+    result = to_code_grain_format(
+        frames={"RCB": rcb, "RCF": rcf},
+        code_columns={"RCB": "INV_CODE", "RCF": "LOANSTATUS"},
+        trailing_columns={"RCB": (), "RCF": ()},
+    )
+    rows = {row["code_column"]: row for row in sorted_rows(result)}
+    assert set(rows) == {"INV_CODE", "LOANSTATUS"}
+    assert rows["INV_CODE"]["RCB__BKVAL"] == 100.0
+    assert is_missing(rows["INV_CODE"]["RCF__TOTPDUE"])
+    assert rows["LOANSTATUS"]["RCF__TOTPDUE"] == 7.0
+    assert is_missing(rows["LOANSTATUS"]["RCB__BKVAL"])
+
+
+def test_to_code_grain_format_drops_trailing_columns(backend: str) -> None:
+    """A single_multiple_single schedule's trailing fields contribute no column.
+
+    RCR7's ``AvgDailyRWARegCap`` is a single-occurrence field the loader
+    repeats on every code-row, so it is institution-level and has no code
+    grain, exactly like a "single"-scenario schedule's fields.
+    """
+    result = to_code_grain_format(
+        frames={"RCR7": _rcr7_frame()},
+        code_columns={"RCR7": "RegCapCode"},
+        trailing_columns={"RCR7": ("AvgDailyRWARegCap",)},
+    )
+    assert tuple(result.columns) == (*CODE_GRAIN_INDEX, "RCR7__CreditEquil")
+    rows = sorted_rows(result, by=["UNINUM", "code_value"])
+    assert [(row["UNINUM"], row["code_value"]) for row in rows] == [
+        (1, 10.0),
+        (1, 20.0),
+        (2, 10.0),
+    ]
+
+
+def test_to_code_grain_format_without_a_coded_schedule_raises(backend: str) -> None:
+    """A selection of only non-coded schedules has no grain to build at all.
+
+    `code_column` is absent from the melted schema entirely rather than
+    merely null, so this is caught before the filter rather than silently
+    producing an empty frame.
+    """
+    with pytest.raises(ReshapeError, match="reports a code"):
+        to_code_grain_format(**_reshape_inputs(coded=False))
+
+
+def test_to_code_grain_format_duplicate_grain_raises(backend: str) -> None:
+    """A duplicated (UNINUM, period, code, variable) row raises, never aggregates."""
+    rcb = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "INV_CODE": [10, 10],
+            "BKVAL": [100.0, 9999.0],
+        }
+    )
+    with pytest.raises(ReshapeError):
+        to_code_grain_format(
+            frames={"RCB": rcb},
+            code_columns={"RCB": "INV_CODE"},
+            trailing_columns={"RCB": ()},
+        )
+
+
+def test_to_code_grain_format_stays_lazy_until_the_pivot(
+    lazy_polars_backend: str,
+) -> None:
+    """A LazyFrame source reaches the pivot uncollected and pivots correctly."""
+    inputs = _reshape_inputs()
+    lazy_inputs = {
+        **inputs,
+        "frames": {name: frame.lazy() for name, frame in inputs["frames"].items()},
+    }
+    result = to_code_grain_format(**lazy_inputs)
+    assert isinstance(result, nw.DataFrame)
+    assert tuple(result.columns) == (*CODE_GRAIN_INDEX, "RCB__BKVAL")
+
+
+def test_code_grain_value_columns_are_float64(backend: str) -> None:
+    """Every measure column is Float64, matching the other two architectures."""
+    schema = to_code_grain_format(**_reshape_inputs()).collect_schema()
+    assert schema["code_value"] == nw.Float64
+    assert schema["RCB__BKVAL"] == nw.Float64
+
+
+def test_both_code_grain_routes_agree(backend: str) -> None:
+    """Building the code grain directly matches converting a long frame to it.
+
+    The two routes share the pivot but not the path to it: one melts the
+    schedules, the other reads `code_column`/`code_value` back off an
+    already-built long frame.
+    """
+    inputs = _reshape_inputs()
+    direct = to_code_grain_format(**inputs)
+    long_ = to_long_format(**inputs)
+    converted = nw.from_native(
+        convert_long_format_to_code_grain_format(long=long_.to_native())
+    )
+    assert tuple(converted.columns) == tuple(direct.columns)
+    assert sorted_rows(converted, by=["UNINUM", "code_value"]) == sorted_rows(
+        direct, by=["UNINUM", "code_value"]
+    )
+
+
+def test_convert_long_format_to_code_grain_format_without_coded_rows_raises(
+    backend: str,
+) -> None:
+    """A long frame of only single-occurrence rows raises rather than returning keys.
+
+    Filtering to coded rows leaves nothing, and every backend's pivot then
+    returns a frame of just the four index columns. Returning that would
+    be a silently useless result.
+    """
+    long_ = to_long_format(**_reshape_inputs(coded=False))
+    with pytest.raises(ReshapeError, match="no multiple-occurrence rows"):
+        convert_long_format_to_code_grain_format(long=long_.to_native())
+
+
+def test_convert_long_format_to_code_grain_format_honors_dataframe_type() -> None:
+    """dataframe_type converts the result as a final step."""
+    long_ = to_long_format(**_reshape_inputs())
+    result = convert_long_format_to_code_grain_format(
+        long=long_.to_native(), dataframe_type="pyarrow_table"
+    )
+    assert isinstance(result, pa.Table)
+
+
+def test_convert_long_format_to_code_grain_format_is_keyword_only() -> None:
+    """convert_long_format_to_code_grain_format takes no positional arguments."""
+    long_ = to_long_format(**_reshape_inputs())
+    with pytest.raises(TypeError):
+        convert_long_format_to_code_grain_format(  # type: ignore[call-overload]
+            long_.to_native()
+        )

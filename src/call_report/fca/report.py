@@ -30,6 +30,7 @@ from call_report.exceptions import (
     DownloadError,
     InvalidPeriodError,
     LayoutParseError,
+    ReshapeError,
     ScheduleNotFoundError,
 )
 from call_report.fca import _reshape
@@ -1048,6 +1049,231 @@ class FCACallReport(BaseCallReport):
             frames=frames, code_columns=code_columns, trailing_columns=trailing_columns
         )
 
+    @overload
+    def to_code_grain_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: None = None,
+    ) -> NativeDataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_code_grain_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: Literal["pandas"],
+    ) -> pandas.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_code_grain_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: Literal["pyarrow_table"],
+    ) -> pyarrow.Table:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_code_grain_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: Literal["polars_dataframe"],
+    ) -> polars.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_code_grain_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: Literal["polars_lazyframe"],
+    ) -> polars.LazyFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    def to_code_grain_format(
+        self,
+        *,
+        schedules: Iterable[FCASchedule | str] | None = None,
+        dataframe_type: DataFrameType | None = None,
+    ) -> NativeDataFrame:
+        """Stack every loaded schedule at the grain of the code it reports.
+
+        The third architecture, alongside `to_wide_format` and
+        `to_long_format`. Produces one row per ``(UNINUM, period,
+        code_column, code_value)`` and one ``{schedule}__{variable}``
+        column per variable, so the code stays a row key that can be
+        filtered and grouped on instead of being folded into hundreds of
+        column names. Two schedules reporting at the same code contribute
+        columns to the same row, which is what a sub-architecture such as
+        a loan-portfolio dataset needs.
+
+        Only code-bearing schedules take part. A ``"single"``-scenario
+        schedule (`~call_report.fca.layout.FCALayout`'s own vocabulary)
+        reports no code, so it has no code grain. Leaving `schedules`
+        unset skips those, the same leniency ``None`` already has
+        elsewhere. Naming one explicitly is an error instead, since the
+        request cannot be honored. A
+        ``single_multiple_single`` schedule's trailing single-occurrence
+        fields are institution-level in the same way and are dropped too.
+
+        Schedules whose code columns differ are stacked, not joined.
+        `code_column` is part of the grain, so RCB's ``INV_CODE`` rows and
+        RCF's ``LOANSTATUS`` rows coexist, each populating only its own
+        schedule's columns. Two schedules can even share a code column
+        name while using different code universes (RCF's ``LOANSTATUS``
+        is a performance status, RCF1's is a loan portfolio), which the
+        schedule-prefixed column names keep separable.
+
+        Parameters
+        ----------
+        schedules : Iterable[FCASchedule or str], optional
+            The schedules to include. Each is matched case-insensitively.
+            Leave this ``None`` (the default) to include every schedule
+            discovered across the requested periods.
+        dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"}, optional
+            The dataframe type to convert the result to as a final step.
+            Leave this ``None`` (the default) to get back whatever backend
+            `call_report.config.get_config` currently has configured. Set
+            it when the code that consumes this result needs a specific
+            type, for example a pandas DataFrame while the package is
+            configured to use polars.
+
+        Returns
+        -------
+        NativeDataFrame
+            A native dataframe of the configured backend, or of
+            `dataframe_type` if it was supplied.
+
+        Raises
+        ------
+        ScheduleNotFoundError
+            If `schedules` resolves to zero code-bearing schedules, or an
+            explicitly named schedule has zero surviving periods.
+        ReshapeError
+            If an explicitly named schedule has no code column, or if
+            ``(UNINUM, period, code_column, code_value, column)`` is not a
+            unique grain, for example because of a duplicated row in the
+            source data.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> code_grain = report.to_code_grain_format(schedules=["RCB", "RCF1"])
+        >>> list(code_grain.columns)[:4]
+        ['UNINUM', 'period', 'code_column', 'code_value']
+        """
+        return finalize_as(
+            frame=self._to_code_grain_format(schedules=schedules),
+            dataframe_type=dataframe_type,
+        )
+
+    def _to_code_grain_format(
+        self, *, schedules: Iterable[FCASchedule | str] | None
+    ) -> nw.DataFrame[Any]:
+        """Build the code-grain frame, the private hook behind `to_code_grain_format`.
+
+        Resolves and loads the code-bearing schedules via
+        `_load_code_grain_inputs`, then delegates to
+        `call_report.fca._reshape.to_code_grain_format`. Like
+        `_to_wide_format`, the melt and concat steps stay lazy if a
+        schedule was loaded lazily, and the final pivot is what collects.
+
+        Parameters
+        ----------
+        schedules : Iterable[FCASchedule or str], optional
+            The schedules to include, or ``None`` for every schedule
+            discovered across the requested periods.
+
+        Returns
+        -------
+        narwhals.DataFrame
+            The eager, un-finalized code-grain frame.
+
+        Raises
+        ------
+        ScheduleNotFoundError
+            If `schedules` resolves to zero code-bearing schedules.
+        ReshapeError
+            If an explicitly named schedule has no code column.
+        """
+        frames, code_columns, trailing_columns = self._load_code_grain_inputs(
+            schedules=schedules
+        )
+        return _reshape.to_code_grain_format(
+            frames=frames, code_columns=code_columns, trailing_columns=trailing_columns
+        )
+
+    def _load_code_grain_inputs(
+        self, *, schedules: Iterable[FCASchedule | str] | None
+    ) -> tuple[
+        dict[str, FrameOrLazy], dict[str, str | None], dict[str, tuple[str, ...]]
+    ]:
+        """Narrow `schedules` to the code-bearing ones, then load each.
+
+        The code-grain counterpart to `_load_reshape_inputs`, which it
+        hands the surviving schedules to. Narrowing happens before
+        loading, so a schedule that cannot contribute is never read off
+        disk.
+
+        Whether a schedule has a code column is read from its layout, so
+        a schedule with no available period is passed through untouched.
+        `_load` then raises its own `ScheduleNotFoundError` for it, rather
+        than this reporting a missing schedule as a non-coded one.
+
+        Parameters
+        ----------
+        schedules : Iterable[FCASchedule or str], optional
+            The schedules to include, or ``None`` for every schedule
+            discovered across the requested periods.
+
+        Returns
+        -------
+        tuple[dict[str, FrameOrLazy], dict[str, str or None], \
+dict[str, tuple[str, ...]]]
+            `frames`, `code_columns`, and `trailing_columns`, each keyed
+            by schedule root name.
+
+        Raises
+        ------
+        ScheduleNotFoundError
+            If `schedules` resolves to zero code-bearing schedules.
+        ReshapeError
+            If an explicitly named schedule has no code column.
+        """
+        coded: list[FCASchedule] = []
+        uncoded: list[FCASchedule] = []
+        for schedule in self._resolve_reshape_schedules(schedules=schedules):
+            # The first test short-circuits the second: a schedule with no
+            # available period has no layout to read a code column from.
+            if (
+                not self.periods_available(schedule=schedule)
+                or self._layout_for_schedule(schedule=schedule).multi_columns
+            ):
+                coded.append(schedule)
+            else:
+                uncoded.append(schedule)
+
+        if schedules is not None and uncoded:
+            names = sorted(schedule.value for schedule in uncoded)
+            raise ReshapeError(
+                f"Schedules {names} report no code, so they have no code grain; "
+                "drop them from `schedules`, or leave `schedules` unset to "
+                "include every code-bearing schedule automatically."
+            )
+        if not coded:
+            raise ScheduleNotFoundError(
+                "No schedules to reshape: `schedules` resolved to no code-bearing "
+                "schedule. Either an empty `schedules` was passed, or no schedule "
+                "discovered across this instance's requested periods reports a "
+                "code; see errors_ for details."
+            )
+        return self._load_reshape_inputs(schedules=coded)
+
     def _load_reshape_inputs(
         self, *, schedules: Iterable[FCASchedule | str] | None
     ) -> tuple[
@@ -1103,7 +1329,7 @@ dict[str, tuple[str, ...]]]
     def _resolve_reshape_schedules(
         self, *, schedules: Iterable[FCASchedule | str] | None
     ) -> tuple[FCASchedule, ...]:
-        """Resolve `to_wide_format`/`to_long_format`'s `schedules` to a concrete tuple.
+        """Resolve a reshape method's `schedules` argument to a concrete tuple.
 
         ``None`` mirrors `_load_all`'s lenient behavior and selects every
         schedule discovered across the requested periods. An explicit
@@ -1130,11 +1356,12 @@ dict[str, tuple[str, ...]]]
     def _layout_for_schedule(self, *, schedule: FCASchedule) -> FCALayout:
         """Return `schedule`'s layout, from its first available period.
 
-        Used by `_to_wide_format` to determine a schedule's code and
-        trailing columns. Whether a schedule has a code column, and its
-        overall scenario, is stable across periods. Only a code list's own
-        contents drift over time, as with RCF1's 2015 meaning change, so
-        the first period is representative.
+        Used by `_load_reshape_inputs` to determine a schedule's code and
+        trailing columns, and by `_load_code_grain_inputs` to decide
+        whether a schedule has a code at all. Whether a schedule has a
+        code column, and its overall scenario, is stable across periods.
+        Only a code list's own contents drift over time, as with RCF1's
+        2015 meaning change, so the first period is representative.
 
         Parameters
         ----------
