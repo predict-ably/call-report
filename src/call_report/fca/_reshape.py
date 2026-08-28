@@ -1,20 +1,24 @@
-"""Private wide- and long-format reshaping logic behind ``FCACallReport``.
+"""Private wide-, long-, and code-grain reshaping logic behind ``FCACallReport``.
 
 This module is private and covers exactly what `to_wide_format`,
-`to_long_format`, and the standalone `convert_wide_format_to_long_format`
-and `convert_long_format_to_wide_format` functions need. It melts each
+`to_long_format`, `to_code_grain_format`, and the standalone
+`convert_wide_format_to_long_format`,
+`convert_long_format_to_wide_format`, and
+`convert_long_format_to_code_grain_format` functions need. It melts each
 already-loaded schedule's frame into a long-shaped intermediate, tagging a
 code-bearing schedule's code column distinctly from a plain variable, and
 stacks every schedule together. From there it either computes each row's
-wide column name and pivots, or tags single and coded rows directly as the
-long-format result.
+wide column name and pivots, tags single and coded rows directly as the
+long-format result, or keeps the code as a row key and pivots only the
+schedule and variable into columns.
 
 Every function here accepts and returns `FrameOrLazy`. If a schedule's
 frame is already a `polars.LazyFrame` (``lazy=True`` configured), the melt,
 concat, and column-key steps all stay lazy too. Each entry point collects
-exactly once: `to_wide_format` at `pivot`, since a pivoted result's schema
-depends on data values, and `to_long_format` at its own grain-uniqueness
-check, since checking the data is likewise not a lazy-safe operation.
+exactly once: `to_wide_format` and `to_code_grain_format` at `pivot`, since
+a pivoted result's schema depends on data values, and `to_long_format` at
+its own grain-uniqueness check, since checking the data is likewise not a
+lazy-safe operation.
 """
 
 from __future__ import annotations
@@ -65,6 +69,15 @@ Both routes to a long frame select this before returning, so
 agree on layout and not merely on content. Built from `_LONG_FORMAT_GRAIN`
 so the guaranteed order cannot drift from the guaranteed grain. The grain
 comes first, then the measure, then the flag describing it.
+"""
+
+CODE_GRAIN_INDEX: tuple[str, ...] = (*RESHAPE_INDEX, "code_column", "code_value")
+"""tuple[str, ...]: The grain every code-grain row is keyed by.
+
+`RESHAPE_INDEX` plus the code a row belongs to. The schedule is not part
+of this grain. It is folded into each measure column's name instead, so
+two schedules reporting at the same code contribute columns to one row
+rather than a row each.
 """
 
 _LOOKUP_SCHEMA: dict[str, nw.dtypes.DType] = {
@@ -266,6 +279,47 @@ def melt_schedule_frame(
     return concat(frames=[melted, trailing_melted], how="union")
 
 
+def _plain_column_key() -> nw.Expr:
+    """Return the ``{schedule}__{variable_name}`` column-name expression.
+
+    The naming a variable gets when the code it belongs to is not folded
+    into its column name. That is the case for a non-coded field in the
+    wide format, and for every field in the code grain, which keeps the
+    code as a row key instead. Both build the name from this one
+    expression, so the two cannot drift apart.
+
+    Built with `narwhals.concat_str` rather than ``+``, because pyarrow's
+    `Series.__add__` has no string-concatenation kernel, only numeric
+    addition.
+
+    Returns
+    -------
+    narwhals.Expr
+        An expression over `schedule` and `variable_name`.
+    """
+    return nw.concat_str([nw.col("schedule"), nw.col("variable_name")], separator="__")
+
+
+def _with_plain_column_key(frame: FrameOrLazy) -> FrameOrLazy:
+    """Compute the ``{schedule}__{variable_name}`` column name for every row.
+
+    The code-grain counterpart to `_with_column_key`. The code stays a row
+    key there, so it never enters the column name and there is no coded
+    branch to take.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        A melted frame, with `schedule` and `variable_name` columns.
+
+    Returns
+    -------
+    narwhals.DataFrame or narwhals.LazyFrame
+        `frame` with an added `column_key` string column.
+    """
+    return frame.with_columns(_plain_column_key().alias("column_key"))
+
+
 def _with_column_key(frame: FrameOrLazy) -> FrameOrLazy:
     """Compute the wide-format column name for every melted row.
 
@@ -273,13 +327,12 @@ def _with_column_key(frame: FrameOrLazy) -> FrameOrLazy:
     row with a code column keys as
     ``{schedule}__{code_column}_{code_value}__{variable_name}``.
 
-    The key is built with `narwhals.concat_str` rather than ``+``, because
-    pyarrow's `Series.__add__` has no string-concatenation kernel, only
-    numeric addition. `code_value`'s cast to a string goes through
-    `fill_null` first, because casting a `Float64`-with-null column
-    straight to `Int64` raises on the pandas backend, and that is the
-    normal shape here once code and non-code schedules are concatenated
-    together.
+    The plain half of the key comes from `_plain_column_key`, so wide
+    format and the code grain name a variable the same way.
+    `code_value`'s cast to a string goes through `fill_null` first,
+    because casting a `Float64`-with-null column straight to `Int64`
+    raises on the pandas backend, and that is the normal shape here once
+    code and non-code schedules are concatenated together.
 
     Parameters
     ----------
@@ -295,16 +348,10 @@ def _with_column_key(frame: FrameOrLazy) -> FrameOrLazy:
     # `collect_schema()` rather than `.columns`, which emits a
     # `PerformanceWarning` on a `LazyFrame`.
     if "code_column" not in frame.collect_schema():
-        return frame.with_columns(
-            nw.concat_str(
-                [nw.col("schedule"), nw.col("variable_name")], separator="__"
-            ).alias("column_key")
-        )
+        return _with_plain_column_key(frame)
 
     code_value_text = nw.col("code_value").fill_null(0).cast(nw.Int64).cast(nw.String)
-    plain_key = nw.concat_str(
-        [nw.col("schedule"), nw.col("variable_name")], separator="__"
-    )
+    plain_key = _plain_column_key()
     coded_key = nw.concat_str(
         [
             nw.col("schedule"),
@@ -463,6 +510,81 @@ def to_long_format(
     combined = _with_is_multiple_flag(combined)
     checked = assert_unique_grain(frame=combined, columns=_LONG_FORMAT_GRAIN)
     return checked.select(*LONG_FORMAT_COLUMNS)
+
+
+def to_code_grain_format(
+    *,
+    frames: dict[str, FrameOrLazy],
+    code_columns: dict[str, str | None],
+    trailing_columns: dict[str, tuple[str, ...]],
+) -> nw.DataFrame[Any]:
+    """Build the code-grain frame from a set of already-loaded schedules.
+
+    Melts and tags every schedule via `melt_schedule_frame`, the same
+    per-schedule step `to_wide_format` and `to_long_format` use, then
+    keeps the code as a row key rather than folding it into a column name.
+    The result has one row per `CODE_GRAIN_INDEX` grain and one
+    ``{schedule}__{variable}`` column per variable, so two schedules
+    reporting at the same code contribute columns to the same row.
+
+    Only rows that belong to a code survive. A ``"single"``-scenario
+    schedule has no code at all, and a ``single_multiple_single``
+    schedule's `trailing_columns` are single-occurrence fields the loader
+    repeats on every code-row, so both are institution-level rather than
+    code-level and are dropped. Both melt with a null `code_column`, so
+    one filter removes them.
+
+    Everything before `pivot` stays lazy if `frames`' values are lazy.
+    `pivot` is the one step that must collect, since a pivoted result's
+    schema depends on `column_key`'s distinct values, and it is also what
+    enforces that `CODE_GRAIN_INDEX` plus `column_key` is a unique grain.
+
+    Parameters
+    ----------
+    frames : dict[str, narwhals.DataFrame or narwhals.LazyFrame]
+        Each schedule's already-loaded, already-stacked frame, keyed by
+        schedule root name.
+    code_columns : dict[str, str or None]
+        Each schedule's code column name, keyed the same way as `frames`.
+        Use ``None`` for a schedule with no code column.
+    trailing_columns : dict[str, tuple[str, ...]]
+        Each schedule's trailing single-occurrence columns, keyed the
+        same way as `frames`. Use an empty tuple for a schedule with
+        none.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        One row per `CODE_GRAIN_INDEX` grain, one column per
+        ``{schedule}__{variable}``.
+
+    Raises
+    ------
+    ReshapeError
+        If no schedule in `frames` has a code column, or if
+        `CODE_GRAIN_INDEX` plus the column name is not a unique grain.
+    """
+    melted = [
+        melt_schedule_frame(
+            frame=frame,
+            schedule=schedule,
+            code_column=code_columns[schedule],
+            trailing_columns=trailing_columns[schedule],
+        )
+        for schedule, frame in frames.items()
+    ]
+    combined = concat(frames=melted, how="union")
+    # `collect_schema()` rather than `.columns`, which emits a
+    # `PerformanceWarning` on a `LazyFrame`.
+    if "code_column" not in combined.collect_schema():
+        raise ReshapeError(
+            "None of the requested schedules reports a code, so there is no "
+            f"code grain to build: {sorted(frames)}."
+        )
+    coded = _with_plain_column_key(combined.filter(~nw.col("code_column").is_null()))
+    return pivot(
+        frame=coded, on="column_key", index=list(CODE_GRAIN_INDEX), values="value"
+    )
 
 
 def _parse_wide_column_key(
@@ -729,3 +851,97 @@ def convert_long_format_to_wide_format(
         frame=keyed, on="column_key", index=list(RESHAPE_INDEX), values="value"
     )
     return finalize_as(frame=wide, dataframe_type=dataframe_type)
+
+
+@overload
+def convert_long_format_to_code_grain_format(
+    *, long: NativeDataFrame, dataframe_type: None = None
+) -> NativeDataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def convert_long_format_to_code_grain_format(
+    *, long: NativeDataFrame, dataframe_type: Literal["pandas"]
+) -> pandas.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def convert_long_format_to_code_grain_format(
+    *, long: NativeDataFrame, dataframe_type: Literal["pyarrow_table"]
+) -> pyarrow.Table:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def convert_long_format_to_code_grain_format(
+    *, long: NativeDataFrame, dataframe_type: Literal["polars_dataframe"]
+) -> polars.DataFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+@overload
+def convert_long_format_to_code_grain_format(
+    *, long: NativeDataFrame, dataframe_type: Literal["polars_lazyframe"]
+) -> polars.LazyFrame:  # numpydoc ignore=GL08
+    ...  # pragma: no cover
+def convert_long_format_to_code_grain_format(
+    *, long: NativeDataFrame, dataframe_type: DataFrameType | None = None
+) -> NativeDataFrame:
+    """Convert an already-built long-format frame to the code grain.
+
+    This function is self-contained. The long format already carries
+    `code_column` and `code_value` as first-class columns, so the code
+    grain is the pivot that keeps them as row keys instead of folding
+    them into the column name. It needs no `FCACallReport` instance,
+    layout lookups, or other external metadata.
+
+    Only multiple-occurrence rows survive. A single-occurrence variable
+    has no code to key on, so it is dropped rather than carried with null
+    code keys. Pivoting requires the `CODE_GRAIN_INDEX` plus
+    ``{schedule}__{variable}`` grain to be unique, and `pivot` enforces
+    that and raises `ReshapeError` if it is not, so no separate check is
+    needed here.
+
+    Parameters
+    ----------
+    long : NativeDataFrame
+        A long-format frame, e.g. from `FCACallReport.to_long_format`.
+    dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"}, optional
+        The dataframe type to convert the result to as a final step.
+        Leave this ``None`` (the default) to get back whatever backend
+        `call_report.config.get_config` currently has configured.
+
+    Returns
+    -------
+    NativeDataFrame
+        The code-grain frame (see
+        `FCACallReport.to_code_grain_format`), of the configured backend,
+        or of `dataframe_type` if it was supplied.
+
+    Raises
+    ------
+    ReshapeError
+        If `long` has no multiple-occurrence rows, or if
+        ``(UNINUM, period, code_column, code_value, schedule,
+        variable_name)`` is not a unique grain.
+
+    Examples
+    --------
+    >>> from call_report.fca.transport import PackagedArchiveTransport
+    >>> from call_report.fca.report import FCACallReport
+    >>> report = FCACallReport(
+    ...     start="2026-03-31",
+    ...     end="2026-03-31",
+    ...     transport=PackagedArchiveTransport(),
+    ... )
+    >>> long = report.to_long_format(schedules=["RC", "RCB"])
+    >>> code_grain = convert_long_format_to_code_grain_format(long=long)
+    >>> list(code_grain.columns)[:5]
+    ['UNINUM', 'period', 'code_column', 'code_value', 'RCB__BKVAL']
+    """
+    frame = nw.from_native(long)
+    coded = _with_plain_column_key(frame.filter(~nw.col("code_column").is_null()))
+    code_grain = pivot(
+        frame=coded, on="column_key", index=list(CODE_GRAIN_INDEX), values="value"
+    )
+    if len(code_grain.columns) == len(CODE_GRAIN_INDEX):
+        raise ReshapeError(
+            "`long` has no multiple-occurrence rows (every row's code_column is "
+            "null), so there is no code grain to build."
+        )
+    return finalize_as(frame=code_grain, dataframe_type=dataframe_type)

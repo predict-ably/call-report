@@ -40,6 +40,7 @@ from call_report.exceptions import LayoutParseError, ScheduleNotFoundError
 from call_report.fca import (
     FCACallReport,
     FCASchedule,
+    convert_long_format_to_code_grain_format,
     convert_long_format_to_wide_format,
     convert_wide_format_to_long_format,
     get_fca_file_metadata,
@@ -1080,6 +1081,101 @@ def test_long_format_matches_across_backends(period: ReportingPeriod) -> None:
         )
 
 
+def _to_code_grain_frame(*, period: ReportingPeriod, backend: str) -> nw.DataFrame[Any]:
+    """Build to_code_grain_format() for one real release under one backend.
+
+    Mirrors `_to_wide_format_frame`. Rows are sorted by the whole grain
+    minus `period`, which is constant within a single release, so the
+    result has a total order every backend can be compared against
+    position by position.
+
+    Parameters
+    ----------
+    period : ReportingPeriod
+        The release to build the code-grain frame for.
+    backend : str
+        The dataframe backend to configure while building it.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        The code-grain frame, sorted by UNINUM, code column, and code.
+    """
+    with config_context(dataframe_backend=backend):
+        report = FCACallReport(
+            start=period.period_end,
+            end=period.period_end,
+            transport=PackagedArchiveTransport(),
+        )
+        code_grain = report.to_code_grain_format()
+    return _eager(code_grain).sort(["UNINUM", "code_column", "code_value"])
+
+
+def _assert_code_grain_matches_across_backends(*, period: ReportingPeriod) -> None:
+    """Build one release's code grain under every backend and compare.
+
+    Parameters
+    ----------
+    period : ReportingPeriod
+        The release to check.
+    """
+    reference = _to_code_grain_frame(period=period, backend="pandas")
+    assert len(reference) > 0, f"{period.label}: code grain built 0 rows."
+    for backend in ("polars", "pyarrow"):
+        other = _to_code_grain_frame(period=period, backend=backend)
+        _assert_frames_equal(
+            reference=reference, other=other, label=f"{backend}:{period.label}"
+        )
+
+
+@pytest.mark.parametrize(
+    "period",
+    EQUALITY_CHECK_PERIODS,
+    ids=[period.label for period in EQUALITY_CHECK_PERIODS],
+)
+def test_code_grain_format_matches_across_backends(period: ReportingPeriod) -> None:
+    """to_code_grain_format()'s schema and data agree across backends.
+
+    Mirrors `test_wide_format_matches_across_backends` for the code-grain
+    path, which pivots on a four-column index rather than two. pyarrow
+    matters most here: it has no native pivot and reshapes through
+    `call_report.core._backend._pyarrow_pivot` instead.
+    """
+    _assert_code_grain_matches_across_backends(period=period)
+
+
+@pytest.mark.parametrize(
+    "period",
+    EQUALITY_CHECK_PERIODS,
+    ids=[period.label for period in EQUALITY_CHECK_PERIODS],
+)
+def test_code_grain_matches_the_long_format_converter_on_real_data(
+    period: ReportingPeriod,
+) -> None:
+    """The two routes to a code grain agree on a whole real release.
+
+    `to_code_grain_format` melts the schedules itself, while
+    `convert_long_format_to_code_grain_format` reads `code_column` and
+    `code_value` back off an already-built long frame. Real releases carry
+    ragged codes and zero-row schedules that the hermetic fixtures do not.
+    """
+    report = FCACallReport(
+        start=period.period_end,
+        end=period.period_end,
+        transport=PackagedArchiveTransport(),
+    )
+    direct = _eager(report.to_code_grain_format())
+    converted = _eager(
+        convert_long_format_to_code_grain_format(long=report.to_long_format())
+    )
+    sort_by = ["UNINUM", "code_column", "code_value"]
+    _assert_frames_equal(
+        reference=direct.sort(sort_by),
+        other=converted.sort(sort_by),
+        label=f"converter:{period.label}",
+    )
+
+
 @pytest.mark.parametrize(
     "period",
     EQUALITY_CHECK_PERIODS,
@@ -1329,6 +1425,22 @@ def test_exhaustive_long_format_matches_across_backends(
             other=sorted(other.rows(named=True), key=_long_format_sort_key),
             label=label,
         )
+
+
+@pytest.mark.exhaustive
+@pytest.mark.parametrize(
+    "period", ALL_KNOWN_PERIODS, ids=[period.label for period in ALL_KNOWN_PERIODS]
+)
+def test_exhaustive_code_grain_matches_across_backends(
+    period: ReportingPeriod,
+) -> None:
+    """Every release's code grain agrees across backends, not just four of them.
+
+    The code grain's schedule mix changes with the archive: RCI splits
+    into RCI1/RCI2A-RCI2D in 2018 and RIE into RIE1/RIE2 in 2023, and each
+    split changes which schedules report a code at all.
+    """
+    _assert_code_grain_matches_across_backends(period=period)
 
 
 @pytest.mark.exhaustive

@@ -27,6 +27,7 @@ from call_report.exceptions import (
 from call_report.fca import (
     FCACallReport,
     FCASchedule,
+    convert_long_format_to_code_grain_format,
     convert_long_format_to_wide_format,
     convert_wide_format_to_long_format,
     get_fca_file_metadata,
@@ -1410,6 +1411,226 @@ def test_to_long_format_does_not_collect_before_the_grain_check(
     assert set(captured_frames) == {"RC", "RCB"}
     for frame in captured_frames.values():
         assert isinstance(frame, nw.LazyFrame)
+
+
+# ---------------------------------------------------------------------------
+# to_code_grain_format
+# ---------------------------------------------------------------------------
+
+
+def _code_grain_report(data_dir: Path) -> FCACallReport:
+    """Build a 2026Q1 report over the fixture releases in `data_dir`."""
+    return FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+
+
+def _comparable(code_grain: Any) -> list[dict[str, Any]]:
+    """Return a code-grain frame's rows sorted, with missing values normalized.
+
+    Two frames holding the same information can still compare unequal
+    because ``nan != nan`` and because each backend spells a missing value
+    differently. Both are normalized to ``None`` here.
+    """
+    rows = [
+        {name: None if is_missing(value) else value for name, value in row.items()}
+        for row in rows_of(code_grain)
+    ]
+    return sorted(rows, key=lambda row: (row["code_column"], row["code_value"]))
+
+
+def test_to_code_grain_format_default_skips_schedules_with_no_code(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """schedules=None includes every code-bearing schedule and skips the rest.
+
+    RC reports no code, and RCR7's TOTAL is a trailing single-occurrence
+    field, so neither has a code grain. Both are dropped rather than
+    adding null-coded rows an aggregation would silently pick up.
+    """
+    code_grain = _code_grain_report(data_dir).to_code_grain_format()
+    rows = rows_of(code_grain)
+    assert set(rows[0]) == {
+        "UNINUM",
+        "period",
+        "code_column",
+        "code_value",
+        "RCB__AMOUNT",
+        "RCB__AMOUNT2",
+        "RCR7__VAL1",
+        "RCR7__VAL2",
+    }
+    keyed = {(row["code_column"], row["code_value"]): row for row in rows}
+    assert set(keyed) == {
+        ("INV_CODE", 10.0),
+        ("INV_CODE", 20.0),
+        ("INV_CODE", 30.0),
+        ("CAPCODE", 10.0),
+    }
+    assert keyed[("INV_CODE", 20.0)]["RCB__AMOUNT"] == 220.0
+    assert keyed[("CAPCODE", 10.0)]["RCR7__VAL1"] == 111.0
+    assert is_missing(keyed[("CAPCODE", 10.0)]["RCB__AMOUNT"])
+    for row in rows:
+        assert as_date(row["period"]) == date(2026, 3, 31)
+        assert row["UNINUM"] == 610000
+
+
+def test_to_code_grain_format_explicit_schedules_narrows_the_result(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """An explicit `schedules` includes only those schedules' columns."""
+    code_grain = _code_grain_report(data_dir).to_code_grain_format(schedules=["RCB"])
+    columns = rows_of(code_grain)[0]
+    assert "RCB__AMOUNT" in columns
+    assert not any(name.startswith("RCR7__") for name in columns)
+
+
+def test_to_code_grain_format_accepts_schedule_enum_members(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """`schedules` accepts FCASchedule members, not just strings."""
+    code_grain = _code_grain_report(data_dir).to_code_grain_format(
+        schedules=[FCASchedule.RCB]
+    )
+    assert "RCB__AMOUNT" in rows_of(code_grain)[0]
+
+
+def test_to_code_grain_format_multi_period_keys_each_period_separately(
+    data_dir: Path, release_2025q3: Path, release_2025q4: Path
+) -> None:
+    """Each (UNINUM, period, code) is its own row across a multi-quarter range."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    code_grain = report.to_code_grain_format(schedules=["RCB"])
+    rows = {
+        (row["UNINUM"], as_date(row["period"]), row["code_value"]): row
+        for row in rows_of(code_grain)
+    }
+    assert rows[(610000, date(2025, 9, 30), 10.0)]["RCB__AMOUNT"] == 100.0
+    assert rows[(610000, date(2025, 12, 31), 10.0)]["RCB__AMOUNT"] == 110.0
+    # release_2025q3's RCB is ragged: UNINUM 620000 never reported code 20.
+    assert (620000, date(2025, 9, 30), 20.0) not in rows
+    assert rows[(620000, date(2025, 12, 31), 20.0)]["RCB__AMOUNT"] == 160.0
+
+
+def test_to_code_grain_format_named_schedule_with_no_code_raises(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """Naming a "single"-scenario schedule is an error, not a silent drop.
+
+    Skipping is what ``schedules=None`` means. An explicit request names a
+    schedule the caller expects columns from, and that cannot be honored.
+    """
+    with pytest.raises(ReshapeError, match=r"\['RC'\] report no code"):
+        _code_grain_report(data_dir).to_code_grain_format(schedules=["RC", "RCB"])
+
+
+def test_to_code_grain_format_absent_named_schedule_raises(
+    data_dir: Path, release_2025q3: Path
+) -> None:
+    """A schedule named explicitly but absent from every period raises.
+
+    The absent schedule has no layout to read a code column from, so it
+    must reach `_load` and raise there rather than being misreported as a
+    schedule that reports no code.
+    """
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-09-30",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(ScheduleNotFoundError, match="RCR7 was not found"):
+        report.to_code_grain_format(schedules=["RCR7"])
+
+
+def test_to_code_grain_format_empty_schedules_raises(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """An explicitly empty `schedules` raises rather than reshaping nothing."""
+    with pytest.raises(ScheduleNotFoundError, match="No schedules to reshape"):
+        _code_grain_report(data_dir).to_code_grain_format(schedules=[])
+
+
+def test_to_code_grain_format_no_coded_schedule_in_range_raises(
+    data_dir: Path, release_2003q1: Path
+) -> None:
+    """A range whose only schedules report no code raises under schedules=None.
+
+    The 2003Q1 fixture has RC and the institution roster only. Skipping
+    every schedule would leave nothing to build, so this is an error
+    rather than an empty frame.
+    """
+    report = FCACallReport(
+        start="2003-03-31",
+        end="2003-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(ScheduleNotFoundError, match="no code-bearing schedule"):
+        report.to_code_grain_format()
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_to_code_grain_format_honors_dataframe_type_override(
+    data_dir: Path, release_2026q1: Path, dataframe_type: DataFrameType
+) -> None:
+    """to_code_grain_format() converts its result to `dataframe_type` at the end."""
+    expected_type = {
+        "pandas": pd.DataFrame,
+        "pyarrow_table": pa.Table,
+        "polars_dataframe": pl.DataFrame,
+        "polars_lazyframe": pl.LazyFrame,
+    }[dataframe_type]
+    result = _code_grain_report(data_dir).to_code_grain_format(
+        dataframe_type=dataframe_type
+    )
+    assert isinstance(result, expected_type)
+
+
+def test_to_code_grain_format_is_keyword_only(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """to_code_grain_format takes no positional arguments."""
+    with pytest.raises(TypeError):
+        _code_grain_report(data_dir).to_code_grain_format(  # type: ignore[call-overload]
+            ["RCB"]
+        )
+
+
+def test_to_code_grain_format_reshapes_a_lazy_loaded_schedule_correctly(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """lazy=True with the polars backend still reshapes correctly end to end."""
+    with config_context(dataframe_backend="polars", lazy=True):
+        code_grain = _code_grain_report(data_dir).to_code_grain_format(
+            schedules=["RCB"]
+        )
+    assert isinstance(code_grain, pl.LazyFrame)
+    rows = code_grain.collect().sort("code_value").to_dicts()
+    assert [row["RCB__AMOUNT"] for row in rows] == [120.0, 220.0, 320.0]
+
+
+def test_to_code_grain_format_matches_the_long_format_converter(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """The method and the standalone converter agree on real fixture data.
+
+    They share the pivot but not the path to it, so this pins that
+    building the code grain from the schedules matches deriving it from
+    an already-built long frame.
+    """
+    report = _code_grain_report(data_dir)
+    direct = report.to_code_grain_format(schedules=["RCB", "RCR7"])
+    long_ = report.to_long_format(schedules=["RC", "RCB", "RCR7"])
+    converted = convert_long_format_to_code_grain_format(long=long_)
+    assert _comparable(direct) == _comparable(converted)
 
 
 # ---------------------------------------------------------------------------
