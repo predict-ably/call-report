@@ -43,6 +43,14 @@ class ScheduleNotFoundError(CallReportError):
     """
 
 
+class DomainDatasetNotFoundError(CallReportError):
+    """A requested curated domain dataset is not one this package ships.
+
+    Raised for an unrecognized domain dataset name, the curated counterpart
+    to `ScheduleNotFoundError`.
+    """
+
+
 class LayoutParseError(CallReportError):
     """A layout or data file could not be parsed into the expected shape.
 

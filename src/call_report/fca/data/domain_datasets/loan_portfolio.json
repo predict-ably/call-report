@@ -1,0 +1,285 @@
+{
+  "name": "loan_portfolio",
+  "code_column": "LOAN_PORTFOLIO",
+  "codes": [
+    {
+      "code": 100,
+      "label": "Production agriculture: real estate mortgage",
+      "is_total": false
+    },
+    {
+      "code": 105,
+      "label": "Production agriculture: production and intermediate term",
+      "is_total": false
+    },
+    {
+      "code": 110,
+      "label": "Agribusiness",
+      "is_total": false
+    },
+    {
+      "code": 115,
+      "label": "Communication",
+      "is_total": false
+    },
+    {
+      "code": 120,
+      "label": "Energy",
+      "is_total": false
+    },
+    {
+      "code": 125,
+      "label": "Water and waste disposal",
+      "is_total": false
+    },
+    {
+      "code": 130,
+      "label": "Rural residential real estate",
+      "is_total": false
+    },
+    {
+      "code": 135,
+      "label": "International",
+      "is_total": false
+    },
+    {
+      "code": 140,
+      "label": "Lease receivables",
+      "is_total": false
+    },
+    {
+      "code": 145,
+      "label": "Direct loans to associations",
+      "is_total": false
+    },
+    {
+      "code": 150,
+      "label": "Discounted loans to OFIs",
+      "is_total": false
+    },
+    {
+      "code": 152,
+      "label": "Other loans",
+      "is_total": false
+    },
+    {
+      "code": 155,
+      "label": "Total",
+      "is_total": true
+    }
+  ],
+  "sources": [
+    {
+      "schedules": [
+        "RCF1"
+      ],
+      "code_column": "LOANSTATUS",
+      "columns": {
+        "ACCR": {
+          "column": "accruing"
+        },
+        "ACCRPDUE": {
+          "column": "accruing_past_due_90"
+        },
+        "FRMREST": {
+          "column": "restructured_accruing"
+        },
+        "NONCSH": {
+          "column": "nonaccrual_cash"
+        },
+        "NONOTH": {
+          "column": "nonaccrual_other"
+        },
+        "TOTPERF": {
+          "column": "total_loans"
+        }
+      }
+    },
+    {
+      "schedules": [
+        "RIE",
+        "RIE2"
+      ],
+      "code_column": null,
+      "columns": {
+        "ALAGBUS": {
+          "code": 110,
+          "column": "allowance"
+        },
+        "ALCOMM": {
+          "code": 115,
+          "column": "allowance"
+        },
+        "ALDLN": {
+          "code": 145,
+          "column": "allowance"
+        },
+        "ALENERG": {
+          "code": 120,
+          "column": "allowance"
+        },
+        "ALINTNL": {
+          "code": 135,
+          "column": "allowance"
+        },
+        "ALLESRC": {
+          "code": 140,
+          "column": "allowance"
+        },
+        "ALLNOFI": {
+          "code": 150,
+          "column": "allowance"
+        },
+        "ALOTH": {
+          "code": 152,
+          "column": "allowance"
+        },
+        "ALPROINT": {
+          "code": 105,
+          "column": "allowance"
+        },
+        "ALRE": {
+          "code": 100,
+          "column": "allowance"
+        },
+        "ALRURRE": {
+          "code": 130,
+          "column": "allowance"
+        },
+        "ALTYPTOTAL": {
+          "code": 155,
+          "column": "allowance"
+        },
+        "ALWATW": {
+          "code": 125,
+          "column": "allowance"
+        },
+        "CHGOFFAGBUS": {
+          "code": 110,
+          "column": "charge_off"
+        },
+        "CHGOFFCOMM": {
+          "code": 115,
+          "column": "charge_off"
+        },
+        "CHGOFFDLN": {
+          "code": 145,
+          "column": "net_charge_off"
+        },
+        "CHGOFFENERG": {
+          "code": 120,
+          "column": "charge_off"
+        },
+        "CHGOFFINTNL": {
+          "code": 135,
+          "column": "charge_off"
+        },
+        "CHGOFFLESRC": {
+          "code": 140,
+          "column": "charge_off"
+        },
+        "CHGOFFLNOFI": {
+          "code": 150,
+          "column": "net_charge_off"
+        },
+        "CHGOFFLNS": {
+          "code": 155,
+          "column": "charge_off"
+        },
+        "CHGOFFOTH": {
+          "code": 152,
+          "column": "charge_off"
+        },
+        "CHGOFFPROINT": {
+          "code": 105,
+          "column": "charge_off"
+        },
+        "CHGOFFRE": {
+          "code": 100,
+          "column": "charge_off"
+        },
+        "CHGOFFRURRE": {
+          "code": 130,
+          "column": "charge_off"
+        },
+        "CHGOFFWATW": {
+          "code": 125,
+          "column": "charge_off"
+        },
+        "LNSLOSSREV": {
+          "code": 155,
+          "column": "recovery"
+        },
+        "RECAGBUS": {
+          "code": 110,
+          "column": "recovery"
+        },
+        "RECCOMM": {
+          "code": 115,
+          "column": "recovery"
+        },
+        "RECENERG": {
+          "code": 120,
+          "column": "recovery"
+        },
+        "RECINTNL": {
+          "code": 135,
+          "column": "recovery"
+        },
+        "RECLESRC": {
+          "code": 140,
+          "column": "recovery"
+        },
+        "RECOTH": {
+          "code": 152,
+          "column": "recovery"
+        },
+        "RECPROINT": {
+          "code": 105,
+          "column": "recovery"
+        },
+        "RECRE": {
+          "code": 100,
+          "column": "recovery"
+        },
+        "RECRURRE": {
+          "code": 130,
+          "column": "recovery"
+        },
+        "RECWATW": {
+          "code": 125,
+          "column": "recovery"
+        }
+      }
+    }
+  ],
+  "derived": [
+    {
+      "column": "net_charge_off",
+      "operation": "difference",
+      "components": [
+        "charge_off",
+        "recovery"
+      ]
+    },
+    {
+      "column": "non_performing",
+      "operation": "sum",
+      "components": [
+        "accruing_past_due_90",
+        "nonaccrual_cash",
+        "nonaccrual_other"
+      ]
+    },
+    {
+      "column": "non_performing_with_restructured",
+      "operation": "sum",
+      "components": [
+        "accruing_past_due_90",
+        "nonaccrual_cash",
+        "nonaccrual_other",
+        "restructured_accruing"
+      ]
+    }
+  ]
+}
