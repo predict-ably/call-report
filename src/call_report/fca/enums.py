@@ -1,10 +1,10 @@
-"""The FCA Call Report schedule enum and case-insensitive coercion."""
+"""The FCA Call Report schedule and domain dataset enums, with their coercion."""
 
 from __future__ import annotations
 
 from enum import StrEnum
 
-from call_report.exceptions import ScheduleNotFoundError
+from call_report.exceptions import DomainDatasetNotFoundError, ScheduleNotFoundError
 
 
 class FCASchedule(StrEnum):
@@ -96,4 +96,61 @@ def coerce_fca_call_report_schedule(*, value: FCASchedule | str) -> FCASchedule:
         valid = sorted(member.value for member in FCASchedule)
         raise ScheduleNotFoundError(
             f"Unknown FCA schedule {value!r}; valid schedules are {valid}."
+        ) from None
+
+
+class FCADomainDataset(StrEnum):
+    """A curated domain dataset this package ships for FCA Call Report data.
+
+    Each member names a view assembled from several schedules, with the
+    row key and every output column chosen rather than derived
+    mechanically from the source layout. That curation is what separates
+    a domain dataset from `FCACallReport.to_code_grain_format`, which
+    reshapes whatever schedules it is given under the source's own names.
+
+    Examples
+    --------
+    >>> FCADomainDataset.LOAN_PORTFOLIO
+    <FCADomainDataset.LOAN_PORTFOLIO: 'loan_portfolio'>
+    """  # numpydoc ignore=PR01
+
+    LOAN_PORTFOLIO = "loan_portfolio"
+
+
+def coerce_fca_domain_dataset(*, value: FCADomainDataset | str) -> FCADomainDataset:
+    """Coerce a domain dataset value into an FCADomainDataset member.
+
+    Accepts either an existing `FCADomainDataset` member (returned
+    unchanged) or a dataset name string, matched case-insensitively. The
+    domain dataset counterpart to `coerce_fca_call_report_schedule`.
+
+    Parameters
+    ----------
+    value : FCADomainDataset or str
+        The domain dataset to coerce.
+
+    Returns
+    -------
+    FCADomainDataset
+        The matching enum member.
+
+    Raises
+    ------
+    DomainDatasetNotFoundError
+        If `value` is a string that does not match any shipped dataset
+        name.
+
+    Examples
+    --------
+    >>> coerce_fca_domain_dataset(value="LOAN_PORTFOLIO")
+    <FCADomainDataset.LOAN_PORTFOLIO: 'loan_portfolio'>
+    """
+    if isinstance(value, FCADomainDataset):
+        return value
+    try:
+        return FCADomainDataset(value.lower())
+    except ValueError:
+        valid = sorted(member.value for member in FCADomainDataset)
+        raise DomainDatasetNotFoundError(
+            f"Unknown FCA domain dataset {value!r}; valid datasets are {valid}."
         ) from None

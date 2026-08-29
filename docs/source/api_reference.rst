@@ -100,6 +100,7 @@ The exception hierarchy shared across sources.
    call_report.exceptions.InvalidPeriodError
    call_report.exceptions.PeriodNotAvailableError
    call_report.exceptions.ScheduleNotFoundError
+   call_report.exceptions.DomainDatasetNotFoundError
    call_report.exceptions.LayoutParseError
    call_report.exceptions.DownloadError
    call_report.exceptions.ReshapeError
@@ -120,9 +121,17 @@ parsing an individual layout or data file.
 
    call_report.fca.FCACallReport
    call_report.fca.FCASchedule
+   call_report.fca.FCADomainDataset
+   call_report.fca.DomainDataset
+   call_report.fca.DomainDatasetSource
+   call_report.fca.DomainDatasetColumn
+   call_report.fca.DomainDatasetCode
+   call_report.fca.DomainDatasetDerived
    call_report.fca.convert_wide_format_to_long_format
    call_report.fca.convert_long_format_to_wide_format
    call_report.fca.convert_long_format_to_code_grain_format
+   call_report.fca.get_fca_domain_dataset
+   call_report.fca.get_domain_dataset_codes
    call_report.fca.get_fca_file_metadata
    call_report.fca.get_institutions_file_metadata
    call_report.fca.all_fca_file_metadata
