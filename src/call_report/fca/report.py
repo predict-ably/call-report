@@ -35,9 +35,14 @@ from call_report.exceptions import (
 )
 from call_report.fca import _reshape
 from call_report.fca._discovery import ReleaseFiles, scan_release
+from call_report.fca._domain_datasets import get_fca_domain_dataset
 from call_report.fca._schedule_metadata import get_fca_file_metadata
 from call_report.fca.catalog import construct_fca_download_url
-from call_report.fca.enums import FCASchedule, coerce_fca_call_report_schedule
+from call_report.fca.enums import (
+    FCADomainDataset,
+    FCASchedule,
+    coerce_fca_call_report_schedule,
+)
 from call_report.fca.institutions import INSTITUTIONS_ROOT, _read_institutions_frame
 from call_report.fca.layout import FCALayout, parse_layout
 from call_report.fca.reader import _read_schedule_frame
@@ -1274,6 +1279,199 @@ dict[str, tuple[str, ...]]]
             )
         return self._load_reshape_inputs(schedules=coded)
 
+    @overload
+    def to_domain_dataset(
+        self,
+        *,
+        domain_dataset: FCADomainDataset | str,
+        include_totals: bool = True,
+        dataframe_type: None = None,
+    ) -> NativeDataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_domain_dataset(
+        self,
+        *,
+        domain_dataset: FCADomainDataset | str,
+        include_totals: bool = True,
+        dataframe_type: Literal["pandas"],
+    ) -> pandas.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_domain_dataset(
+        self,
+        *,
+        domain_dataset: FCADomainDataset | str,
+        include_totals: bool = True,
+        dataframe_type: Literal["pyarrow_table"],
+    ) -> pyarrow.Table:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_domain_dataset(
+        self,
+        *,
+        domain_dataset: FCADomainDataset | str,
+        include_totals: bool = True,
+        dataframe_type: Literal["polars_dataframe"],
+    ) -> polars.DataFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    @overload
+    def to_domain_dataset(
+        self,
+        *,
+        domain_dataset: FCADomainDataset | str,
+        include_totals: bool = True,
+        dataframe_type: Literal["polars_lazyframe"],
+    ) -> polars.LazyFrame:  # numpydoc ignore=GL08
+        ...  # pragma: no cover
+    def to_domain_dataset(
+        self,
+        *,
+        domain_dataset: FCADomainDataset | str,
+        include_totals: bool = True,
+        dataframe_type: DataFrameType | None = None,
+    ) -> NativeDataFrame:
+        """Build one curated domain dataset over the requested periods.
+
+        A domain dataset is a view this package curates rather than
+        derives: which schedules compose it, which code each row is keyed
+        by, and what every output column is called are all chosen. Rows
+        are keyed by ``(UNINUM, period, code_column, code_value)``, and
+        each column is named for what it measures, such as ``charge_off``
+        or ``allowance``, with no schedule prefix. Use
+        `call_report.fca.get_domain_dataset_codes` to turn the codes into
+        names.
+
+        That naming is what makes a series survive a schedule split. FCA
+        renamed RI-E to RI-E.2 in 2023 while keeping its fields, so the
+        loan portfolio dataset draws ``charge_off`` from whichever of the
+        two covers each period and lands both in one column. Compare
+        `to_code_grain_format`, which names every column for its own
+        schedule and so would split that series in two.
+
+        Only the schedules a dataset declares are loaded, and only those
+        of them present in the requested range. A range that spans a
+        split loads both sides.
+
+        Parameters
+        ----------
+        domain_dataset : FCADomainDataset or str
+            The curated dataset to build. A string is matched
+            case-insensitively.
+        include_totals : bool, default True
+            Whether to keep the codes the dataset marks as reported
+            subtotals. Set this ``False`` to get only the members of the
+            breakdown, so an aggregation over every remaining row cannot
+            double count.
+        dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"}, optional
+            The dataframe type to convert the result to as a final step.
+            Leave this ``None`` (the default) to get back whatever backend
+            `call_report.config.get_config` currently has configured. Set
+            it when the code that consumes this result needs a specific
+            type, for example a pandas DataFrame while the package is
+            configured to use polars.
+
+        Returns
+        -------
+        NativeDataFrame
+            A native dataframe of the configured backend, or of
+            `dataframe_type` if it was supplied.
+
+        Raises
+        ------
+        DomainDatasetNotFoundError
+            If `domain_dataset` does not name a shipped dataset.
+        ScheduleNotFoundError
+            If none of the dataset's schedules is present in any
+            requested period.
+        ReshapeError
+            If ``(UNINUM, period, code_column, code_value, column)`` is
+            not a unique grain, for example because of a duplicated row
+            in the source data.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> loans = report.to_domain_dataset(domain_dataset="loan_portfolio")
+        >>> list(loans.columns)[:4]
+        ['UNINUM', 'period', 'code_column', 'code_value']
+        >>> agribusiness = loans[
+        ...     (loans["UNINUM"] == 620000) & (loans["code_value"] == 110.0)
+        ... ].iloc[0]
+        >>> float(agribusiness["accruing"])
+        3265454.0
+        """
+        return finalize_as(
+            frame=self._to_domain_dataset(
+                domain_dataset=domain_dataset, include_totals=include_totals
+            ),
+            dataframe_type=dataframe_type,
+        )
+
+    def _to_domain_dataset(
+        self, *, domain_dataset: FCADomainDataset | str, include_totals: bool
+    ) -> nw.DataFrame[Any]:
+        """Build the curated frame, the private hook behind `to_domain_dataset`.
+
+        Narrows the dataset's declared schedules to those the requested
+        range actually has, loads them through `_load_reshape_inputs`, and
+        delegates to `call_report.fca._reshape.to_domain_dataset`.
+
+        `_load_code_grain_inputs` is deliberately not used here. It rejects
+        a schedule whose layout declares no code column, and a curated
+        dataset draws on exactly such schedules, supplying the codes from
+        its own definition instead.
+
+        Parameters
+        ----------
+        domain_dataset : FCADomainDataset or str
+            The curated dataset to build.
+        include_totals : bool
+            Whether to keep the dataset's reported subtotal codes.
+
+        Returns
+        -------
+        narwhals.DataFrame
+            The eager, un-finalized curated frame.
+
+        Raises
+        ------
+        DomainDatasetNotFoundError
+            If `domain_dataset` does not name a shipped dataset.
+        ScheduleNotFoundError
+            If none of the dataset's schedules is present in any
+            requested period.
+        """
+        dataset = get_fca_domain_dataset(domain_dataset=domain_dataset)
+        self._ensure_fetched()
+        available = [
+            schedule
+            for schedule in dataset.schedules
+            if self.periods_available(schedule=schedule)
+        ]
+        if not available:
+            raise ScheduleNotFoundError(
+                f"None of {list(dataset.schedules)}, the schedules the "
+                f"{dataset.name!r} domain dataset draws on, was found in any period "
+                f"of {self.periods_[0].label}-{self.periods_[-1].label}."
+            )
+        frames, code_columns, trailing_columns = self._load_reshape_inputs(
+            schedules=available
+        )
+        return _reshape.to_domain_dataset(
+            frames=frames,
+            code_columns=code_columns,
+            trailing_columns=trailing_columns,
+            dataset=dataset,
+            include_totals=include_totals,
+        )
+
     def _load_reshape_inputs(
         self, *, schedules: Iterable[FCASchedule | str] | None
     ) -> tuple[
@@ -1359,9 +1557,11 @@ dict[str, tuple[str, ...]]]
         Used by `_load_reshape_inputs` to determine a schedule's code and
         trailing columns, and by `_load_code_grain_inputs` to decide
         whether a schedule has a code at all. Whether a schedule has a
-        code column, and its overall scenario, is stable across periods.
-        Only a code list's own contents drift over time, as with RCF1's
-        2015 meaning change, so the first period is representative.
+        code column, and its overall scenario, is stable across periods,
+        so the first period is representative. A layout's own code list
+        can be restated without the data changing, as RCF1's was in 2015,
+        which is a reason to read codes from the data rather than from
+        the layout text.
 
         Parameters
         ----------

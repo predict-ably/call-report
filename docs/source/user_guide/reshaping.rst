@@ -19,6 +19,9 @@ together, in one of three shapes:
 All three stack every requested schedule, and you can convert between them
 without going back to the source files.
 
+A fourth shape, the :ref:`curated domain dataset <user_guide_domain_datasets>`,
+builds on the code grain but chooses its columns rather than deriving them.
+
 The examples below use the default ``pandas`` backend, so the indexing is
 pandas'. The reshaping methods themselves work on every configured backend,
 including ``pyarrow``, which has no native pivot and uses an equivalent
@@ -181,6 +184,102 @@ cannot be honored:
    >>> report.to_code_grain_format(schedules=["RC", "RCB"])
    Traceback (most recent call last):
    call_report.exceptions.ReshapeError: Schedules ['RC'] report no code, ...
+
+.. _user_guide_domain_datasets:
+
+Curated domain datasets
+=======================
+
+The three shapes above name every column after the schedule it came from.
+That is faithful, but it means the caller has to know which schedules
+compose the view they want, and it splits a series in two whenever FCA
+renames a schedule.
+
+:meth:`~call_report.fca.FCACallReport.to_domain_dataset` is the curated
+alternative. Which schedules compose the view, which code each row is keyed
+by, and what every column is called are all chosen by this package:
+
+.. doctest::
+
+   >>> loans = report.to_domain_dataset(domain_dataset="loan_portfolio")
+   >>> loans.shape
+   (832, 16)
+   >>> list(loans.columns)[:8]  # doctest: +NORMALIZE_WHITESPACE
+   ['UNINUM', 'period', 'code_column', 'code_value', 'accruing',
+    'accruing_past_due_90', 'allowance', 'charge_off']
+
+Rows are keyed by portfolio, and each column is named for what it measures
+with no schedule prefix. Code 110 is agribusiness:
+
+.. doctest::
+
+   >>> agribusiness = loans[(loans["UNINUM"] == 620000) & (loans["code_value"] == 110.0)].iloc[
+   ...     0
+   ... ]
+   >>> float(agribusiness["accruing"]), float(agribusiness["allowance"])
+   (3067844.0, 11547.0)
+
+Use :func:`~call_report.fca.get_domain_dataset_codes` to turn the codes into
+names:
+
+.. doctest::
+
+   >>> from call_report.fca import get_domain_dataset_codes
+   >>> codes = get_domain_dataset_codes(domain_dataset="loan_portfolio")
+   >>> codes[codes["code"] == 110]["label"].iloc[0]
+   'Agribusiness'
+
+What the curation buys you
+--------------------------
+
+**A series that survives a schedule split.** FCA renamed RI-E to RI-E.2 in
+2023 while keeping every field name. The dataset draws ``charge_off`` from
+whichever of the two covers each period and lands both in one column, so a
+range spanning 2023 has no gap. Naming columns after schedules would give
+``RIE__charge_off`` up to 2022Q4 and ``RIE2__charge_off`` after it.
+
+**Two measures that must not be added together, kept apart.** RI-E reports
+charge-offs gross for most portfolios but net of recoveries for direct loans
+to associations (145) and discounted loans to OFIs (150), which have no
+recovery figure at all. Those two land in ``net_charge_off``, never in
+``charge_off``, and ``net_charge_off`` is computed for every other portfolio
+so the column is complete either way.
+
+**Derived columns you would otherwise write yourself.** ``non_performing``
+sums accruing loans 90 or more days past due and the two nonaccrual columns.
+``non_performing_with_restructured`` adds formally restructured accruing
+loans. Both ship because both definitions are in use, and
+``restructured_accruing`` remains a column so a third definition can be
+composed from what is there.
+
+Reported subtotals
+------------------
+
+Code 155 is a total RC-F.1 reports itself, not a portfolio. It is included by
+default, since dropping data the source published is the greater surprise,
+but any aggregation over every row has to exclude it:
+
+.. doctest::
+
+   >>> report.to_domain_dataset(domain_dataset="loan_portfolio", include_totals=False).shape
+   (768, 16)
+
+Filers round their own submissions, so the portfolio rows foot to the total
+within a dollar or two rather than exactly.
+
+What the numbers mean over time
+-------------------------------
+
+Three boundaries matter when reading a long series, and all three report
+null rather than zero where a figure was not collected:
+
+- **2005Q1.** RC-F.1's measures and RI-E's by-portfolio columns begin here.
+  Earlier quarters carry rows and codes with no values behind them.
+- **2007Q1.** The "Other loans" detail (code 152) begins.
+- **2023Q1.** RI-E becomes RI-E.2, and the allowance changes measurement
+  basis from incurred loss to current expected credit loss. The
+  ``allowance`` column is continuous across that quarter, but the two sides
+  of it are not measured the same way.
 
 Converting between the shapes
 =============================
