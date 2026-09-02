@@ -17,6 +17,7 @@ from call_report.config import config_context
 from call_report.core import FieldSchema, ReportingPeriod
 from call_report.core._backend import DataFrameType, date_dtype
 from call_report.exceptions import (
+    DomainDatasetNotFoundError,
     DownloadError,
     InvalidPeriodError,
     LayoutParseError,
@@ -26,6 +27,7 @@ from call_report.exceptions import (
 )
 from call_report.fca import (
     FCACallReport,
+    FCADomainDataset,
     FCASchedule,
     convert_long_format_to_code_grain_format,
     convert_long_format_to_wide_format,
@@ -1631,6 +1633,217 @@ def test_to_code_grain_format_matches_the_long_format_converter(
     long_ = report.to_long_format(schedules=["RC", "RCB", "RCR7"])
     converted = convert_long_format_to_code_grain_format(long=long_)
     assert _comparable(direct) == _comparable(converted)
+
+
+# ---------------------------------------------------------------------------
+# to_domain_dataset
+# ---------------------------------------------------------------------------
+
+
+def _archive_report(start: str, end: str) -> FCACallReport:
+    """Build a report over real packaged releases, for the curated dataset tests.
+
+    The loan portfolio dataset draws on RCF1 and RIE, which the hand-built
+    release fixtures elsewhere in this module do not contain. Curation is
+    only meaningful against the real schedules it curates.
+    """
+    return FCACallReport(start=start, end=end, transport=PackagedArchiveTransport())
+
+
+def test_to_domain_dataset_curated_columns_and_grain() -> None:
+    """The curated frame is keyed by portfolio and named for what it measures.
+
+    No column carries a schedule prefix, which is the difference from
+    `to_code_grain_format` and the reason a series survives a schedule
+    split.
+    """
+    loans = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="loan_portfolio"
+    )
+    columns = list(rows_of(loans)[0])
+    assert columns[:4] == ["UNINUM", "period", "code_column", "code_value"]
+    assert not any("__" in name for name in columns)
+    assert {"charge_off", "recovery", "allowance", "accruing"} <= set(columns)
+    assert {"non_performing", "net_charge_off"} <= set(columns)
+
+
+def test_to_domain_dataset_accepts_an_enum_member() -> None:
+    """`domain_dataset` accepts FCADomainDataset members, not just strings."""
+    loans = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset=FCADomainDataset.LOAN_PORTFOLIO
+    )
+    assert "accruing" in rows_of(loans)[0]
+
+
+def test_to_domain_dataset_unknown_name_raises() -> None:
+    """An unknown dataset raises before any release is read."""
+    with pytest.raises(DomainDatasetNotFoundError):
+        _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+            domain_dataset="not_a_dataset"
+        )
+
+
+def test_to_domain_dataset_spans_a_schedule_split_in_one_column() -> None:
+    """A series crosses the 2023 RIE split without changing column.
+
+    FCA renamed RIE to RIE.2 at 2023Q1 while keeping every field name.
+    Naming the output for the schedule would end one series at 2022Q4 and
+    start another at 2023Q1. This is the property the curation exists for,
+    so it is pinned against real releases on both sides of the boundary.
+    """
+    loans = _archive_report("2022-09-30", "2023-06-30").to_domain_dataset(
+        domain_dataset="loan_portfolio"
+    )
+    rows = [
+        row
+        for row in rows_of(loans)
+        if row["UNINUM"] == 620000 and row["code_value"] == 110.0
+    ]
+    by_period = {as_date(row["period"]): row["allowance"] for row in rows}
+    assert set(by_period) == {
+        date(2022, 9, 30),
+        date(2022, 12, 31),
+        date(2023, 3, 31),
+        date(2023, 6, 30),
+    }
+    assert all(not is_missing(value) for value in by_period.values())
+
+
+def test_to_domain_dataset_include_totals() -> None:
+    """include_totals=False drops the source's own subtotal rows.
+
+    Code 155 is a total RC-F.1 reports rather than a portfolio, so summing
+    over every code with it present double counts.
+    """
+    report = _archive_report("2026-03-31", "2026-03-31")
+    with_totals = report.to_domain_dataset(domain_dataset="loan_portfolio")
+    without = report.to_domain_dataset(
+        domain_dataset="loan_portfolio", include_totals=False
+    )
+    assert 155.0 in {row["code_value"] for row in rows_of(with_totals)}
+    assert 155.0 not in {row["code_value"] for row in rows_of(without)}
+    assert len(rows_of(without)) < len(rows_of(with_totals))
+
+
+def test_to_domain_dataset_reported_and_derived_net_charge_offs() -> None:
+    """One column carries both the reported and the computed net charge-off.
+
+    RI-E reports charge-offs net of recoveries for portfolios 145 and 150,
+    which have no gross or recovery figure at all, and gross elsewhere.
+    The reported value is kept and the rest are computed, so a null gross
+    charge-off never means a null net one.
+    """
+    loans = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="loan_portfolio"
+    )
+    rows = {row["code_value"]: row for row in rows_of(loans) if row["UNINUM"] == 620000}
+    reported = rows[145.0]
+    assert is_missing(reported["charge_off"])
+    assert is_missing(reported["recovery"])
+    assert not is_missing(reported["net_charge_off"])
+
+    computed = rows[130.0]
+    assert computed["net_charge_off"] == computed["charge_off"] - computed["recovery"]
+
+
+def test_to_domain_dataset_nonperforming_pair() -> None:
+    """The wide nonperforming total exceeds the narrow one by restructured loans.
+
+    Both definitions ship because both are in use. This pins that they
+    differ by exactly the one term, rather than by an accident of which
+    components each was written with.
+    """
+    loans = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="loan_portfolio"
+    )
+    checked = 0
+    for row in rows_of(loans):
+        if any(
+            is_missing(row[name])
+            for name in (
+                "non_performing",
+                "non_performing_with_restructured",
+                "restructured_accruing",
+            )
+        ):
+            continue
+        assert (
+            row["non_performing_with_restructured"] - row["non_performing"]
+            == row["restructured_accruing"]
+        )
+        checked += 1
+    assert checked > 0
+
+
+def test_to_domain_dataset_reports_null_before_the_data_begins() -> None:
+    """A period FCA had not yet collected reports null, never zero.
+
+    RC-F.1 and RI-E carry rows from 2000Q1 but no values until 2005Q1.
+    A derived column summing those nulls as zero would claim a measured
+    zero where the truth is that nothing was reported.
+    """
+    loans = _archive_report("2000-03-31", "2000-03-31").to_domain_dataset(
+        domain_dataset="loan_portfolio"
+    )
+    row = next(row for row in rows_of(loans) if row["code_value"] == 110.0)
+    assert is_missing(row["accruing"])
+    assert is_missing(row["non_performing"])
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_to_domain_dataset_honors_dataframe_type(
+    dataframe_type: DataFrameType,
+) -> None:
+    """dataframe_type converts the result as a final step."""
+    expected_type = {
+        "pandas": pd.DataFrame,
+        "pyarrow_table": pa.Table,
+        "polars_dataframe": pl.DataFrame,
+        "polars_lazyframe": pl.LazyFrame,
+    }[dataframe_type]
+    result = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="loan_portfolio", dataframe_type=dataframe_type
+    )
+    assert isinstance(result, expected_type)
+
+
+def test_to_domain_dataset_is_keyword_only() -> None:
+    """to_domain_dataset takes no positional arguments."""
+    with pytest.raises(TypeError):
+        _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(  # type: ignore[call-overload]
+            "loan_portfolio"
+        )
+
+
+def test_to_domain_dataset_under_lazy_polars() -> None:
+    """lazy=True with the polars backend still builds the dataset end to end."""
+    with config_context(dataframe_backend="polars", lazy=True):
+        loans = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+            domain_dataset="loan_portfolio"
+        )
+    assert isinstance(loans, pl.LazyFrame)
+    assert "non_performing" in loans.collect().columns
+
+
+def test_to_domain_dataset_no_declared_schedule_in_range_raises(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """A range with none of the dataset's schedules raises rather than empty.
+
+    The hand-built fixture releases carry RC, RCB, and RCR7, none of which
+    the loan portfolio dataset draws on. An empty frame would look like a
+    quarter with no lending.
+    """
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(ScheduleNotFoundError, match="loan_portfolio"):
+        report.to_domain_dataset(domain_dataset="loan_portfolio")
 
 
 # ---------------------------------------------------------------------------

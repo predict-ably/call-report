@@ -13,6 +13,11 @@ import pytest
 from call_report.config import config_context
 from call_report.core._backend import build_frame, concat
 from call_report.exceptions import ReshapeError
+from call_report.fca._domain_datasets import (
+    DomainDatasetColumn,
+    DomainDatasetDerived,
+    DomainDatasetSource,
+)
 from call_report.fca._reshape import (
     CODE_GRAIN_INDEX,
     LONG_FORMAT_COLUMNS,
@@ -21,6 +26,8 @@ from call_report.fca._reshape import (
     _with_column_key,
     _with_is_multiple_flag,
     _with_plain_column_key,
+    add_derived_columns,
+    apply_domain_dataset_decoding,
     convert_long_format_to_code_grain_format,
     convert_long_format_to_wide_format,
     convert_wide_format_to_long_format,
@@ -1304,3 +1311,224 @@ def test_convert_long_format_to_code_grain_format_is_keyword_only() -> None:
         convert_long_format_to_code_grain_format(  # type: ignore[call-overload]
             long_.to_native()
         )
+
+
+# ---------------------------------------------------------------------------
+# Curated domain datasets (issue #63)
+# ---------------------------------------------------------------------------
+
+
+def _coded_source() -> DomainDatasetSource:
+    """Build a source whose schedule reports its own code column."""
+    return DomainDatasetSource(
+        schedules=("RCF1",),
+        code_column="LOANSTATUS",
+        columns={
+            "ACCR": DomainDatasetColumn(column="accruing", code=None),
+            "NONCSH": DomainDatasetColumn(column="nonaccrual_cash", code=None),
+        },
+    )
+
+
+def _name_encoded_source() -> DomainDatasetSource:
+    """Build a source whose breakdown is encoded in its variable names."""
+    return DomainDatasetSource(
+        schedules=("RIE", "RIE2"),
+        code_column=None,
+        columns={
+            "CHGOFFAGBUS": DomainDatasetColumn(column="charge_off", code=110),
+            "RECAGBUS": DomainDatasetColumn(column="recovery", code=110),
+            "CHGOFFDLN": DomainDatasetColumn(column="net_charge_off", code=145),
+        },
+    )
+
+
+def _melted_coded() -> Any:
+    """Melt a small RCF1-shaped frame, including a variable no dataset declares."""
+    frame = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "LOANSTATUS": [110, 110],
+            "ACCR": [100.0, 100.0],
+            "UNDECLARED": [9.0, 9.0],
+        }
+    ).unique(subset=["UNINUM", "period", "LOANSTATUS"])
+    return melt_schedule_frame(frame=frame, schedule="RCF1", code_column="LOANSTATUS")
+
+
+def _melted_name_encoded() -> Any:
+    """Melt a small RIE-shaped frame, which has no code column at all."""
+    frame = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "CHGOFFAGBUS": [83.0],
+            "RECAGBUS": [49.0],
+            "UNDECLARED": [9.0],
+        }
+    )
+    return melt_schedule_frame(frame=frame, schedule="RIE", code_column=None)
+
+
+def test_decoding_a_coded_source_keeps_its_own_code(backend: str) -> None:
+    """A code-bearing source keeps code_value and gets the curated code_column.
+
+    Its code already came from the data during the melt, so decoding only
+    has to rename the variable and relabel which vocabulary the code is
+    expressed in.
+    """
+    decoded = apply_domain_dataset_decoding(
+        frame=_melted_coded(), source=_coded_source(), code_column="LOAN_PORTFOLIO"
+    )
+    rows = sorted_rows(decoded, by=["variable_name"])
+    assert [row["variable_name"] for row in rows] == ["accruing"]
+    assert rows[0]["code_column"] == "LOAN_PORTFOLIO"
+    assert rows[0]["code_value"] == 110.0
+    assert rows[0]["value"] == 100.0
+
+
+def test_decoding_a_name_encoded_source_supplies_the_code(backend: str) -> None:
+    """A source with no code column gets both code_column and code_value.
+
+    RI-E reports one column per portfolio rather than one row per code, so
+    the code exists only in the dataset's declaration until this step
+    puts it in the data.
+    """
+    decoded = apply_domain_dataset_decoding(
+        frame=_melted_name_encoded(),
+        source=_name_encoded_source(),
+        code_column="LOAN_PORTFOLIO",
+    )
+    rows = sorted_rows(decoded, by=["variable_name"])
+    assert [(row["variable_name"], row["code_value"]) for row in rows] == [
+        ("charge_off", 110.0),
+        ("recovery", 110.0),
+    ]
+    assert {row["code_column"] for row in rows} == {"LOAN_PORTFOLIO"}
+
+
+@pytest.mark.parametrize(
+    ("melted", "source"),
+    [(_melted_coded, _coded_source), (_melted_name_encoded, _name_encoded_source)],
+    ids=["coded", "name-encoded"],
+)
+def test_decoding_drops_undeclared_variables(
+    backend: str, melted: Any, source: Any
+) -> None:
+    """A variable the dataset does not declare contributes no row.
+
+    A curated dataset names the columns it wants. Carrying the rest
+    through would put the source's own vocabulary back into a frame whose
+    whole purpose is to be free of it.
+    """
+    decoded = apply_domain_dataset_decoding(
+        frame=melted(), source=source(), code_column="LOAN_PORTFOLIO"
+    )
+    assert "UNDECLARED" not in {
+        row["variable_name"] for row in sorted_rows(decoded, by=["variable_name"])
+    }
+
+
+def _pivoted(data: dict[str, list[Any]]) -> nw.DataFrame[Any]:
+    """Build a frame shaped like the pivot's output, for derived-column tests.
+
+    Every frame here carries at least one fully populated row, so each
+    column infers as Float64 the way the real pivot's output does. A
+    column null in every row instead infers as null-typed on pyarrow,
+    which no real pivot produces and which raises on `fill_null`. Dtypes
+    are inferred rather than declared for the same reason: a declared
+    schema reaches pandas' nullable dtypes, while the real path is
+    numpy-backed.
+    """
+    frame = build_frame(data=data)
+    assert isinstance(frame, nw.DataFrame)
+    return frame
+
+
+def test_derived_sum_treats_nulls_as_zero_when_any_component_is_present(
+    backend: str,
+) -> None:
+    """A partially reported row sums what is there rather than going null."""
+    frame = _pivoted({"a": [1.0, 4.0], "b": [None, 5.0], "c": [2.0, 6.0]})
+    result = add_derived_columns(
+        frame=frame,
+        derived=[
+            DomainDatasetDerived(
+                column="total", operation="sum", components=("a", "b", "c")
+            )
+        ],
+    )
+    assert result["total"].to_list() == [3.0, 15.0]
+
+
+def test_derived_sum_of_an_all_null_row_stays_null(backend: str) -> None:
+    """Every component null gives null, never a manufactured zero.
+
+    A row can exist because one schedule reported it while the schedule
+    supplying these components reported nothing. Zero would read as a
+    measured zero, which is a different claim from "not reported".
+    """
+    frame = _pivoted({"a": [1.0, None], "b": [2.0, None]})
+    result = add_derived_columns(
+        frame=frame,
+        derived=[
+            DomainDatasetDerived(column="total", operation="sum", components=("a", "b"))
+        ],
+    )
+    totals = result["total"].to_list()
+    assert totals[0] == 3.0
+    assert is_missing(totals[1])
+
+
+def test_derived_difference(backend: str) -> None:
+    """A difference subtracts every later component from the first."""
+    frame = _pivoted({"gross": [83.0, 10.0], "back": [49.0, 4.0]})
+    result = add_derived_columns(
+        frame=frame,
+        derived=[
+            DomainDatasetDerived(
+                column="net", operation="difference", components=("gross", "back")
+            )
+        ],
+    )
+    assert result["net"].to_list() == [34.0, 6.0]
+
+
+def test_derived_never_overwrites_a_reported_value(backend: str) -> None:
+    """Where the source reports the column itself, the reported value wins.
+
+    RI-E reports net charge-offs directly for two portfolios and leaves
+    the rest to be computed, so one column carries both. Recomputing over
+    the reported rows would replace a real figure with one derived from
+    the nulls beside it.
+    """
+    frame = _pivoted({"gross": [83.0, None], "back": [49.0, None], "net": [None, 7.0]})
+    result = add_derived_columns(
+        frame=frame,
+        derived=[
+            DomainDatasetDerived(
+                column="net", operation="difference", components=("gross", "back")
+            )
+        ],
+    )
+    assert result["net"].to_list() == [34.0, 7.0]
+
+
+def test_derived_is_skipped_when_a_component_column_is_absent(backend: str) -> None:
+    """A declaration whose components are not all present is skipped, not raised.
+
+    A range covering only some of a dataset's schedules pivots to a frame
+    missing whole groups of columns. That is a normal narrow request, not
+    an error, so the derived column is simply absent too.
+    """
+    frame = _pivoted({"a": [1.0, 2.0]})
+    result = add_derived_columns(
+        frame=frame,
+        derived=[
+            DomainDatasetDerived(
+                column="total", operation="sum", components=("a", "missing")
+            )
+        ],
+    )
+    assert "total" not in result.columns

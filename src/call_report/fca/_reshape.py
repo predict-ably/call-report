@@ -23,6 +23,9 @@ lazy-safe operation.
 
 from __future__ import annotations
 
+import operator
+from collections.abc import Sequence
+from functools import reduce
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 import narwhals as nw
@@ -46,6 +49,12 @@ if TYPE_CHECKING:
     import pyarrow
 
     from call_report.core._backend import NativeDataFrame
+    from call_report.fca._domain_datasets import (
+        DerivedOperation,
+        DomainDataset,
+        DomainDatasetDerived,
+        DomainDatasetSource,
+    )
 
 RESHAPE_INDEX: tuple[str, ...] = ("UNINUM", "period")
 """tuple[str, ...]: The grain every wide- and long-format row is keyed by."""
@@ -945,3 +954,244 @@ def convert_long_format_to_code_grain_format(
             "null), so there is no code grain to build."
         )
     return finalize_as(frame=code_grain, dataframe_type=dataframe_type)
+
+
+_DOMAIN_LOOKUP_SCHEMA: dict[str, nw.dtypes.DType] = {
+    "variable_name": nw.String(),
+    "output_column": nw.String(),
+    "mapped_code": nw.Float64(),
+}
+"""dict[str, narwhals.dtypes.DType]: Declared dtypes for the decoding lookup.
+
+`mapped_code` is entirely null for a code-bearing source, which reports
+its code in the data rather than in its variable names. That leaves
+nothing to infer a dtype from, and inference gives each backend a
+different answer, so the dtypes are declared here instead. This is the
+same hazard `_LOOKUP_SCHEMA` documents for the wide-to-long lookup.
+"""
+
+
+def apply_domain_dataset_decoding(
+    *, frame: FrameOrLazy, source: DomainDatasetSource, code_column: str
+) -> FrameOrLazy:
+    """Rewrite one melted schedule's rows into a domain dataset's own terms.
+
+    Replaces each row's `variable_name` with the curated output column the
+    dataset declares for it, and sets `code_column` and `code_value` to
+    the curated code the row belongs to. A variable the dataset does not
+    declare is dropped.
+
+    Both kinds of source end in the same shape. A code-bearing source
+    already carries `code_value` from the melt and only needs its
+    `variable_name` rewritten. A source that encodes its breakdown in
+    variable names instead has no `code_value` at all until this supplies
+    one from the declaration.
+
+    The rewrite is a join against a small lookup frame rather than a pass
+    over rows, so it is backend-agnostic and stays lazy. The join is inner,
+    which is what drops an undeclared variable.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        One schedule's melted frame, i.e. `melt_schedule_frame`'s result.
+    source : DomainDatasetSource
+        The dataset's declaration for the schedule `frame` came from.
+    code_column : str
+        The curated name every decoded row's ``code_column`` is set to.
+
+    Returns
+    -------
+    narwhals.DataFrame or narwhals.LazyFrame
+        `frame` with `variable_name`, `code_column`, and `code_value`
+        expressed in the dataset's terms. Lazy if `frame` was lazy.
+    """
+    variables = sorted(source.columns)
+    declarations = [source.columns[name] for name in variables]
+    codes: list[float | None] = [
+        None if item.code is None else float(item.code) for item in declarations
+    ]
+    with config_context(dataframe_backend=frame.implementation.name.lower()):
+        lookup: FrameOrLazy = build_frame(
+            data={
+                "variable_name": variables,
+                "output_column": [item.column for item in declarations],
+                "mapped_code": codes,
+            },
+            schema=_DOMAIN_LOOKUP_SCHEMA,
+        )
+    if isinstance(frame, nw.LazyFrame):
+        lookup = lookup.lazy()
+
+    # `frame` and `lookup` are matched to the same laziness just above, but
+    # narwhals' `.join` signature binds a single concrete frame type (see
+    # convert_wide_format_to_long_format for the same invariant).
+    decoded = frame.join(lookup, on="variable_name", how="inner")  # type: ignore[arg-type]
+    if source.code_column is None:
+        decoded = decoded.with_columns(nw.col("mapped_code").alias("code_value"))
+    return decoded.with_columns(
+        nw.col("output_column").alias("variable_name"),
+        nw.lit(code_column).alias("code_column"),
+    ).drop("output_column", "mapped_code")
+
+
+def _derived_expression(
+    *, components: Sequence[str], operation: DerivedOperation
+) -> nw.Expr:
+    """Build the expression for one derived column.
+
+    A null component counts as zero, but only when at least one component
+    is present. A row where every component is null gets a null result
+    rather than a zero, because those two say different things: one is a
+    measure of zero, the other is a measure the source did not report.
+
+    Parameters
+    ----------
+    components : Sequence[str]
+        The output columns this is computed from, in order.
+    operation : {"sum", "difference"}
+        How `components` combine. A difference subtracts every later
+        component from the first.
+
+    Returns
+    -------
+    narwhals.Expr
+        The derived column's expression.
+    """
+    filled = [nw.col(name).fill_null(0) for name in components]
+    first, *rest = filled
+    if operation == "sum":
+        combined = reduce(operator.add, rest, first)
+    else:
+        combined = reduce(operator.sub, rest, first)
+    any_present = reduce(operator.or_, (~nw.col(name).is_null() for name in components))
+    return (
+        nw.when(any_present).then(combined).otherwise(nw.lit(None, dtype=nw.Float64()))
+    )
+
+
+def add_derived_columns(
+    *, frame: nw.DataFrame[Any], derived: Sequence[DomainDatasetDerived]
+) -> nw.DataFrame[Any]:
+    """Add a domain dataset's derived columns to its pivoted frame.
+
+    Runs after the pivot, since each derived column spans several of the
+    pivot's output columns. A declaration whose components are not all
+    present is skipped, which happens when the requested range has no
+    period for the schedule that supplies them.
+
+    A column the source already reports is never overwritten. The derived
+    value fills only the rows where the reported one is null. RI-E reports
+    net charge-offs directly for two portfolios and leaves the rest to be
+    computed, so both meanings live in one column.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame
+        The pivoted frame, one column per curated output column.
+    derived : Sequence[DomainDatasetDerived]
+        The dataset's derived column declarations, in order.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        `frame` with each computable derived column added or filled in.
+    """
+    for item in derived:
+        available = set(frame.collect_schema().names())
+        if not set(item.components) <= available:
+            continue
+        expression = _derived_expression(
+            components=item.components, operation=item.operation
+        )
+        if item.column in available:
+            expression = (
+                nw.when(nw.col(item.column).is_null())
+                .then(expression)
+                .otherwise(nw.col(item.column))
+            )
+        frame = frame.with_columns(expression.alias(item.column))
+    return frame
+
+
+def to_domain_dataset(
+    *,
+    frames: dict[str, FrameOrLazy],
+    code_columns: dict[str, str | None],
+    trailing_columns: dict[str, tuple[str, ...]],
+    dataset: DomainDataset,
+    include_totals: bool = True,
+) -> nw.DataFrame[Any]:
+    """Build a curated domain dataset frame from a set of already-loaded schedules.
+
+    Melts each schedule with `melt_schedule_frame`, the same per-schedule
+    step the other three architectures use, then decodes each one into the
+    dataset's own terms with `apply_domain_dataset_decoding` before
+    stacking them. Unlike `to_code_grain_format`, the pivot is on the
+    curated `variable_name` alone, so an output column is named for what
+    it measures rather than for the schedule it came from. That is what
+    lets two schedules covering different eras fill one continuous column.
+
+    Everything before `pivot` stays lazy if `frames`' values are lazy.
+    `pivot` is the one step that must collect, and it also enforces that
+    `CODE_GRAIN_INDEX` plus the output column is a unique grain.
+
+    Parameters
+    ----------
+    frames : dict[str, narwhals.DataFrame or narwhals.LazyFrame]
+        Each schedule's already-loaded, already-stacked frame, keyed by
+        schedule root name.
+    code_columns : dict[str, str or None]
+        Each schedule's code column name, keyed the same way as `frames`.
+        Use ``None`` for a schedule with no code column.
+    trailing_columns : dict[str, tuple[str, ...]]
+        Each schedule's trailing single-occurrence columns, keyed the
+        same way as `frames`. Use an empty tuple for a schedule with
+        none.
+    dataset : DomainDataset
+        The curated definition to build.
+    include_totals : bool, default True
+        Whether to keep the codes `dataset` marks as reported subtotals.
+        Set this ``False`` to get only the members of the breakdown, so
+        an aggregation over every remaining row cannot double count.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        One row per `CODE_GRAIN_INDEX` grain, one column per curated
+        output column.
+
+    Raises
+    ------
+    ReshapeError
+        If `CODE_GRAIN_INDEX` plus the output column is not a unique
+        grain.
+    """
+    sources = {
+        schedule: source for source in dataset.sources for schedule in source.schedules
+    }
+    decoded = [
+        apply_domain_dataset_decoding(
+            frame=melt_schedule_frame(
+                frame=frame,
+                schedule=schedule,
+                code_column=code_columns[schedule],
+                trailing_columns=trailing_columns[schedule],
+            ),
+            source=sources[schedule],
+            code_column=dataset.code_column,
+        )
+        for schedule, frame in frames.items()
+    ]
+    combined = concat(frames=decoded, how="union")
+    if not include_totals:
+        combined = combined.filter(
+            ~nw.col("code_value").is_in(sorted(dataset.total_codes))
+        )
+    pivoted = pivot(
+        frame=combined,
+        on="variable_name",
+        index=list(CODE_GRAIN_INDEX),
+        values="value",
+    )
+    return add_derived_columns(frame=pivoted, derived=dataset.derived)
