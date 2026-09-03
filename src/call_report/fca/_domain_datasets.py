@@ -301,10 +301,10 @@ class DomainDataset:
         """Return each schedule's contributing source group, by root name.
 
         Computed once and cached on this instance, rather than rebuilt by
-        every `call_report.fca._reshape.to_domain_dataset` call, since
-        `sources` never changes after construction and `DomainDataset`
-        instances themselves are already cached for the life of the
-        process by `get_fca_domain_dataset`.
+        every `FCACallReport._to_domain_dataset` call, since `sources`
+        never changes after construction and `DomainDataset` instances
+        themselves are already cached for the life of the process by
+        `get_fca_domain_dataset`.
 
         Returns
         -------
