@@ -1362,20 +1362,15 @@ dict[str, tuple[str, ...]]]
         by, and what every output column is called are all chosen. Rows
         are keyed by ``(UNINUM, period, code_column, code_value)``, and
         each column is named for what it measures, such as ``charge_off``
-        or ``allowance``, with no schedule prefix. Use
+        or ``allowance``, with no schedule prefix, unlike
+        `to_code_grain_format`. Use
         `call_report.fca.get_domain_dataset_codes` to turn the codes into
         names.
 
-        That naming is what makes a series survive a schedule split. FCA
-        renamed RI-E to RI-E.2 in 2023 while keeping its fields, so the
-        loan portfolio dataset draws ``charge_off`` from whichever of the
-        two covers each period and lands both in one column. Compare
-        `to_code_grain_format`, which names every column for its own
-        schedule and so would split that series in two.
-
         Only the schedules a dataset declares are loaded, and only those
         of them present in the requested range. A range that spans a
-        split loads both sides.
+        schedule split loads both sides and keeps the series in one
+        column.
 
         Parameters
         ----------
