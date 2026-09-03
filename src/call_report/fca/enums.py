@@ -61,42 +61,43 @@ class FCASchedule(StrEnum):
     RIE1 = "RIE1"
     RIE2 = "RIE2"
 
+    @classmethod
+    def coerce(cls, *, value: FCASchedule | str) -> FCASchedule:
+        """Coerce a schedule value into an FCASchedule member.
 
-def coerce_fca_call_report_schedule(*, value: FCASchedule | str) -> FCASchedule:
-    """Coerce a schedule value into an FCASchedule member.
+        Accepts either an existing `FCASchedule` member (returned
+        unchanged) or a schedule name string, matched case-insensitively.
 
-    Accepts either an existing `FCASchedule` member (returned unchanged) or
-    a schedule name string, matched case-insensitively.
+        Parameters
+        ----------
+        value : FCASchedule or str
+            The schedule to coerce.
 
-    Parameters
-    ----------
-    value : FCASchedule or str
-        The schedule to coerce.
+        Returns
+        -------
+        FCASchedule
+            The matching enum member.
 
-    Returns
-    -------
-    FCASchedule
-        The matching enum member.
+        Raises
+        ------
+        ScheduleNotFoundError
+            If `value` is a string that does not match any known
+            schedule name.
 
-    Raises
-    ------
-    ScheduleNotFoundError
-        If `value` is a string that does not match any known schedule name.
-
-    Examples
-    --------
-    >>> coerce_fca_call_report_schedule(value="rcb")
-    <FCASchedule.RCB: 'RCB'>
-    """
-    if isinstance(value, FCASchedule):
-        return value
-    try:
-        return FCASchedule(value.upper())
-    except ValueError:
-        valid = sorted(member.value for member in FCASchedule)
-        raise ScheduleNotFoundError(
-            f"Unknown FCA schedule {value!r}; valid schedules are {valid}."
-        ) from None
+        Examples
+        --------
+        >>> FCASchedule.coerce(value="rcb")
+        <FCASchedule.RCB: 'RCB'>
+        """
+        if isinstance(value, cls):
+            return value
+        try:
+            return cls(value.upper())
+        except ValueError:
+            valid = sorted(member.value for member in cls)
+            raise ScheduleNotFoundError(
+                f"Unknown FCA schedule {value!r}; valid schedules are {valid}."
+            ) from None
 
 
 class FCADomainDataset(StrEnum):
@@ -116,41 +117,41 @@ class FCADomainDataset(StrEnum):
 
     LOAN_PORTFOLIO = "loan_portfolio"
 
+    @classmethod
+    def coerce(cls, *, value: FCADomainDataset | str) -> FCADomainDataset:
+        """Coerce a domain dataset value into an FCADomainDataset member.
 
-def coerce_fca_domain_dataset(*, value: FCADomainDataset | str) -> FCADomainDataset:
-    """Coerce a domain dataset value into an FCADomainDataset member.
+        Accepts either an existing `FCADomainDataset` member (returned
+        unchanged) or a dataset name string, matched case-insensitively.
+        The domain dataset counterpart to `FCASchedule.coerce`.
 
-    Accepts either an existing `FCADomainDataset` member (returned
-    unchanged) or a dataset name string, matched case-insensitively. The
-    domain dataset counterpart to `coerce_fca_call_report_schedule`.
+        Parameters
+        ----------
+        value : FCADomainDataset or str
+            The domain dataset to coerce.
 
-    Parameters
-    ----------
-    value : FCADomainDataset or str
-        The domain dataset to coerce.
+        Returns
+        -------
+        FCADomainDataset
+            The matching enum member.
 
-    Returns
-    -------
-    FCADomainDataset
-        The matching enum member.
+        Raises
+        ------
+        DomainDatasetNotFoundError
+            If `value` is a string that does not match any shipped
+            dataset name.
 
-    Raises
-    ------
-    DomainDatasetNotFoundError
-        If `value` is a string that does not match any shipped dataset
-        name.
-
-    Examples
-    --------
-    >>> coerce_fca_domain_dataset(value="LOAN_PORTFOLIO")
-    <FCADomainDataset.LOAN_PORTFOLIO: 'loan_portfolio'>
-    """
-    if isinstance(value, FCADomainDataset):
-        return value
-    try:
-        return FCADomainDataset(value.lower())
-    except ValueError:
-        valid = sorted(member.value for member in FCADomainDataset)
-        raise DomainDatasetNotFoundError(
-            f"Unknown FCA domain dataset {value!r}; valid datasets are {valid}."
-        ) from None
+        Examples
+        --------
+        >>> FCADomainDataset.coerce(value="LOAN_PORTFOLIO")
+        <FCADomainDataset.LOAN_PORTFOLIO: 'loan_portfolio'>
+        """
+        if isinstance(value, cls):
+            return value
+        try:
+            return cls(value.lower())
+        except ValueError:
+            valid = sorted(member.value for member in cls)
+            raise DomainDatasetNotFoundError(
+                f"Unknown FCA domain dataset {value!r}; valid datasets are {valid}."
+            ) from None
