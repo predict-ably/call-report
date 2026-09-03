@@ -1680,6 +1680,38 @@ def test_to_domain_dataset_curated_columns_and_grain() -> None:
     assert {"non_performing", "net_charge_off"} <= set(columns)
 
 
+def test_to_domain_dataset_wide_keys_one_row_per_institution_and_period() -> None:
+    """wide=True pivots every code into its own {code_value}__{measure} column.
+
+    The value in a wide column must match the same institution/code's
+    value on the narrow (default) frame, so the two are just different
+    shapes of the same underlying result.
+    """
+    report = _archive_report("2026-03-31", "2026-03-31")
+    narrow = report.to_domain_dataset(domain_dataset="loan_portfolio")
+    wide = report.to_domain_dataset(domain_dataset="loan_portfolio", wide=True)
+
+    assert "code_column" not in wide.columns
+    assert "code_value" not in wide.columns
+    assert "110__accruing" in wide.columns
+    narrow_row_list = rows_of(narrow)
+    narrow_rows = {(row["UNINUM"], row["code_value"]): row for row in narrow_row_list}
+    assert len(rows_of(wide)) == len({row["UNINUM"] for row in narrow_row_list})
+    wide_row = next(row for row in rows_of(wide) if row["UNINUM"] == 620000)
+    assert wide_row["110__accruing"] == narrow_rows[(620000, 110.0)]["accruing"]
+
+
+def test_to_domain_dataset_wide_respects_include_totals() -> None:
+    """wide=True still honors include_totals, keying the total's own code."""
+    report = _archive_report("2026-03-31", "2026-03-31")
+    without = report.to_domain_dataset(domain_dataset="loan_portfolio", wide=True)
+    with_totals = report.to_domain_dataset(
+        domain_dataset="loan_portfolio", include_totals=True, wide=True
+    )
+    assert "155__total_loans" not in without.columns
+    assert "155__total_loans" in with_totals.columns
+
+
 def test_to_domain_dataset_accepts_an_enum_member() -> None:
     """`domain_dataset` accepts FCADomainDataset members, not just strings."""
     loans = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(

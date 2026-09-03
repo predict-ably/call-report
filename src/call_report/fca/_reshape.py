@@ -52,7 +52,6 @@ if TYPE_CHECKING:
     from call_report.core._backend import NativeDataFrame
     from call_report.fca._domain_datasets import (
         DerivedOperation,
-        DomainDataset,
         DomainDatasetDerived,
         DomainDatasetSource,
     )
@@ -1133,95 +1132,56 @@ def add_derived_columns(
     return frame
 
 
-def to_domain_dataset(
-    *,
-    frames: dict[str, FrameOrLazy],
-    code_columns: dict[str, str | None],
-    trailing_columns: dict[str, tuple[str, ...]],
-    dataset: DomainDataset,
-    include_totals: bool = False,
-) -> nw.DataFrame[Any]:
-    """Build a curated domain dataset frame from a set of already-loaded schedules.
+def exclude_reported_totals(
+    *, frame: FrameOrLazy, total_codes: frozenset[int]
+) -> FrameOrLazy:
+    """Drop every row whose code_value is one of a dataset's reported totals.
 
-    Melts each schedule with `melt_schedule_frame`, the same per-schedule
-    step the other three architectures use, then decodes each one into the
-    dataset's own terms with `apply_domain_dataset_decoding` before
-    stacking them. Unlike `to_code_grain_format`, the pivot is on the
-    curated `variable_name` alone, so an output column is named for what
-    it measures rather than for the schedule it came from. That is what
-    lets two schedules covering different eras fill one continuous column.
-
-    Everything before `pivot` stays lazy if `frames`' values are lazy.
-    `pivot` is the one step that must collect, and it also enforces that
-    `CODE_GRAIN_INDEX` plus the output column is a unique grain.
+    Used by `FCACallReport._to_domain_dataset` to implement
+    ``include_totals=False``. A null `code_value` is never one of the
+    source's own declared totals, so it must survive this on every
+    backend. `is_in` against a null value is itself null, and that null
+    is backend-inconsistent under `filter` (pandas keeps the row, polars
+    and pyarrow drop it), so the null case is made explicit here rather
+    than left to each backend's own null-propagation behavior.
 
     Parameters
     ----------
-    frames : dict[str, narwhals.DataFrame or narwhals.LazyFrame]
-        Each schedule's already-loaded, already-stacked frame, keyed by
-        schedule root name.
-    code_columns : dict[str, str or None]
-        Each schedule's code column name, keyed the same way as `frames`.
-        Use ``None`` for a schedule with no code column.
-    trailing_columns : dict[str, tuple[str, ...]]
-        Each schedule's trailing single-occurrence columns, keyed the
-        same way as `frames`. Use an empty tuple for a schedule with
-        none.
-    dataset : DomainDataset
-        The curated definition to build.
-    include_totals : bool, default False
-        Whether to keep the codes `dataset` marks as reported subtotals.
-        The default excludes them, so an aggregation over every returned
-        row does not double count. Set this ``True`` to also get the
-        source's own reported subtotal rows.
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        A decoded, stacked frame with a `code_value` column.
+    total_codes : frozenset[int]
+        The codes to drop, from `DomainDataset.total_codes`.
 
     Returns
     -------
-    narwhals.DataFrame
-        One row per `CODE_GRAIN_INDEX` grain, one column per curated
-        output column.
+    narwhals.DataFrame or narwhals.LazyFrame
+        `frame` with every row whose `code_value` is in `total_codes`
+        removed. Lazy if `frame` was lazy.
+    """
+    is_total = nw.col("code_value").is_in(sorted(total_codes)).fill_null(value=False)
+    return frame.filter(~is_total)
+
+
+def assert_pivot_has_measurements(*, pivoted: nw.DataFrame[Any]) -> None:
+    """Raise if a pivoted frame carries no columns beyond `CODE_GRAIN_INDEX`.
+
+    A pivot on an entirely empty input still produces the four
+    `CODE_GRAIN_INDEX` columns and nothing else. Returning that silently
+    would look like a real, if narrow, result rather than the absence of
+    any real one.
+
+    Parameters
+    ----------
+    pivoted : narwhals.DataFrame
+        The frame `core._backend.pivot` returned.
 
     Raises
     ------
     ReshapeError
-        If `CODE_GRAIN_INDEX` plus the output column is not a unique
-        grain, or if the requested schedules contributed no measurement
-        columns at all, for example because every one resolved to zero
-        rows for the requested periods.
+        If `pivoted` has no column beyond `CODE_GRAIN_INDEX`, for example
+        because every contributing schedule resolved to zero rows for
+        the requested periods.
     """
-    decoded = [
-        apply_domain_dataset_decoding(
-            frame=melt_schedule_frame(
-                frame=frame,
-                schedule=schedule,
-                code_column=code_columns[schedule],
-                trailing_columns=trailing_columns[schedule],
-            ),
-            source=dataset.source_by_schedule[schedule],
-            code_column=dataset.code_column,
-        )
-        for schedule, frame in frames.items()
-    ]
-    combined = concat(frames=decoded, how="union")
-    if not include_totals:
-        # A null code_value is not one of the source's own reported totals,
-        # so it must never be filtered out by this. `is_in` on a null
-        # value is itself null, and that null is backend-inconsistent
-        # under `filter` (pandas keeps the row, polars and pyarrow drop
-        # it), so the null case is made explicit here rather than left to
-        # each backend's own null-propagation behavior.
-        is_total = (
-            nw.col("code_value")
-            .is_in(sorted(dataset.total_codes))
-            .fill_null(value=False)
-        )
-        combined = combined.filter(~is_total)
-    pivoted = pivot(
-        frame=combined,
-        on="variable_name",
-        index=list(CODE_GRAIN_INDEX),
-        values="value",
-    )
     if len(pivoted.columns) == len(CODE_GRAIN_INDEX):
         raise ReshapeError(
             "The requested schedules contributed no measurement columns, so "
@@ -1229,4 +1189,56 @@ def to_domain_dataset(
             "contributing schedule resolved to zero rows for the requested "
             "periods."
         )
-    return add_derived_columns(frame=pivoted, derived=dataset.derived)
+
+
+def pivot_domain_dataset_wide(*, frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
+    """Pivot a curated domain dataset frame wider, one column per code and measure.
+
+    Takes the code-grain-shaped frame `FCACallReport._to_domain_dataset`
+    already built (one row per `CODE_GRAIN_INDEX` grain, one column per
+    curated measure) and pivots it again so each row is keyed by
+    `RESHAPE_INDEX` alone, with one output column per
+    ``{code_value}__{measure}`` combination, e.g. ``100__accruing``.
+    `code_column` is dropped rather than folded into the name, since a
+    domain dataset declares exactly one and it therefore disambiguates
+    nothing once every column already names its own measure.
+
+    `code_value`'s cast to a string goes through `fill_null` first,
+    because casting a `Float64`-with-null column straight to `Int64`
+    raises on the pandas backend. A dataset's own coded rows are never
+    null in practice, so this only guards a row that reached here some
+    other way.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame
+        The narrow, code-grain-shaped curated frame.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        One row per `RESHAPE_INDEX` grain, one column per
+        ``{code_value}__{measure}`` combination.
+
+    Raises
+    ------
+    ReshapeError
+        If `RESHAPE_INDEX` plus ``{code_value}__{measure}`` is not a
+        unique grain.
+    """
+    measures = [column for column in frame.columns if column not in CODE_GRAIN_INDEX]
+    melted = frame.unpivot(
+        on=measures,
+        index=list(CODE_GRAIN_INDEX),
+        variable_name="measure",
+        value_name="value",
+    )
+    code_value_text = nw.col("code_value").fill_null(0).cast(nw.Int64).cast(nw.String)
+    melted = melted.with_columns(
+        nw.concat_str([code_value_text, nw.col("measure")], separator="__").alias(
+            "column_key"
+        )
+    )
+    return pivot(
+        frame=melted, on="column_key", index=list(RESHAPE_INDEX), values="value"
+    )

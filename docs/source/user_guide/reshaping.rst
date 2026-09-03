@@ -282,6 +282,27 @@ null rather than zero where a figure was not collected:
   ``allowance`` column is continuous across that quarter, but the two sides
   of it are not measured the same way.
 
+Wide
+----
+
+Pass ``wide=True`` to key rows by ``(UNINUM, period)`` alone, with one
+column per ``{code_value}__{measure}`` combination, rather than one row per
+portfolio:
+
+.. doctest::
+
+   >>> wide = report.to_domain_dataset(domain_dataset="loan_portfolio", wide=True)
+   >>> "110__accruing" in wide.columns
+   True
+   >>> row = wide[wide["UNINUM"] == 620000].iloc[0]
+   >>> float(row["110__accruing"])
+   3067844.0
+
+``code_column`` and ``code_value`` are dropped rather than folded into the
+name, since a domain dataset only ever declares one ``code_column`` and it
+therefore disambiguates nothing once every column already names its own
+measure.
+
 Converting between the shapes
 =============================
 

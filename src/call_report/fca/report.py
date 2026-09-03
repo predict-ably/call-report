@@ -24,6 +24,7 @@ from call_report.core._backend import (
     date_dtype,
     finalize,
     finalize_as,
+    pivot,
 )
 from call_report.exceptions import (
     CallReportError,
@@ -1303,6 +1304,7 @@ dict[str, tuple[str, ...]]]
         *,
         domain_dataset: FCADomainDataset | str,
         include_totals: bool = False,
+        wide: bool = False,
         dataframe_type: None = None,
     ) -> NativeDataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
@@ -1312,6 +1314,7 @@ dict[str, tuple[str, ...]]]
         *,
         domain_dataset: FCADomainDataset | str,
         include_totals: bool = False,
+        wide: bool = False,
         dataframe_type: Literal["pandas"],
     ) -> pandas.DataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
@@ -1321,6 +1324,7 @@ dict[str, tuple[str, ...]]]
         *,
         domain_dataset: FCADomainDataset | str,
         include_totals: bool = False,
+        wide: bool = False,
         dataframe_type: Literal["pyarrow_table"],
     ) -> pyarrow.Table:  # numpydoc ignore=GL08
         ...  # pragma: no cover
@@ -1330,6 +1334,7 @@ dict[str, tuple[str, ...]]]
         *,
         domain_dataset: FCADomainDataset | str,
         include_totals: bool = False,
+        wide: bool = False,
         dataframe_type: Literal["polars_dataframe"],
     ) -> polars.DataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
@@ -1339,6 +1344,7 @@ dict[str, tuple[str, ...]]]
         *,
         domain_dataset: FCADomainDataset | str,
         include_totals: bool = False,
+        wide: bool = False,
         dataframe_type: Literal["polars_lazyframe"],
     ) -> polars.LazyFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
@@ -1347,6 +1353,7 @@ dict[str, tuple[str, ...]]]
         *,
         domain_dataset: FCADomainDataset | str,
         include_totals: bool = False,
+        wide: bool = False,
         dataframe_type: DataFrameType | None = None,
     ) -> NativeDataFrame:
         """Build one curated domain dataset over the requested periods.
@@ -1376,6 +1383,13 @@ dict[str, tuple[str, ...]]]
             subtotals. The default excludes them, so an aggregation over
             every returned row does not double count. Set this ``True``
             to also get the source's own reported subtotal rows.
+        wide : bool, default False
+            Whether to pivot every code into its own set of columns.
+            The default keys rows by ``(UNINUM, period, code_column,
+            code_value)``, one column per measure. Set this ``True`` to
+            key rows by ``(UNINUM, period)`` alone, with one column per
+            ``{code_value}__{measure}`` combination, e.g.
+            ``100__accruing``.
         dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
 "polars_dataframe"}, optional
             The dataframe type to convert the result to as a final step.
@@ -1399,9 +1413,10 @@ dict[str, tuple[str, ...]]]
             If none of the dataset's schedules is present in any
             requested period.
         ReshapeError
-            If ``(UNINUM, period, code_column, code_value, column)`` is
-            not a unique grain, for example because of a duplicated row
-            in the source data.
+            If the resulting grain (``(UNINUM, period, code_column,
+            code_value, column)``, or ``(UNINUM, period, column)`` when
+            `wide` is ``True``) is not unique, for example because of a
+            duplicated row in the source data.
 
         Examples
         --------
@@ -1419,27 +1434,47 @@ dict[str, tuple[str, ...]]]
         ... ].iloc[0]
         >>> float(agribusiness["accruing"])
         3265454.0
+        >>> wide = report.to_domain_dataset(
+        ...     domain_dataset="loan_portfolio", wide=True
+        ... )
+        >>> "110__accruing" in wide.columns
+        True
         """
         return finalize_as(
             frame=self._to_domain_dataset(
-                domain_dataset=domain_dataset, include_totals=include_totals
+                domain_dataset=domain_dataset, include_totals=include_totals, wide=wide
             ),
             dataframe_type=dataframe_type,
         )
 
     def _to_domain_dataset(
-        self, *, domain_dataset: FCADomainDataset | str, include_totals: bool
+        self,
+        *,
+        domain_dataset: FCADomainDataset | str,
+        include_totals: bool,
+        wide: bool,
     ) -> nw.DataFrame[Any]:
         """Build the curated frame, the private hook behind `to_domain_dataset`.
 
         Narrows the dataset's declared schedules to those the requested
-        range actually has, loads them through `_load_reshape_inputs`, and
-        delegates to `call_report.fca._reshape.to_domain_dataset`.
+        range actually has, loads them through `_load_reshape_inputs`,
+        then melts, decodes, and pivots them into the dataset's own
+        terms. Unlike `to_code_grain_format`, the pivot is on the
+        curated `variable_name` alone, so an output column is named for
+        what it measures rather than for the schedule it came from.
+        That is what lets two schedules covering different eras fill one
+        continuous column.
 
         `_load_code_grain_inputs` is deliberately not used here. It rejects
         a schedule whose layout declares no code column, and a curated
         dataset draws on exactly such schedules, supplying the codes from
         its own definition instead.
+
+        Everything before `pivot` stays lazy if the loaded schedules are
+        lazy. `pivot` is the one step that must collect, and it also
+        enforces that `_reshape.CODE_GRAIN_INDEX` plus the output column
+        is a unique grain. `wide` runs a second pivot afterward, via
+        `_reshape.pivot_domain_dataset_wide`, on the already-eager result.
 
         Parameters
         ----------
@@ -1448,6 +1483,8 @@ dict[str, tuple[str, ...]]]
             case-insensitively.
         include_totals : bool
             Whether to keep the dataset's reported subtotal codes.
+        wide : bool
+            Whether to pivot every code into its own set of columns.
 
         Returns
         -------
@@ -1461,6 +1498,13 @@ dict[str, tuple[str, ...]]]
         ScheduleNotFoundError
             If none of the dataset's schedules is present in any
             requested period.
+        ReshapeError
+            If `_reshape.CODE_GRAIN_INDEX` plus the output column is not
+            a unique grain, if `wide` is ``True`` and `_reshape.RESHAPE_INDEX`
+            plus the output column is not a unique grain, or if the
+            requested schedules contributed no measurement columns at
+            all, for example because every one resolved to zero rows
+            for the requested periods.
         """
         dataset = get_fca_domain_dataset(domain_dataset=domain_dataset)
         self._ensure_fetched()
@@ -1478,13 +1522,35 @@ dict[str, tuple[str, ...]]]
         frames, code_columns, trailing_columns = self._load_reshape_inputs(
             schedules=available
         )
-        return _reshape.to_domain_dataset(
-            frames=frames,
-            code_columns=code_columns,
-            trailing_columns=trailing_columns,
-            dataset=dataset,
-            include_totals=include_totals,
+        decoded = [
+            _reshape.apply_domain_dataset_decoding(
+                frame=_reshape.melt_schedule_frame(
+                    frame=frame,
+                    schedule=schedule,
+                    code_column=code_columns[schedule],
+                    trailing_columns=trailing_columns[schedule],
+                ),
+                source=dataset.source_by_schedule[schedule],
+                code_column=dataset.code_column,
+            )
+            for schedule, frame in frames.items()
+        ]
+        combined = concat(frames=decoded, how="union")
+        if not include_totals:
+            combined = _reshape.exclude_reported_totals(
+                frame=combined, total_codes=dataset.total_codes
+            )
+        pivoted = pivot(
+            frame=combined,
+            on="variable_name",
+            index=list(_reshape.CODE_GRAIN_INDEX),
+            values="value",
         )
+        _reshape.assert_pivot_has_measurements(pivoted=pivoted)
+        result = _reshape.add_derived_columns(frame=pivoted, derived=dataset.derived)
+        if wide:
+            return _reshape.pivot_domain_dataset_wide(frame=result)
+        return result
 
     def _load_reshape_inputs(
         self, *, schedules: Iterable[FCASchedule | str] | None
