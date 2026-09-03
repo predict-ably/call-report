@@ -280,6 +280,56 @@ def test_an_unrecognized_derived_operation_raises() -> None:
         DomainDataset.from_dict(data=data)
 
 
+def test_a_derived_column_with_no_components_raises() -> None:
+    """An empty components list raises rather than crashing inside the pivot.
+
+    `_derived_expression` unpacks the first component off the list with
+    no fallback, so an empty list would raise an opaque `ValueError` far
+    from the definition that caused it instead of a clear error here.
+    """
+    data = {
+        "name": "broken",
+        "code_column": "SEGMENT",
+        "codes": [{"code": 1, "label": "One", "is_total": False}],
+        "sources": [
+            {
+                "schedules": ["RCF1"],
+                "code_column": "LOANSTATUS",
+                "columns": {"ACCR": {"column": "balance"}},
+            }
+        ],
+        "derived": [{"column": "total", "operation": "sum", "components": []}],
+    }
+    with pytest.raises(SchemaError, match="no components"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_a_derived_column_naming_an_unproduced_component_raises() -> None:
+    """A component that no source produces raises, rather than a null column.
+
+    This also rules out one derived column depending on another's
+    output, which would make the result depend on the order derived
+    columns happen to be declared in.
+    """
+    data = {
+        "name": "broken",
+        "code_column": "SEGMENT",
+        "codes": [{"code": 1, "label": "One", "is_total": False}],
+        "sources": [
+            {
+                "schedules": ["RCF1"],
+                "code_column": "LOANSTATUS",
+                "columns": {"ACCR": {"column": "balance"}},
+            }
+        ],
+        "derived": [
+            {"column": "total", "operation": "sum", "components": ["not_a_column"]}
+        ],
+    }
+    with pytest.raises(SchemaError, match=r"\['not_a_column'\]"):
+        DomainDataset.from_dict(data=data)
+
+
 # ---------------------------------------------------------------------------
 # get_domain_dataset_codes
 # ---------------------------------------------------------------------------

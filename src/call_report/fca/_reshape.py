@@ -1139,7 +1139,7 @@ def to_domain_dataset(
     code_columns: dict[str, str | None],
     trailing_columns: dict[str, tuple[str, ...]],
     dataset: DomainDataset,
-    include_totals: bool = True,
+    include_totals: bool = False,
 ) -> nw.DataFrame[Any]:
     """Build a curated domain dataset frame from a set of already-loaded schedules.
 
@@ -1169,10 +1169,11 @@ def to_domain_dataset(
         none.
     dataset : DomainDataset
         The curated definition to build.
-    include_totals : bool, default True
+    include_totals : bool, default False
         Whether to keep the codes `dataset` marks as reported subtotals.
-        Set this ``False`` to get only the members of the breakdown, so
-        an aggregation over every remaining row cannot double count.
+        The default excludes them, so an aggregation over every returned
+        row does not double count. Set this ``True`` to also get the
+        source's own reported subtotal rows.
 
     Returns
     -------

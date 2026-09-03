@@ -6,6 +6,7 @@ import pytest
 
 from call_report.exceptions import (
     CallReportError,
+    DomainDatasetNotFoundError,
     DownloadError,
     InvalidPeriodError,
     LayoutParseError,
@@ -22,6 +23,7 @@ from call_report.exceptions import (
         InvalidPeriodError,
         PeriodNotAvailableError,
         ScheduleNotFoundError,
+        DomainDatasetNotFoundError,
         LayoutParseError,
         SchemaError,
         DownloadError,
