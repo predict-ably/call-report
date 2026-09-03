@@ -20,13 +20,17 @@ import functools
 import importlib.resources
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, overload
+from functools import cached_property
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Literal, get_args, overload
 
 from call_report.core._backend import DataFrameType, build_frame, finalize_as
 from call_report.exceptions import SchemaError
 from call_report.fca.enums import FCADomainDataset, coerce_fca_domain_dataset
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     import pandas
     import polars
     import pyarrow
@@ -55,6 +59,13 @@ class DomainDatasetCode:
         Whether this code is a subtotal the source reports rather than a
         distinct member of the breakdown. A caller summing over codes has
         to exclude these.
+
+    Examples
+    --------
+    >>> from call_report.fca._domain_datasets import DomainDatasetCode
+    >>> agribusiness = DomainDatasetCode(code=110, label="Agribusiness", is_total=False)
+    >>> agribusiness.label
+    'Agribusiness'
     """  # numpydoc ignore=PR01
 
     code: int
@@ -79,6 +90,13 @@ class DomainDatasetColumn:
         The code this variable belongs to, for a source whose breakdown
         is encoded in its variable names. ``None`` for a source that
         reports a code column, where the code comes from the data.
+
+    Examples
+    --------
+    >>> from call_report.fca._domain_datasets import DomainDatasetColumn
+    >>> charge_off_agribusiness = DomainDatasetColumn(column="charge_off", code=110)
+    >>> charge_off_agribusiness.column
+    'charge_off'
     """  # numpydoc ignore=PR01
 
     column: str
@@ -102,13 +120,43 @@ class DomainDatasetSource:
         The schedule's own code column, for a source that reports one.
         ``None`` for a source whose breakdown is encoded in its variable
         names instead.
-    columns : dict[str, DomainDatasetColumn]
-        Each contributing variable, keyed by its name in the source.
+    columns : Mapping[str, DomainDatasetColumn]
+        Each contributing variable, keyed by its name in the source. A
+        read-only mapping, not a plain `dict`, so a caller holding a
+        `DomainDatasetSource` returned from the process-wide
+        `get_fca_domain_dataset` cache cannot mutate it and corrupt every
+        later lookup.
+
+    Examples
+    --------
+    >>> from call_report.fca._domain_datasets import (
+    ...     DomainDatasetColumn,
+    ...     DomainDatasetSource,
+    ... )
+    >>> source = DomainDatasetSource(
+    ...     schedules=("RCF1",),
+    ...     code_column="LOANSTATUS",
+    ...     columns={"ACCR": DomainDatasetColumn(column="accruing", code=None)},
+    ... )
+    >>> sorted(source.output_columns)
+    ['accruing']
     """  # numpydoc ignore=PR01
 
     schedules: tuple[str, ...]
     code_column: str | None
-    columns: dict[str, DomainDatasetColumn]
+    columns: Mapping[str, DomainDatasetColumn]
+
+    def __post_init__(self) -> None:
+        """Freeze `columns` against mutation after construction.
+
+        `dataclass(frozen=True)` only stops an attribute from being
+        rebound, not a mutable value it holds from being mutated in
+        place. `columns` is wrapped here so that a caller holding a
+        `DomainDatasetSource` returned from the process-wide
+        `get_fca_domain_dataset` cache cannot poison every later lookup
+        by mutating it.
+        """
+        object.__setattr__(self, "columns", MappingProxyType(dict(self.columns)))
 
     @property
     def output_columns(self) -> frozenset[str]:
@@ -144,6 +192,17 @@ class DomainDatasetDerived:
         How `components` combine.
     components : tuple[str, ...]
         The output columns this is computed from, in order.
+
+    Examples
+    --------
+    >>> from call_report.fca._domain_datasets import DomainDatasetDerived
+    >>> net_charge_off = DomainDatasetDerived(
+    ...     column="net_charge_off",
+    ...     operation="difference",
+    ...     components=("charge_off", "recovery"),
+    ... )
+    >>> net_charge_off.operation
+    'difference'
     """  # numpydoc ignore=PR01
 
     column: str
@@ -172,6 +231,13 @@ class DomainDataset:
         The schedule groups contributing columns.
     derived : tuple[DomainDatasetDerived, ...]
         Output columns computed from other output columns.
+
+    Examples
+    --------
+    >>> from call_report.fca import FCADomainDataset, get_fca_domain_dataset
+    >>> dataset = get_fca_domain_dataset(domain_dataset=FCADomainDataset.LOAN_PORTFOLIO)
+    >>> dataset.name
+    'loan_portfolio'
     """  # numpydoc ignore=PR01
 
     name: str
@@ -230,13 +296,52 @@ class DomainDataset:
         """
         return frozenset(item.code for item in self.codes if item.is_total)
 
+    @cached_property
+    def source_by_schedule(self) -> Mapping[str, DomainDatasetSource]:
+        """Return each schedule's contributing source group, by root name.
+
+        Computed once and cached on this instance, rather than rebuilt by
+        every `call_report.fca._reshape.to_domain_dataset` call, since
+        `sources` never changes after construction and `DomainDataset`
+        instances themselves are already cached for the life of the
+        process by `get_fca_domain_dataset`.
+
+        Returns
+        -------
+        Mapping[str, DomainDatasetSource]
+            Every schedule root name in `schedules`, mapped to the source
+            group that declares it.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCADomainDataset, get_fca_domain_dataset
+        >>> dataset = get_fca_domain_dataset(
+        ...     domain_dataset=FCADomainDataset.LOAN_PORTFOLIO
+        ... )
+        >>> dataset.source_by_schedule["RCF1"].code_column
+        'LOANSTATUS'
+        """
+        return MappingProxyType(
+            {
+                schedule: source
+                for source in self.sources
+                for schedule in source.schedules
+            }
+        )
+
     @classmethod
     def from_dict(cls, *, data: dict[str, Any]) -> DomainDataset:
         """Build a DomainDataset from one shipped definition's parsed JSON.
 
-        Validates that no two source groups declare the same output
-        column. Within a group they may and do repeat, which is how a
-        schedule split maps to one continuous column.
+        Validates three invariants a hand-authored definition can violate
+        silently: that no two source groups declare the same output
+        column, that each source's per-variable `code` values agree with
+        whether it declares its own `code_column`, and that every derived
+        column names a real `DerivedOperation`.
+
+        Within one source group, an output column name may repeat across
+        variables. That is deliberate, and is how a schedule split maps
+        to one continuous column.
 
         Parameters
         ----------
@@ -251,8 +356,29 @@ class DomainDataset:
         Raises
         ------
         SchemaError
-            If two source groups declare the same output column, which
-            would put two different measures in one column.
+            If two source groups declare the same output column, if a
+            source's `code_column` disagrees with whether its variables
+            declare a `code`, or if a derived column names an operation
+            other than ``"sum"`` or ``"difference"``.
+
+        Examples
+        --------
+        >>> from call_report.fca._domain_datasets import DomainDataset
+        >>> data = {
+        ...     "name": "example",
+        ...     "code_column": "SEGMENT",
+        ...     "codes": [{"code": 1, "label": "One", "is_total": False}],
+        ...     "sources": [
+        ...         {
+        ...             "schedules": ["RCF1"],
+        ...             "code_column": "LOANSTATUS",
+        ...             "columns": {"ACCR": {"column": "accruing"}},
+        ...         }
+        ...     ],
+        ...     "derived": [],
+        ... }
+        >>> DomainDataset.from_dict(data=data).name
+        'example'
         """
         sources = tuple(
             DomainDatasetSource(
@@ -279,6 +405,42 @@ class DomainDataset:
                 )
             seen |= source.output_columns
 
+            has_code_column = source.code_column is not None
+            declares_code = {
+                variable: item.code is not None
+                for variable, item in source.columns.items()
+            }
+            mismatched = sorted(
+                variable
+                for variable, code_is_set in declares_code.items()
+                if code_is_set == has_code_column
+            )
+            if mismatched:
+                raise SchemaError(
+                    f"Domain dataset {data['name']!r} declares {mismatched} with a "
+                    f"per-variable code that disagrees with its source's own "
+                    f"code_column={source.code_column!r}: a source with a "
+                    "code_column takes its code from the data, and a source "
+                    "without one must declare a code for every variable."
+                )
+
+        valid_operations = get_args(DerivedOperation)
+        derived = tuple(
+            DomainDatasetDerived(
+                column=item["column"],
+                operation=item["operation"],
+                components=tuple(item["components"]),
+            )
+            for item in data["derived"]
+        )
+        for item in derived:
+            if item.operation not in valid_operations:
+                raise SchemaError(
+                    f"Domain dataset {data['name']!r} declares derived column "
+                    f"{item.column!r} with operation {item.operation!r}; valid "
+                    f"operations are {sorted(valid_operations)}."
+                )
+
         return cls(
             name=data["name"],
             code_column=data["code_column"],
@@ -289,18 +451,40 @@ class DomainDataset:
                 for item in data["codes"]
             ),
             sources=sources,
-            derived=tuple(
-                DomainDatasetDerived(
-                    column=item["column"],
-                    operation=item["operation"],
-                    components=tuple(item["components"]),
-                )
-                for item in data["derived"]
-            ),
+            derived=derived,
         )
 
 
 @functools.cache
+def _cached_domain_dataset(member: FCADomainDataset) -> DomainDataset:
+    """Read and parse one domain dataset's shipped JSON, cached by member.
+
+    The cache boundary this function draws is deliberately on
+    `FCADomainDataset`, not on whatever string a caller passed. Caching on
+    the raw argument to `get_fca_domain_dataset` would let two different
+    spellings of the same dataset name (``"loan_portfolio"`` versus
+    ``"LOAN_PORTFOLIO"``) each pay their own parse and hold their own
+    object, defeating the "parsed at most once per process" guarantee
+    this module's docstring makes.
+
+    Parameters
+    ----------
+    member : FCADomainDataset
+        The dataset to load.
+
+    Returns
+    -------
+    DomainDataset
+        The dataset's curated definition.
+    """
+    resource = importlib.resources.files("call_report.fca").joinpath(
+        "data", "domain_datasets", f"{member.value}.json"
+    )
+    return DomainDataset.from_dict(
+        data=json.loads(resource.read_text(encoding="utf-8"))
+    )
+
+
 def get_fca_domain_dataset(*, domain_dataset: FCADomainDataset | str) -> DomainDataset:
     """Return one curated domain dataset's shipped definition.
 
@@ -310,7 +494,8 @@ def get_fca_domain_dataset(*, domain_dataset: FCADomainDataset | str) -> DomainD
     Parameters
     ----------
     domain_dataset : FCADomainDataset or str
-        The dataset to return. A string is matched case-insensitively.
+        The domain dataset to look up. A string is matched
+        case-insensitively.
 
     Returns
     -------
@@ -331,13 +516,7 @@ def get_fca_domain_dataset(*, domain_dataset: FCADomainDataset | str) -> DomainD
     >>> len(dataset.codes)
     13
     """
-    member = coerce_fca_domain_dataset(value=domain_dataset)
-    resource = importlib.resources.files("call_report.fca").joinpath(
-        "data", "domain_datasets", f"{member.value}.json"
-    )
-    return DomainDataset.from_dict(
-        data=json.loads(resource.read_text(encoding="utf-8"))
-    )
+    return _cached_domain_dataset(coerce_fca_domain_dataset(value=domain_dataset))
 
 
 @overload
@@ -384,7 +563,8 @@ def get_domain_dataset_codes(
     Parameters
     ----------
     domain_dataset : FCADomainDataset or str
-        The dataset to describe. A string is matched case-insensitively.
+        The domain dataset to look up. A string is matched
+        case-insensitively.
     dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
 "polars_dataframe"}, optional
         The dataframe type to convert the result to as a final step.

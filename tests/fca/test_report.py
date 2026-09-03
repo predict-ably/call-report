@@ -1650,6 +1650,19 @@ def _archive_report(start: str, end: str) -> FCACallReport:
     return FCACallReport(start=start, end=end, transport=PackagedArchiveTransport())
 
 
+def _normalize_missing(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Replace every missing value with None so row dicts compare equal.
+
+    The default `dataframe_type` spells a missing numeric value as
+    `float("nan")`, which is never equal to itself, so two row lists that
+    are otherwise identical still fail a plain `==` comparison.
+    """
+    return [
+        {key: (None if is_missing(value) else value) for key, value in row.items()}
+        for row in rows
+    ]
+
+
 def test_to_domain_dataset_curated_columns_and_grain() -> None:
     """The curated frame is keyed by portfolio and named for what it measures.
 
@@ -1709,19 +1722,31 @@ def test_to_domain_dataset_spans_a_schedule_split_in_one_column() -> None:
     assert all(not is_missing(value) for value in by_period.values())
 
 
-def test_to_domain_dataset_include_totals() -> None:
-    """include_totals=False drops the source's own subtotal rows.
+def test_to_domain_dataset_excludes_totals_by_default() -> None:
+    """include_totals defaults to False, so a naive aggregation cannot double count.
 
-    Code 155 is a total RC-F.1 reports rather than a portfolio, so summing
-    over every code with it present double counts.
+    Code 155 is a total RC-F.1 reports rather than a portfolio. Including
+    it alongside the portfolios it totals by default would make the most
+    natural first operation on the frame, summing a measure per
+    institution, silently return roughly double the correct figure.
     """
     report = _archive_report("2026-03-31", "2026-03-31")
-    with_totals = report.to_domain_dataset(domain_dataset="loan_portfolio")
+    default = report.to_domain_dataset(domain_dataset="loan_portfolio")
     without = report.to_domain_dataset(
         domain_dataset="loan_portfolio", include_totals=False
     )
+    assert 155.0 not in {row["code_value"] for row in rows_of(default)}
+    assert _normalize_missing(rows_of(default)) == _normalize_missing(rows_of(without))
+
+
+def test_to_domain_dataset_include_totals_true_adds_the_reported_subtotal() -> None:
+    """include_totals=True opts into the source's own reported subtotal rows."""
+    report = _archive_report("2026-03-31", "2026-03-31")
+    without = report.to_domain_dataset(domain_dataset="loan_portfolio")
+    with_totals = report.to_domain_dataset(
+        domain_dataset="loan_portfolio", include_totals=True
+    )
     assert 155.0 in {row["code_value"] for row in rows_of(with_totals)}
-    assert 155.0 not in {row["code_value"] for row in rows_of(without)}
     assert len(rows_of(without)) < len(rows_of(with_totals))
 
 
@@ -1844,6 +1869,26 @@ def test_to_domain_dataset_no_declared_schedule_in_range_raises(
     )
     with pytest.raises(ScheduleNotFoundError, match="loan_portfolio"):
         report.to_domain_dataset(domain_dataset="loan_portfolio")
+
+
+# ---------------------------------------------------------------------------
+# FCACallReport.available_domain_datasets
+# ---------------------------------------------------------------------------
+
+
+def test_available_domain_datasets_lists_every_member() -> None:
+    """available_domain_datasets returns every FCADomainDataset member.
+
+    The domain-dataset counterpart to `available_schedules`, and does not
+    require `fetch` to have run.
+    """
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=PackagedArchiveTransport(),
+    )
+    assert report.available_domain_datasets() == tuple(FCADomainDataset)
+    assert FCADomainDataset.LOAN_PORTFOLIO in report.available_domain_datasets()
 
 
 # ---------------------------------------------------------------------------

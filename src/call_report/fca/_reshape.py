@@ -26,7 +26,7 @@ from __future__ import annotations
 import operator
 from collections.abc import Sequence
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 import narwhals as nw
 
@@ -37,6 +37,7 @@ from call_report.core._backend import (
     assert_unique_grain,
     build_frame,
     concat,
+    date_dtype,
     finalize_as,
     pivot,
 )
@@ -216,11 +217,13 @@ def melt_schedule_frame(
     columns. That relies on the same union-concat null-fill used for a
     schedule that has no code column.
 
-    `UNINUM` is cast to Int64 up front if it is `Unknown`, which happens
-    when a schedule has zero rows for this period (see
-    `_cast_unknown_dtype`). It is not touched by
+    `UNINUM` and `period` are each cast to a concrete dtype up front if
+    `Unknown`, which happens when a schedule has zero rows across every
+    requested period (see `_cast_unknown_dtype`). Neither is touched by
     `_cast_numeric_to_float64`'s later `"value"` and `"code_value"` calls,
-    but carries the same cross-piece concat risk.
+    but both carry the same cross-piece concat risk, and an `Unknown`
+    `period` also fails a decoding join with `ArrowInvalid` under
+    pyarrow before it ever reaches a concat.
 
     Parameters
     ----------
@@ -244,6 +247,7 @@ def melt_schedule_frame(
         came from a coded field. Lazy if `frame` was lazy.
     """
     frame = _cast_unknown_dtype(frame, column="UNINUM", target=nw.Int64())
+    frame = _cast_unknown_dtype(frame, column="period", target=date_dtype())
     exclude = set(_EXCLUDED_FROM_MELT) | set(trailing_columns)
     if code_column is not None:
         exclude.add(code_column)
@@ -1008,18 +1012,31 @@ def apply_domain_dataset_decoding(
     """
     variables = sorted(source.columns)
     declarations = [source.columns[name] for name in variables]
-    codes: list[float | None] = [
-        None if item.code is None else float(item.code) for item in declarations
-    ]
     with config_context(dataframe_backend=frame.implementation.name.lower()):
-        lookup: FrameOrLazy = build_frame(
-            data={
-                "variable_name": variables,
-                "output_column": [item.column for item in declarations],
-                "mapped_code": codes,
-            },
-            schema=_DOMAIN_LOOKUP_SCHEMA,
-        )
+        if source.code_column is None:
+            codes: list[float | None] = [
+                float(cast("int", item.code)) for item in declarations
+            ]
+            lookup: FrameOrLazy = build_frame(
+                data={
+                    "variable_name": variables,
+                    "output_column": [item.column for item in declarations],
+                    "mapped_code": codes,
+                },
+                schema=_DOMAIN_LOOKUP_SCHEMA,
+            )
+        else:
+            lookup = build_frame(
+                data={
+                    "variable_name": variables,
+                    "output_column": [item.column for item in declarations],
+                },
+                schema={
+                    name: dtype
+                    for name, dtype in _DOMAIN_LOOKUP_SCHEMA.items()
+                    if name != "mapped_code"
+                },
+            )
     if isinstance(frame, nw.LazyFrame):
         lookup = lookup.lazy()
 
@@ -1029,10 +1046,11 @@ def apply_domain_dataset_decoding(
     decoded = frame.join(lookup, on="variable_name", how="inner")  # type: ignore[arg-type]
     if source.code_column is None:
         decoded = decoded.with_columns(nw.col("mapped_code").alias("code_value"))
+        decoded = decoded.drop("mapped_code")
     return decoded.with_columns(
         nw.col("output_column").alias("variable_name"),
         nw.lit(code_column).alias("code_column"),
-    ).drop("output_column", "mapped_code")
+    ).drop("output_column")
 
 
 def _derived_expression(
@@ -1097,8 +1115,8 @@ def add_derived_columns(
     narwhals.DataFrame
         `frame` with each computable derived column added or filled in.
     """
+    available = set(frame.collect_schema().names())
     for item in derived:
-        available = set(frame.collect_schema().names())
         if not set(item.components) <= available:
             continue
         expression = _derived_expression(
@@ -1111,6 +1129,7 @@ def add_derived_columns(
                 .otherwise(nw.col(item.column))
             )
         frame = frame.with_columns(expression.alias(item.column))
+        available.add(item.column)
     return frame
 
 
@@ -1165,11 +1184,10 @@ def to_domain_dataset(
     ------
     ReshapeError
         If `CODE_GRAIN_INDEX` plus the output column is not a unique
-        grain.
+        grain, or if the requested schedules contributed no measurement
+        columns at all, for example because every one resolved to zero
+        rows for the requested periods.
     """
-    sources = {
-        schedule: source for source in dataset.sources for schedule in source.schedules
-    }
     decoded = [
         apply_domain_dataset_decoding(
             frame=melt_schedule_frame(
@@ -1178,20 +1196,36 @@ def to_domain_dataset(
                 code_column=code_columns[schedule],
                 trailing_columns=trailing_columns[schedule],
             ),
-            source=sources[schedule],
+            source=dataset.source_by_schedule[schedule],
             code_column=dataset.code_column,
         )
         for schedule, frame in frames.items()
     ]
     combined = concat(frames=decoded, how="union")
     if not include_totals:
-        combined = combined.filter(
-            ~nw.col("code_value").is_in(sorted(dataset.total_codes))
+        # A null code_value is not one of the source's own reported totals,
+        # so it must never be filtered out by this. `is_in` on a null
+        # value is itself null, and that null is backend-inconsistent
+        # under `filter` (pandas keeps the row, polars and pyarrow drop
+        # it), so the null case is made explicit here rather than left to
+        # each backend's own null-propagation behavior.
+        is_total = (
+            nw.col("code_value")
+            .is_in(sorted(dataset.total_codes))
+            .fill_null(value=False)
         )
+        combined = combined.filter(~is_total)
     pivoted = pivot(
         frame=combined,
         on="variable_name",
         index=list(CODE_GRAIN_INDEX),
         values="value",
     )
+    if len(pivoted.columns) == len(CODE_GRAIN_INDEX):
+        raise ReshapeError(
+            "The requested schedules contributed no measurement columns, so "
+            "there is no domain dataset to build. This happens when every "
+            "contributing schedule resolved to zero rows for the requested "
+            "periods."
+        )
     return add_derived_columns(frame=pivoted, derived=dataset.derived)
