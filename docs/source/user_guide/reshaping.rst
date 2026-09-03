@@ -20,7 +20,8 @@ All three stack every requested schedule, and you can convert between them
 without going back to the source files.
 
 A fourth shape, the :ref:`curated domain dataset <user_guide_domain_datasets>`,
-builds on the code grain but chooses its columns rather than deriving them.
+curates its columns based on subject matter expertise, often combining
+information across multiple Call Report schedules.
 
 The examples below use the default ``pandas`` backend, so the indexing is
 pandas'. The reshaping methods themselves work on every configured backend,
@@ -248,10 +249,8 @@ so the column is complete either way.
 **Derived columns you would otherwise write yourself.** ``non_performing``
 sums accruing loans 90 or more days past due and the two nonaccrual columns.
 ``non_performing_with_restructured`` adds formally restructured accruing
-loans. Both ship because both definitions are in use. Neither name asserts
-that it matches FCA's own definition of a nonperforming loan; each states
-its components plainly, and ``restructured_accruing`` remains a column on
-its own so a third definition can be composed from what is there.
+loans. Neither name asserts that it matches FCA's own definition of a
+nonperforming loan; each states its components plainly.
 
 Reported subtotals
 ------------------
