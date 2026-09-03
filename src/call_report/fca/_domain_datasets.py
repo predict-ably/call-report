@@ -147,15 +147,15 @@ class DomainDatasetSource:
     columns: Mapping[str, DomainDatasetColumn]
 
     def __post_init__(self) -> None:
-        """Freeze `columns` against mutation after construction.
+        """Replace `columns` with a read-only view of the same mapping.
 
-        `dataclass(frozen=True)` only stops an attribute from being
-        rebound, not a mutable value it holds from being mutated in
-        place. `columns` is wrapped here so that a caller holding a
-        `DomainDatasetSource` returned from the process-wide
-        `get_fca_domain_dataset` cache cannot poison every later lookup
-        by mutating it.
+        After construction, mutating `columns` raises rather than
+        silently changing this instance.
         """
+        # dataclass(frozen=True) only stops `columns` from being rebound,
+        # not the dict it holds from being mutated in place, which would
+        # reach every later lookup through the process-wide
+        # get_fca_domain_dataset cache.
         object.__setattr__(self, "columns", MappingProxyType(dict(self.columns)))
 
     @property
@@ -333,11 +333,13 @@ class DomainDataset:
     def from_dict(cls, *, data: dict[str, Any]) -> DomainDataset:
         """Build a DomainDataset from one shipped definition's parsed JSON.
 
-        Validates three invariants a hand-authored definition can violate
+        Validates invariants a hand-authored definition can violate
         silently: that no two source groups declare the same output
         column, that each source's per-variable `code` values agree with
-        whether it declares its own `code_column`, and that every derived
-        column names a real `DerivedOperation`.
+        whether it declares its own `code_column`, that every derived
+        column names a real `DerivedOperation`, and that a derived
+        column's components are a non-empty list of real source output
+        columns rather than another derived column's name.
 
         Within one source group, an output column name may repeat across
         variables. That is deliberate, and is how a schedule split maps
@@ -358,8 +360,10 @@ class DomainDataset:
         SchemaError
             If two source groups declare the same output column, if a
             source's `code_column` disagrees with whether its variables
-            declare a `code`, or if a derived column names an operation
-            other than ``"sum"`` or ``"difference"``.
+            declare a `code`, if a derived column names an operation
+            other than ``"sum"`` or ``"difference"``, or if a derived
+            column's components are empty or name something no source
+            produces.
 
         Examples
         --------
@@ -439,6 +443,22 @@ class DomainDataset:
                     f"Domain dataset {data['name']!r} declares derived column "
                     f"{item.column!r} with operation {item.operation!r}; valid "
                     f"operations are {sorted(valid_operations)}."
+                )
+            if not item.components:
+                raise SchemaError(
+                    f"Domain dataset {data['name']!r} declares derived column "
+                    f"{item.column!r} with no components. It has nothing to "
+                    "compute from."
+                )
+            unresolved = sorted(set(item.components) - seen)
+            if unresolved:
+                raise SchemaError(
+                    f"Domain dataset {data['name']!r} declares derived column "
+                    f"{item.column!r} with components {unresolved} that no source "
+                    "produces. A derived column's components must be real source "
+                    "output columns, which also rules out one derived column "
+                    "depending on another and making the result depend on the "
+                    "order derived columns are declared in."
                 )
 
         return cls(

@@ -1504,9 +1504,10 @@ dict[str, tuple[str, ...]]]
     ]:
         """Resolve `schedules` and load each one's frame, code, and trailing columns.
 
-        Shared by `_to_wide_format` and `_to_long_format`, which differ
-        only in which `call_report.fca._reshape` function they hand this
-        to. A schedule loaded lazily (``lazy=True`` configured, polars
+        Shared by `_to_wide_format`, `_to_long_format`, and
+        `_to_domain_dataset`, which differ only in which
+        `call_report.fca._reshape` function they hand this to. A
+        schedule loaded lazily (``lazy=True`` configured, polars
         backend) is passed through as a `narwhals.LazyFrame` rather than
         collected here.
 
