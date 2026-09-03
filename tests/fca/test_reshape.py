@@ -14,6 +14,8 @@ from call_report.config import config_context
 from call_report.core._backend import build_frame, concat
 from call_report.exceptions import ReshapeError
 from call_report.fca._domain_datasets import (
+    DomainDataset,
+    DomainDatasetCode,
     DomainDatasetColumn,
     DomainDatasetDerived,
     DomainDatasetSource,
@@ -33,6 +35,7 @@ from call_report.fca._reshape import (
     convert_wide_format_to_long_format,
     melt_schedule_frame,
     to_code_grain_format,
+    to_domain_dataset,
     to_long_format,
     to_wide_format,
 )
@@ -1532,3 +1535,89 @@ def test_derived_is_skipped_when_a_component_column_is_absent(backend: str) -> N
         ],
     )
     assert "total" not in result.columns
+
+
+# ---------------------------------------------------------------------------
+# to_domain_dataset (issue #63, part 2)
+# ---------------------------------------------------------------------------
+
+
+def _minimal_dataset() -> DomainDataset:
+    """Build a small real DomainDataset for hermetic to_domain_dataset tests."""
+    return DomainDataset(
+        name="minimal",
+        code_column="SEGMENT",
+        codes=(DomainDatasetCode(code=1, label="One", is_total=False),),
+        sources=(
+            DomainDatasetSource(
+                schedules=("RCF1",),
+                code_column="LOANSTATUS",
+                columns={"ACCR": DomainDatasetColumn(column="accruing", code=None)},
+            ),
+        ),
+        derived=(),
+    )
+
+
+def test_to_domain_dataset_raises_when_no_measures_survive(backend: str) -> None:
+    """Every contributing frame resolving to zero rows raises, not an empty frame.
+
+    A pivot on an entirely empty input still produces the four
+    CODE_GRAIN_INDEX columns and nothing else. Returning that silently
+    would look like a real, if narrow, result rather than the absence of
+    any real one, so this is checked and raised explicitly, matching
+    `convert_long_format_to_code_grain_format`'s equivalent guard.
+    """
+    empty = build_frame(data={"UNINUM": [], "period": [], "LOANSTATUS": [], "ACCR": []})
+    dataset = _minimal_dataset()
+    with pytest.raises(ReshapeError, match="no measurement columns"):
+        to_domain_dataset(
+            frames={"RCF1": empty},
+            code_columns={"RCF1": "LOANSTATUS"},
+            trailing_columns={"RCF1": ()},
+            dataset=dataset,
+        )
+
+
+def test_to_domain_dataset_include_totals_null_code_value_handling(
+    backend: str,
+) -> None:
+    """A null code_value is never treated as a reported total, on every backend.
+
+    `is_in` is itself null when tested against a null value, and that
+    null is backend-inconsistent under `filter` (pandas keeps the row,
+    polars and pyarrow drop it). A null code_value is definitionally not
+    one of the source's own declared total codes, so it must always
+    survive `include_totals=False`, the same on every backend.
+    """
+    frame = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": ["2026-03-31", "2026-03-31"],
+            "LOANSTATUS": [110, None],
+            "ACCR": [100.0, 50.0],
+        }
+    )
+    dataset = DomainDataset(
+        name="minimal",
+        code_column="SEGMENT",
+        codes=(),
+        sources=(
+            DomainDatasetSource(
+                schedules=("RCF1",),
+                code_column="LOANSTATUS",
+                columns={"ACCR": DomainDatasetColumn(column="accruing", code=None)},
+            ),
+        ),
+        derived=(),
+    )
+    result = to_domain_dataset(
+        frames={"RCF1": frame},
+        code_columns={"RCF1": "LOANSTATUS"},
+        trailing_columns={"RCF1": ()},
+        dataset=dataset,
+        include_totals=False,
+    )
+    rows = sorted_rows(result, by=["code_value"])
+    assert len(rows) == 2
+    assert is_missing(rows[0]["code_value"]) or is_missing(rows[1]["code_value"])

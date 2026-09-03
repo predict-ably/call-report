@@ -203,7 +203,7 @@ by, and what every column is called are all chosen by this package:
 
    >>> loans = report.to_domain_dataset(domain_dataset="loan_portfolio")
    >>> loans.shape
-   (832, 16)
+   (768, 16)
    >>> list(loans.columns)[:8]  # doctest: +NORMALIZE_WHITESPACE
    ['UNINUM', 'period', 'code_column', 'code_value', 'accruing',
     'accruing_past_due_90', 'allowance', 'charge_off']
@@ -248,21 +248,23 @@ so the column is complete either way.
 **Derived columns you would otherwise write yourself.** ``non_performing``
 sums accruing loans 90 or more days past due and the two nonaccrual columns.
 ``non_performing_with_restructured`` adds formally restructured accruing
-loans. Both ship because both definitions are in use, and
-``restructured_accruing`` remains a column so a third definition can be
-composed from what is there.
+loans. Both ship because both definitions are in use. Neither name asserts
+that it matches FCA's own definition of a nonperforming loan; each states
+its components plainly, and ``restructured_accruing`` remains a column on
+its own so a third definition can be composed from what is there.
 
 Reported subtotals
 ------------------
 
-Code 155 is a total RC-F.1 reports itself, not a portfolio. It is included by
-default, since dropping data the source published is the greater surprise,
-but any aggregation over every row has to exclude it:
+Code 155 is a total RC-F.1 reports itself, not a portfolio. It is excluded
+by default, so an aggregation over every returned row does not double count.
+Pass ``include_totals=True`` to get it back, for example to compare it
+against the sum of the portfolios it totals:
 
 .. doctest::
 
-   >>> report.to_domain_dataset(domain_dataset="loan_portfolio", include_totals=False).shape
-   (768, 16)
+   >>> report.to_domain_dataset(domain_dataset="loan_portfolio", include_totals=True).shape
+   (832, 16)
 
 Filers round their own submissions, so the portfolio rows foot to the total
 within a dollar or two rather than exactly.

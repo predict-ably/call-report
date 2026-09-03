@@ -695,6 +695,30 @@ class FCACallReport(BaseCallReport):
         """
         return tuple(FCASchedule)
 
+    def available_domain_datasets(self) -> tuple[FCADomainDataset, ...]:
+        """Return every curated domain dataset this package ships.
+
+        The domain-dataset counterpart to `available_schedules`. Does not
+        require `fetch` to have run.
+
+        Returns
+        -------
+        tuple[FCADomainDataset, ...]
+            Every `FCADomainDataset` member.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2026-03-31",
+        ...     end="2026-03-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> report.available_domain_datasets()
+        (<FCADomainDataset.LOAN_PORTFOLIO: 'loan_portfolio'>,)
+        """
+        return tuple(FCADomainDataset)
+
     def periods_available(
         self, *, schedule: FCASchedule | str
     ) -> tuple[ReportingPeriod, ...]:
@@ -1284,7 +1308,7 @@ dict[str, tuple[str, ...]]]
         self,
         *,
         domain_dataset: FCADomainDataset | str,
-        include_totals: bool = True,
+        include_totals: bool = False,
         dataframe_type: None = None,
     ) -> NativeDataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
@@ -1293,7 +1317,7 @@ dict[str, tuple[str, ...]]]
         self,
         *,
         domain_dataset: FCADomainDataset | str,
-        include_totals: bool = True,
+        include_totals: bool = False,
         dataframe_type: Literal["pandas"],
     ) -> pandas.DataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
@@ -1302,7 +1326,7 @@ dict[str, tuple[str, ...]]]
         self,
         *,
         domain_dataset: FCADomainDataset | str,
-        include_totals: bool = True,
+        include_totals: bool = False,
         dataframe_type: Literal["pyarrow_table"],
     ) -> pyarrow.Table:  # numpydoc ignore=GL08
         ...  # pragma: no cover
@@ -1311,7 +1335,7 @@ dict[str, tuple[str, ...]]]
         self,
         *,
         domain_dataset: FCADomainDataset | str,
-        include_totals: bool = True,
+        include_totals: bool = False,
         dataframe_type: Literal["polars_dataframe"],
     ) -> polars.DataFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
@@ -1320,7 +1344,7 @@ dict[str, tuple[str, ...]]]
         self,
         *,
         domain_dataset: FCADomainDataset | str,
-        include_totals: bool = True,
+        include_totals: bool = False,
         dataframe_type: Literal["polars_lazyframe"],
     ) -> polars.LazyFrame:  # numpydoc ignore=GL08
         ...  # pragma: no cover
@@ -1328,7 +1352,7 @@ dict[str, tuple[str, ...]]]
         self,
         *,
         domain_dataset: FCADomainDataset | str,
-        include_totals: bool = True,
+        include_totals: bool = False,
         dataframe_type: DataFrameType | None = None,
     ) -> NativeDataFrame:
         """Build one curated domain dataset over the requested periods.
@@ -1356,13 +1380,13 @@ dict[str, tuple[str, ...]]]
         Parameters
         ----------
         domain_dataset : FCADomainDataset or str
-            The curated dataset to build. A string is matched
+            The domain dataset to look up. A string is matched
             case-insensitively.
-        include_totals : bool, default True
+        include_totals : bool, default False
             Whether to keep the codes the dataset marks as reported
-            subtotals. Set this ``False`` to get only the members of the
-            breakdown, so an aggregation over every remaining row cannot
-            double count.
+            subtotals. The default excludes them, so an aggregation over
+            every returned row does not double count. Set this ``True``
+            to also get the source's own reported subtotal rows.
         dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
 "polars_dataframe"}, optional
             The dataframe type to convert the result to as a final step.
@@ -1431,7 +1455,8 @@ dict[str, tuple[str, ...]]]
         Parameters
         ----------
         domain_dataset : FCADomainDataset or str
-            The curated dataset to build.
+            The domain dataset to look up. A string is matched
+            case-insensitively.
         include_totals : bool
             Whether to keep the dataset's reported subtotal codes.
 

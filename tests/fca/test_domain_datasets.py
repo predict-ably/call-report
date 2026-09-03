@@ -195,6 +195,92 @@ def test_two_source_groups_sharing_an_output_column_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
+# code / code_column invariant validation
+# ---------------------------------------------------------------------------
+
+
+def test_a_coded_source_variable_declaring_its_own_code_raises() -> None:
+    """A source with its own code_column must take the code from the data.
+
+    Declaring a per-variable code as well would be redundant at best and
+    contradictory at worst, since the two could disagree.
+    """
+    data = {
+        "name": "broken",
+        "code_column": "SEGMENT",
+        "codes": [{"code": 1, "label": "One", "is_total": False}],
+        "sources": [
+            {
+                "schedules": ["RCF1"],
+                "code_column": "LOANSTATUS",
+                "columns": {"ACCR": {"column": "balance", "code": 1}},
+            }
+        ],
+        "derived": [],
+    }
+    with pytest.raises(SchemaError, match=r"\['ACCR'\]"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_a_name_encoded_source_variable_missing_its_code_raises() -> None:
+    """A source with no code_column must give every variable its own code.
+
+    Without one, the row it produces has no way to say which code it
+    belongs to.
+    """
+    data = {
+        "name": "broken",
+        "code_column": "SEGMENT",
+        "codes": [{"code": 1, "label": "One", "is_total": False}],
+        "sources": [
+            {
+                "schedules": ["RIE"],
+                "code_column": None,
+                "columns": {"CHGOFFRE": {"column": "charge_off"}},
+            }
+        ],
+        "derived": [],
+    }
+    with pytest.raises(SchemaError, match=r"\['CHGOFFRE'\]"):
+        DomainDataset.from_dict(data=data)
+
+
+# ---------------------------------------------------------------------------
+# derived operation validation
+# ---------------------------------------------------------------------------
+
+
+def test_an_unrecognized_derived_operation_raises() -> None:
+    """A typo'd operation raises rather than silently falling back to a wrong one.
+
+    `_derived_expression` treats anything other than ``"sum"`` as
+    ``"difference"``, so an unvalidated typo would compute the wrong
+    result instead of failing.
+    """
+    data = {
+        "name": "broken",
+        "code_column": "SEGMENT",
+        "codes": [{"code": 1, "label": "One", "is_total": False}],
+        "sources": [
+            {
+                "schedules": ["RCF1"],
+                "code_column": "LOANSTATUS",
+                "columns": {"ACCR": {"column": "balance"}},
+            }
+        ],
+        "derived": [
+            {
+                "column": "total",
+                "operation": "totally_wrong",
+                "components": ["balance"],
+            }
+        ],
+    }
+    with pytest.raises(SchemaError, match="totally_wrong"):
+        DomainDataset.from_dict(data=data)
+
+
+# ---------------------------------------------------------------------------
 # get_domain_dataset_codes
 # ---------------------------------------------------------------------------
 
