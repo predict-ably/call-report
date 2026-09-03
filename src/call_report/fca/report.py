@@ -38,11 +38,7 @@ from call_report.fca._discovery import ReleaseFiles, scan_release
 from call_report.fca._domain_datasets import get_fca_domain_dataset
 from call_report.fca._schedule_metadata import get_fca_file_metadata
 from call_report.fca.catalog import construct_fca_download_url
-from call_report.fca.enums import (
-    FCADomainDataset,
-    FCASchedule,
-    coerce_fca_call_report_schedule,
-)
+from call_report.fca.enums import FCADomainDataset, FCASchedule
 from call_report.fca.institutions import INSTITUTIONS_ROOT, _read_institutions_frame
 from call_report.fca.layout import FCALayout, parse_layout
 from call_report.fca.reader import _read_schedule_frame
@@ -301,7 +297,7 @@ class FCACallReport(BaseCallReport):
             columns are not identical.
         """
         self._ensure_fetched()
-        schedule_enum = coerce_fca_call_report_schedule(value=schedule)
+        schedule_enum = FCASchedule.coerce(value=schedule)
 
         frames: list[nw.DataFrame[Any]] = []
         for period in self.schedules_.get(schedule_enum, ()):
@@ -433,7 +429,7 @@ class FCACallReport(BaseCallReport):
         'single_multiple'
         """
         self._ensure_fetched()
-        schedule_enum = coerce_fca_call_report_schedule(value=schedule)
+        schedule_enum = FCASchedule.coerce(value=schedule)
 
         if period is not None:
             _, manifest = self._release_for(schedule_enum=schedule_enum, period=period)
@@ -583,7 +579,7 @@ class FCACallReport(BaseCallReport):
         '2026Q1'
         """
         self._ensure_fetched()
-        schedule_enum = coerce_fca_call_report_schedule(value=schedule)
+        schedule_enum = FCASchedule.coerce(value=schedule)
         metadata = get_fca_file_metadata(schedule=schedule_enum)
 
         if period is not None:
@@ -635,9 +631,7 @@ class FCACallReport(BaseCallReport):
         >>> metadata.last_period.label
         '2026Q1'
         """
-        return get_fca_file_metadata(
-            schedule=coerce_fca_call_report_schedule(value=schedule)
-        )
+        return get_fca_file_metadata(schedule=FCASchedule.coerce(value=schedule))
 
     def available_periods(self) -> tuple[ReportingPeriod, ...]:
         """Return every period FCA is known to publish.
@@ -749,7 +743,7 @@ class FCACallReport(BaseCallReport):
         (ReportingPeriod(year=2026, quarter=<Quarter.Q1: 1>),)
         """
         self._ensure_fetched()
-        schedule_enum = coerce_fca_call_report_schedule(value=schedule)
+        schedule_enum = FCASchedule.coerce(value=schedule)
         return self.schedules_.get(schedule_enum, ())
 
     def periods_missing(
@@ -1570,7 +1564,7 @@ dict[str, tuple[str, ...]]]
         self._ensure_fetched()
         if schedules is None:
             return tuple(self.schedules_)
-        return tuple(coerce_fca_call_report_schedule(value=item) for item in schedules)
+        return tuple(FCASchedule.coerce(value=item) for item in schedules)
 
     def _layout_for_schedule(self, *, schedule: FCASchedule) -> FCALayout:
         """Return `schedule`'s layout, from its first available period.
@@ -1651,7 +1645,7 @@ def _build_schedule_presence_map(
             if root == INSTITUTIONS_ROOT:
                 continue
             try:
-                schedule = coerce_fca_call_report_schedule(value=root)
+                schedule = FCASchedule.coerce(value=root)
             except ScheduleNotFoundError:
                 continue
             working.setdefault(schedule, []).append(period)

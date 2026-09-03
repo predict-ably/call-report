@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, Literal, get_args, overload
 
 from call_report.core._backend import DataFrameType, build_frame, finalize_as
 from call_report.exceptions import SchemaError
-from call_report.fca.enums import FCADomainDataset, coerce_fca_domain_dataset
+from call_report.fca.enums import FCADomainDataset
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -536,7 +536,7 @@ def get_fca_domain_dataset(*, domain_dataset: FCADomainDataset | str) -> DomainD
     >>> len(dataset.codes)
     13
     """
-    return _cached_domain_dataset(coerce_fca_domain_dataset(value=domain_dataset))
+    return _cached_domain_dataset(FCADomainDataset.coerce(value=domain_dataset))
 
 
 @overload

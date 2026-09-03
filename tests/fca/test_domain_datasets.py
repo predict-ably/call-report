@@ -24,21 +24,18 @@ from call_report.fca import (
     get_fca_file_metadata,
 )
 from call_report.fca._domain_datasets import DomainDataset
-from call_report.fca.enums import (
-    coerce_fca_call_report_schedule,
-    coerce_fca_domain_dataset,
-)
+from call_report.fca.enums import FCASchedule
 from tests.helpers import rows_of
 
 # ---------------------------------------------------------------------------
-# coerce_fca_domain_dataset
+# FCADomainDataset.coerce
 # ---------------------------------------------------------------------------
 
 
 def test_coerce_domain_dataset_accepts_a_member() -> None:
     """An FCADomainDataset member is returned unchanged."""
     member = FCADomainDataset.LOAN_PORTFOLIO
-    assert coerce_fca_domain_dataset(value=member) is member
+    assert FCADomainDataset.coerce(value=member) is member
 
 
 @pytest.mark.parametrize(
@@ -46,7 +43,7 @@ def test_coerce_domain_dataset_accepts_a_member() -> None:
 )
 def test_coerce_domain_dataset_matches_case_insensitively(value: str) -> None:
     """A dataset name string matches whatever case it is written in."""
-    assert coerce_fca_domain_dataset(value=value) is FCADomainDataset.LOAN_PORTFOLIO
+    assert FCADomainDataset.coerce(value=value) is FCADomainDataset.LOAN_PORTFOLIO
 
 
 def test_coerce_domain_dataset_unknown_name_raises() -> None:
@@ -56,7 +53,7 @@ def test_coerce_domain_dataset_unknown_name_raises() -> None:
     has no other way to discover them.
     """
     with pytest.raises(DomainDatasetNotFoundError, match="loan_portfolio"):
-        coerce_fca_domain_dataset(value="not_a_dataset")
+        FCADomainDataset.coerce(value="not_a_dataset")
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +392,7 @@ def test_every_declared_variable_exists_in_the_shipped_metadata() -> None:
     for source in dataset.sources:
         for schedule in source.schedules:
             file_schema = get_fca_file_metadata(
-                schedule=coerce_fca_call_report_schedule(value=schedule)
+                schedule=FCASchedule.coerce(value=schedule)
             ).file_schema
             missing.extend(
                 f"{schedule}.{variable}"
@@ -420,7 +417,7 @@ def test_grouped_schedules_declare_identical_variables() -> None:
         schemas = [
             set(
                 get_fca_file_metadata(
-                    schedule=coerce_fca_call_report_schedule(value=schedule)
+                    schedule=FCASchedule.coerce(value=schedule)
                 ).file_schema.names
             )
             for schedule in source.schedules
