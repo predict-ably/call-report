@@ -1528,7 +1528,9 @@ class FCACallReport(BaseCallReport):
             index=list(_reshape.CODE_GRAIN_INDEX),
             values="value",
         )
-        _reshape.assert_pivot_has_measurements(pivoted=pivoted)
+        _reshape.assert_pivot_has_measurements(
+            pivoted=pivoted, message=_reshape.NO_DOMAIN_DATASET_MEASUREMENTS
+        )
         result = _reshape.add_derived_columns(frame=pivoted, derived=dataset.derived)
         if wide:
             return _reshape.pivot_domain_dataset_wide(frame=result)

@@ -538,6 +538,45 @@ def test_pyarrow_pivot_returns_index_only_frame_for_empty_input() -> None:
     assert result.shape == (0, 1)
 
 
+def test_pivot_accepts_a_single_row_frame(backend: str) -> None:
+    """A one-row long frame pivots on every backend rather than raising.
+
+    One row cannot collide with another, so it is a unique grain by
+    definition. The pyarrow path checked uniqueness by asking whether
+    every adjacent row pair differed, and `pyarrow.compute.all` of the
+    empty pair list is null rather than true, so the guard fired on a
+    valid input (issue #79). pandas and polars always accepted it.
+    """
+    frame = build_frame(data={"UNINUM": [1], "key": ["A"], "value": [100.0]})
+    result = pivot(frame=frame, on="key", index=["UNINUM"], values="value")
+    assert result.columns == ["UNINUM", "A"]
+    assert result.rows(named=True) == [{"UNINUM": 1, "A": 100.0}]
+
+
+def test_pyarrow_pivot_accepts_a_single_row_frame() -> None:
+    """The one-row branch is reached directly, without depending on config.
+
+    `pivot` only routes here when the configured backend is pyarrow, so
+    the branch is exercised on its own too.
+    """
+    result = _pyarrow_pivot(
+        frame=_pyarrow_frame(
+            pa.table(
+                {
+                    "UNINUM": pa.array([1], type=pa.int64()),
+                    "key": pa.array(["A"], type=pa.string()),
+                    "value": pa.array([100.0], type=pa.float64()),
+                }
+            )
+        ),
+        on="key",
+        index=["UNINUM"],
+        values="value",
+    )
+    assert result.columns == ["UNINUM", "A"]
+    assert result.rows(named=True) == [{"UNINUM": 1, "A": 100.0}]
+
+
 def test_pyarrow_pivot_fills_gaps_for_a_key_missing_from_some_rows() -> None:
     """A key absent from an index row gets null there, not a shifted value.
 

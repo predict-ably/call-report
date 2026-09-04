@@ -748,7 +748,8 @@ def _pyarrow_pivot(
     Sorting by `index` then `on` also puts any duplicate of the
     `index` + `on` grain in adjacent rows, so the uniqueness `pivot`
     promises is checked from that same sort rather than by a second pass
-    over the data.
+    over the data. A frame of one row or fewer holds no pair of rows to
+    compare, so it is a unique grain by definition and skips that check.
 
     Parameters
     ----------
@@ -776,8 +777,13 @@ def _pyarrow_pivot(
     ordered = table.sort_by([(name, "ascending") for name in (*index, on)])
     length = ordered.num_rows
 
-    if length == 0:
-        row_starts: pyarrow.BooleanArray = pyarrow.array([], type=pyarrow.bool_())
+    if length <= 1:
+        # The one row, if there is one, starts the only output row. Taking
+        # the general path instead would ask `pc.all` for the truth of an
+        # empty array, which is null rather than true.
+        row_starts: pyarrow.BooleanArray = pyarrow.array(
+            [True] * length, type=pyarrow.bool_()
+        )
     else:
         starts = _changes_between_rows(ordered.column(index[0]), length=length)
         for name in index[1:]:
