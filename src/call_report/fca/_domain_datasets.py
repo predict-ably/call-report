@@ -17,7 +17,6 @@ source groups declare the same output column.
 from __future__ import annotations
 
 import functools
-import importlib.resources
 import json
 from dataclasses import dataclass
 from functools import cached_property
@@ -26,6 +25,7 @@ from typing import TYPE_CHECKING, Any, Literal, get_args, overload
 
 from call_report.core._backend import DataFrameType, build_frame, finalize_as
 from call_report.exceptions import SchemaError
+from call_report.fca._resources import read_packaged_json_text
 from call_report.fca.enums import FCADomainDataset
 
 if TYPE_CHECKING:
@@ -300,9 +300,8 @@ class DomainDataset:
     def source_by_schedule(self) -> Mapping[str, DomainDatasetSource]:
         """Return each schedule's contributing source group, by root name.
 
-        Computed once and cached on this instance, rather than rebuilt by
-        every `FCACallReport._to_domain_dataset` call, since `sources`
-        never changes after construction and `DomainDataset` instances
+        Computed once and cached on this instance, since `sources` never
+        changes after construction and `DomainDataset` instances
         themselves are already cached for the life of the process by
         `get_fca_domain_dataset`.
 
@@ -329,6 +328,66 @@ class DomainDataset:
             }
         )
 
+    @cached_property
+    def _decoding_lookup(self) -> Mapping[str, tuple[Any, ...]]:
+        """Return the rows that rewrite source variables into this dataset's terms.
+
+        One row per (schedule, source variable) pair, as four parallel
+        columns: the schedule the row applies to, the variable name to
+        match, the output column to rewrite it to, and the code that
+        variable stands for. `mapped_code` is the declared code for a
+        source that encodes its breakdown in variable names, and ``None``
+        for a source that reports a code column of its own, which takes
+        each row's code from the data instead.
+
+        The schedule is part of the key because two sources may use the
+        same variable name for different output columns. Matching on the
+        variable alone would let one source's declaration rewrite
+        another's rows.
+
+        Plain Python rather than a dataframe, because the frame it
+        becomes has to be built under whichever backend is configured at
+        call time, while these rows never change. `DomainDataset`
+        instances are cached for the life of the process by
+        `get_fca_domain_dataset`, so this is computed once per dataset.
+
+        Returns
+        -------
+        Mapping[str, tuple[Any, ...]]
+            Column-oriented rows, keyed ``"schedule"``,
+            ``"variable_name"``, ``"output_column"``, and
+            ``"mapped_code"``.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCADomainDataset, get_fca_domain_dataset
+        >>> dataset = get_fca_domain_dataset(
+        ...     domain_dataset=FCADomainDataset.LOAN_PORTFOLIO
+        ... )
+        >>> lookup = dataset._decoding_lookup
+        >>> sorted(set(lookup["schedule"]))
+        ['RCF1', 'RIE', 'RIE2']
+        >>> rows = dict(zip(lookup["variable_name"], lookup["output_column"]))
+        >>> rows["ACCR"]
+        'accruing'
+        """
+        rows = [
+            (schedule, variable, item.column, item.code)
+            for source in self.sources
+            for schedule in source.schedules
+            for variable, item in sorted(source.columns.items())
+        ]
+        return MappingProxyType(
+            {
+                "schedule": tuple(row[0] for row in rows),
+                "variable_name": tuple(row[1] for row in rows),
+                "output_column": tuple(row[2] for row in rows),
+                "mapped_code": tuple(
+                    None if row[3] is None else float(row[3]) for row in rows
+                ),
+            }
+        )
+
     @classmethod
     def from_dict(cls, *, data: dict[str, Any]) -> DomainDataset:
         """Build a DomainDataset from one shipped definition's parsed JSON.
@@ -340,6 +399,10 @@ class DomainDataset:
         column names a real `DerivedOperation`, and that a derived
         column's components are a non-empty list of real source output
         columns rather than another derived column's name.
+
+        A missing or misshapen key raises `SchemaError` too, naming the
+        dataset, the way the shipped-metadata parsers in
+        `call_report.core` raise for the same kind of issue.
 
         Within one source group, an output column name may repeat across
         variables. That is deliberate, and is how a schedule split maps
@@ -358,12 +421,13 @@ class DomainDataset:
         Raises
         ------
         SchemaError
-            If two source groups declare the same output column, if a
-            source's `code_column` disagrees with whether its variables
-            declare a `code`, if a derived column names an operation
-            other than ``"sum"`` or ``"difference"``, or if a derived
-            column's components are empty or name something no source
-            produces.
+            If `data` is malformed (a missing key, or a value of the
+            wrong shape), if two source groups declare the same output
+            column, if a source's `code_column` disagrees with whether
+            its variables declare a `code`, if a derived column names an
+            operation other than ``"sum"`` or ``"difference"``, or if a
+            derived column's components are empty or name something no
+            source produces.
 
         Examples
         --------
@@ -384,95 +448,110 @@ class DomainDataset:
         >>> DomainDataset.from_dict(data=data).name
         'example'
         """
-        sources = tuple(
-            DomainDatasetSource(
-                schedules=tuple(source["schedules"]),
-                code_column=source["code_column"],
-                columns={
-                    variable: DomainDatasetColumn(
-                        column=item["column"], code=item.get("code")
+        # Read for the error messages below before anything can fail, since
+        # "name" is itself a key a malformed definition can be missing.
+        name = data.get("name", "<unnamed>")
+        # SchemaError is not a KeyError or TypeError, so the validation
+        # errors raised inside this block pass through with their own,
+        # more specific messages rather than being rewrapped.
+        try:
+            sources = tuple(
+                DomainDatasetSource(
+                    schedules=tuple(source["schedules"]),
+                    code_column=source["code_column"],
+                    columns={
+                        variable: DomainDatasetColumn(
+                            column=item["column"], code=item.get("code")
+                        )
+                        for variable, item in source["columns"].items()
+                    },
+                )
+                for source in data["sources"]
+            )
+
+            seen: set[str] = set()
+            for source in sources:
+                collisions = sorted(seen & source.output_columns)
+                if collisions:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares {collisions} in more "
+                        "than one source group, which would put two different "
+                        "measures in one column."
                     )
-                    for variable, item in source["columns"].items()
-                },
+                seen |= source.output_columns
+
+                # Exactly one of the two carries the code: a source with a
+                # code_column reads each row's code from the data, so its
+                # variables must not declare one, and a source without one
+                # must declare a code for every variable. A variable that
+                # agrees with its source is therefore the invalid case.
+                has_code_column = source.code_column is not None
+                mismatched = sorted(
+                    variable
+                    for variable, item in source.columns.items()
+                    if (item.code is not None) == has_code_column
+                )
+                if mismatched:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares {mismatched} with a "
+                        f"per-variable code that disagrees with its source's own "
+                        f"code_column={source.code_column!r}: a source with a "
+                        "code_column takes its code from the data, and a source "
+                        "without one must declare a code for every variable."
+                    )
+
+            valid_operations = get_args(DerivedOperation)
+            derived = tuple(
+                DomainDatasetDerived(
+                    column=item["column"],
+                    operation=item["operation"],
+                    components=tuple(item["components"]),
+                )
+                for item in data["derived"]
             )
-            for source in data["sources"]
-        )
+            for item in derived:
+                if item.operation not in valid_operations:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares derived column "
+                        f"{item.column!r} with operation {item.operation!r}; valid "
+                        f"operations are {sorted(valid_operations)}."
+                    )
+                if not item.components:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares derived column "
+                        f"{item.column!r} with no components. It has nothing to "
+                        "compute from."
+                    )
+                unresolved = sorted(set(item.components) - seen)
+                if unresolved:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares derived column "
+                        f"{item.column!r} with components {unresolved} that no "
+                        "source produces. A derived column's components must be "
+                        "real source output columns, which also rules out one "
+                        "derived column depending on another and making the "
+                        "result depend on the order derived columns are declared "
+                        "in."
+                    )
 
-        seen: set[str] = set()
-        for source in sources:
-            collisions = sorted(seen & source.output_columns)
-            if collisions:
-                raise SchemaError(
-                    f"Domain dataset {data['name']!r} declares {collisions} in more "
-                    "than one source group, which would put two different measures "
-                    "in one column."
-                )
-            seen |= source.output_columns
-
-            has_code_column = source.code_column is not None
-            declares_code = {
-                variable: item.code is not None
-                for variable, item in source.columns.items()
-            }
-            mismatched = sorted(
-                variable
-                for variable, code_is_set in declares_code.items()
-                if code_is_set == has_code_column
+            return cls(
+                name=data["name"],
+                code_column=data["code_column"],
+                codes=tuple(
+                    DomainDatasetCode(
+                        code=item["code"],
+                        label=item["label"],
+                        is_total=item["is_total"],
+                    )
+                    for item in data["codes"]
+                ),
+                sources=sources,
+                derived=derived,
             )
-            if mismatched:
-                raise SchemaError(
-                    f"Domain dataset {data['name']!r} declares {mismatched} with a "
-                    f"per-variable code that disagrees with its source's own "
-                    f"code_column={source.code_column!r}: a source with a "
-                    "code_column takes its code from the data, and a source "
-                    "without one must declare a code for every variable."
-                )
-
-        valid_operations = get_args(DerivedOperation)
-        derived = tuple(
-            DomainDatasetDerived(
-                column=item["column"],
-                operation=item["operation"],
-                components=tuple(item["components"]),
-            )
-            for item in data["derived"]
-        )
-        for item in derived:
-            if item.operation not in valid_operations:
-                raise SchemaError(
-                    f"Domain dataset {data['name']!r} declares derived column "
-                    f"{item.column!r} with operation {item.operation!r}; valid "
-                    f"operations are {sorted(valid_operations)}."
-                )
-            if not item.components:
-                raise SchemaError(
-                    f"Domain dataset {data['name']!r} declares derived column "
-                    f"{item.column!r} with no components. It has nothing to "
-                    "compute from."
-                )
-            unresolved = sorted(set(item.components) - seen)
-            if unresolved:
-                raise SchemaError(
-                    f"Domain dataset {data['name']!r} declares derived column "
-                    f"{item.column!r} with components {unresolved} that no source "
-                    "produces. A derived column's components must be real source "
-                    "output columns, which also rules out one derived column "
-                    "depending on another and making the result depend on the "
-                    "order derived columns are declared in."
-                )
-
-        return cls(
-            name=data["name"],
-            code_column=data["code_column"],
-            codes=tuple(
-                DomainDatasetCode(
-                    code=item["code"], label=item["label"], is_total=item["is_total"]
-                )
-                for item in data["codes"]
-            ),
-            sources=sources,
-            derived=derived,
-        )
+        except (KeyError, TypeError) as error:
+            raise SchemaError(
+                f"malformed domain dataset JSON for {name!r}: {error}"
+            ) from error
 
 
 @functools.cache
@@ -497,12 +576,8 @@ def _cached_domain_dataset(member: FCADomainDataset) -> DomainDataset:
     DomainDataset
         The dataset's curated definition.
     """
-    resource = importlib.resources.files("call_report.fca").joinpath(
-        "data", "domain_datasets", f"{member.value}.json"
-    )
-    return DomainDataset.from_dict(
-        data=json.loads(resource.read_text(encoding="utf-8"))
-    )
+    text = read_packaged_json_text(subdirectory="domain_datasets", name=member.value)
+    return DomainDataset.from_dict(data=json.loads(text))
 
 
 def get_fca_domain_dataset(*, domain_dataset: FCADomainDataset | str) -> DomainDataset:

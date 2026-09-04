@@ -14,6 +14,7 @@ from call_report.config import config_context
 from call_report.core._backend import build_frame, concat
 from call_report.exceptions import ReshapeError
 from call_report.fca._domain_datasets import (
+    DomainDataset,
     DomainDatasetColumn,
     DomainDatasetDerived,
     DomainDatasetSource,
@@ -1424,6 +1425,17 @@ def _name_encoded_source() -> DomainDatasetSource:
     )
 
 
+def _dataset(*sources: DomainDatasetSource) -> DomainDataset:
+    """Wrap source groups in the smallest dataset the decoding step needs."""
+    return DomainDataset(
+        name="example",
+        code_column="LOAN_PORTFOLIO",
+        codes=(),
+        sources=sources,
+        derived=(),
+    )
+
+
 def _melted_coded() -> Any:
     """Melt a small RCF1-shaped frame, including a variable no dataset declares."""
     frame = build_frame(
@@ -1460,7 +1472,7 @@ def test_decoding_a_coded_source_keeps_its_own_code(backend: str) -> None:
     expressed in.
     """
     decoded = apply_domain_dataset_decoding(
-        frame=_melted_coded(), source=_coded_source(), code_column="LOAN_PORTFOLIO"
+        frame=_melted_coded(), dataset=_dataset(_coded_source())
     )
     rows = sorted_rows(decoded, by=["variable_name"])
     assert [row["variable_name"] for row in rows] == ["accruing"]
@@ -1477,9 +1489,7 @@ def test_decoding_a_name_encoded_source_supplies_the_code(backend: str) -> None:
     puts it in the data.
     """
     decoded = apply_domain_dataset_decoding(
-        frame=_melted_name_encoded(),
-        source=_name_encoded_source(),
-        code_column="LOAN_PORTFOLIO",
+        frame=_melted_name_encoded(), dataset=_dataset(_name_encoded_source())
     )
     rows = sorted_rows(decoded, by=["variable_name"])
     assert [(row["variable_name"], row["code_value"]) for row in rows] == [
@@ -1487,6 +1497,78 @@ def test_decoding_a_name_encoded_source_supplies_the_code(backend: str) -> None:
         ("recovery", 110.0),
     ]
     assert {row["code_column"] for row in rows} == {"LOAN_PORTFOLIO"}
+
+
+def test_decoding_a_name_encoded_source_alone_supplies_code_value(
+    backend: str,
+) -> None:
+    """A dataset of only name-encoded sources has no melted code_value column.
+
+    Only a code-bearing schedule melts with a `code_value` column, so a
+    frame stacked from name-encoded schedules alone reaches the join
+    without one. The coalesce that resolves the code needs the column to
+    exist, so decoding supplies it.
+    """
+    frame = _melted_name_encoded()
+    assert "code_value" not in frame.collect_schema().names()
+    decoded = apply_domain_dataset_decoding(
+        frame=frame, dataset=_dataset(_name_encoded_source())
+    )
+    assert [
+        row["code_value"] for row in sorted_rows(decoded, by=["variable_name"])
+    ] == [
+        110.0,
+        110.0,
+    ]
+
+
+def test_decoding_keys_the_lookup_by_schedule_as_well_as_variable(
+    backend: str,
+) -> None:
+    """Two sources reusing one variable name each get their own output column.
+
+    Matching on the variable name alone would let either source's
+    declaration rewrite the other's rows, since one lookup now covers
+    every contributing schedule at once.
+    """
+    first = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "AMOUNT": [10.0],
+        }
+    )
+    second = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": ["2026-03-31"],
+            "AMOUNT": [20.0],
+        }
+    )
+    stacked = concat(
+        frames=[
+            melt_schedule_frame(frame=first, schedule="RIE", code_column=None),
+            melt_schedule_frame(frame=second, schedule="RIE2", code_column=None),
+        ],
+        how="union",
+    )
+    dataset = _dataset(
+        DomainDatasetSource(
+            schedules=("RIE",),
+            code_column=None,
+            columns={"AMOUNT": DomainDatasetColumn(column="charge_off", code=110)},
+        ),
+        DomainDatasetSource(
+            schedules=("RIE2",),
+            code_column=None,
+            columns={"AMOUNT": DomainDatasetColumn(column="recovery", code=145)},
+        ),
+    )
+    decoded = apply_domain_dataset_decoding(frame=stacked, dataset=dataset)
+    rows = sorted_rows(decoded, by=["variable_name"])
+    assert [
+        (row["variable_name"], row["code_value"], row["value"]) for row in rows
+    ] == [("charge_off", 110.0, 10.0), ("recovery", 145.0, 20.0)]
 
 
 @pytest.mark.parametrize(
@@ -1503,9 +1585,7 @@ def test_decoding_drops_undeclared_variables(
     through would put the source's own vocabulary back into a frame whose
     whole purpose is to be free of it.
     """
-    decoded = apply_domain_dataset_decoding(
-        frame=melted(), source=source(), code_column="LOAN_PORTFOLIO"
-    )
+    decoded = apply_domain_dataset_decoding(frame=melted(), dataset=_dataset(source()))
     assert "UNDECLARED" not in {
         row["variable_name"] for row in sorted_rows(decoded, by=["variable_name"])
     }
