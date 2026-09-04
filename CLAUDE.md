@@ -202,6 +202,30 @@ how the work went.
 - Prefer short sentences over one long sentence carrying three clauses. If a
   summary needs three things said, say them in three sentences or a list.
 
+**Write for the reader.** Accuracy is not enough. Prefer the ordinary word
+over the unusual one, say what happens rather than describing it at a
+remove, and make sure every phrase is attached to the thing it describes. A
+sentence a reader has to go back and re-parse is a defect even when it is
+correct.
+
+Not this:
+
+> A missing or misshapen key raises `SchemaError` too, naming the dataset,
+> the way the shipped-metadata parsers in `call_report.core` raise for the
+> same kind of issue.
+
+This:
+
+> A definition with a missing or misspelled key also raises `SchemaError`,
+> and the message names the dataset. The parsers in `call_report.core`
+> raise the same error for the same problem.
+
+The first packs three clauses into one sentence, reaches for "misshapen"
+where "misspelled" is meant, leaves "naming the dataset" hanging off the
+sentence with no clear subject, and ends on "raise for the same kind of
+issue", which takes a second pass to resolve. The second splits it in two,
+uses plain words, and says which thing does the naming.
+
 **No anecdotes.** Do not write notes to the reviewer into a docstring. These
 have all appeared here and have all been removed:
 
