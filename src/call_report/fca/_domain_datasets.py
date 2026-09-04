@@ -300,9 +300,8 @@ class DomainDataset:
     def source_by_schedule(self) -> Mapping[str, DomainDatasetSource]:
         """Return each schedule's contributing source group, by root name.
 
-        Computed once and cached on this instance, rather than rebuilt by
-        every `FCACallReport._to_domain_dataset` call, since `sources`
-        never changes after construction and `DomainDataset` instances
+        Computed once and cached on this instance, since `sources` never
+        changes after construction and `DomainDataset` instances
         themselves are already cached for the life of the process by
         `get_fca_domain_dataset`.
 
@@ -326,6 +325,66 @@ class DomainDataset:
                 schedule: source
                 for source in self.sources
                 for schedule in source.schedules
+            }
+        )
+
+    @cached_property
+    def _decoding_lookup(self) -> Mapping[str, tuple[Any, ...]]:
+        """Return the rows that rewrite source variables into this dataset's terms.
+
+        One row per (schedule, source variable) pair, as four parallel
+        columns: the schedule the row applies to, the variable name to
+        match, the output column to rewrite it to, and the code that
+        variable stands for. `mapped_code` is the declared code for a
+        source that encodes its breakdown in variable names, and ``None``
+        for a source that reports a code column of its own, which takes
+        each row's code from the data instead.
+
+        The schedule is part of the key because two sources may use the
+        same variable name for different output columns. Matching on the
+        variable alone would let one source's declaration rewrite
+        another's rows.
+
+        Plain Python rather than a dataframe, because the frame it
+        becomes has to be built under whichever backend is configured at
+        call time, while these rows never change. `DomainDataset`
+        instances are cached for the life of the process by
+        `get_fca_domain_dataset`, so this is computed once per dataset.
+
+        Returns
+        -------
+        Mapping[str, tuple[Any, ...]]
+            Column-oriented rows, keyed ``"schedule"``,
+            ``"variable_name"``, ``"output_column"``, and
+            ``"mapped_code"``.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCADomainDataset, get_fca_domain_dataset
+        >>> dataset = get_fca_domain_dataset(
+        ...     domain_dataset=FCADomainDataset.LOAN_PORTFOLIO
+        ... )
+        >>> lookup = dataset._decoding_lookup
+        >>> sorted(set(lookup["schedule"]))
+        ['RCF1', 'RIE', 'RIE2']
+        >>> rows = dict(zip(lookup["variable_name"], lookup["output_column"]))
+        >>> rows["ACCR"]
+        'accruing'
+        """
+        rows = [
+            (schedule, variable, item.column, item.code)
+            for source in self.sources
+            for schedule in source.schedules
+            for variable, item in sorted(source.columns.items())
+        ]
+        return MappingProxyType(
+            {
+                "schedule": tuple(row[0] for row in rows),
+                "variable_name": tuple(row[1] for row in rows),
+                "output_column": tuple(row[2] for row in rows),
+                "mapped_code": tuple(
+                    None if row[3] is None else float(row[3]) for row in rows
+                ),
             }
         )
 

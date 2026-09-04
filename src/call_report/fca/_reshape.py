@@ -26,7 +26,7 @@ from __future__ import annotations
 import operator
 from collections.abc import Sequence
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import narwhals as nw
 
@@ -52,8 +52,8 @@ if TYPE_CHECKING:
     from call_report.core._backend import NativeDataFrame
     from call_report.fca._domain_datasets import (
         DerivedOperation,
+        DomainDataset,
         DomainDatasetDerived,
-        DomainDatasetSource,
     )
 
 RESHAPE_INDEX: tuple[str, ...] = ("UNINUM", "period")
@@ -968,24 +968,26 @@ def convert_long_format_to_code_grain_format(
 
 
 _DOMAIN_LOOKUP_SCHEMA: dict[str, nw.dtypes.DType] = {
+    "schedule": nw.String(),
     "variable_name": nw.String(),
     "output_column": nw.String(),
     "mapped_code": nw.Float64(),
 }
 """dict[str, narwhals.dtypes.DType]: Declared dtypes for the decoding lookup.
 
-`mapped_code` is entirely null for a code-bearing source, which reports
-its code in the data rather than in its variable names. That leaves
-nothing to infer a dtype from, and inference gives each backend a
-different answer, so the dtypes are declared here instead. This is the
-same hazard `_LOOKUP_SCHEMA` documents for the wide-to-long lookup.
+`mapped_code` is null for every code-bearing source, which reports its
+code in the data rather than in its variable names. A dataset drawing
+only on such sources leaves the column entirely null, with nothing to
+infer a dtype from, and inference gives each backend a different answer,
+so the dtypes are declared here instead. This is the same hazard
+`_LOOKUP_SCHEMA` documents for the wide-to-long lookup.
 """
 
 
 def apply_domain_dataset_decoding(
-    *, frame: FrameOrLazy, source: DomainDatasetSource, code_column: str
+    *, frame: FrameOrLazy, dataset: DomainDataset
 ) -> FrameOrLazy:
-    """Rewrite one melted schedule's rows into a domain dataset's own terms.
+    """Rewrite a stacked melted frame's rows into a domain dataset's own terms.
 
     Replaces each row's `variable_name` with the curated output column the
     dataset declares for it, and sets `code_column` and `code_value` to
@@ -996,20 +998,26 @@ def apply_domain_dataset_decoding(
     already carries `code_value` from the melt and only needs its
     `variable_name` rewritten. A source that encodes its breakdown in
     variable names instead has no `code_value` at all until this supplies
-    one from the declaration.
+    one from the declaration. `code_value` therefore takes the declared
+    code where there is one and the melted code otherwise, which is one
+    step for both kinds rather than a branch per kind.
 
-    The rewrite is a join against a small lookup frame rather than a pass
-    over rows, so it is backend-agnostic and stays lazy. The join is inner,
+    Every contributing schedule is decoded by one join against one lookup
+    frame, built once from the dataset's own lookup rows. The join is
+    keyed by schedule as well as variable name, since two sources may use
+    the same variable name for different output columns. It is inner,
     which is what drops an undeclared variable.
+
+    The rewrite is a join rather than a pass over rows, so it is
+    backend-agnostic and stays lazy.
 
     Parameters
     ----------
     frame : narwhals.DataFrame or narwhals.LazyFrame
-        One schedule's melted frame, i.e. `melt_schedule_frame`'s result.
-    source : DomainDatasetSource
-        The dataset's declaration for the schedule `frame` came from.
-    code_column : str
-        The curated name every decoded row's ``code_column`` is set to.
+        Every contributing schedule's melted frames, stacked, i.e. the
+        concat of `melt_schedule_frame` results.
+    dataset : DomainDataset
+        The curated dataset whose terms `frame` is rewritten into.
 
     Returns
     -------
@@ -1017,47 +1025,35 @@ def apply_domain_dataset_decoding(
         `frame` with `variable_name`, `code_column`, and `code_value`
         expressed in the dataset's terms. Lazy if `frame` was lazy.
     """
-    variables = sorted(source.columns)
-    declarations = [source.columns[name] for name in variables]
     with config_context(dataframe_backend=frame.implementation.name.lower()):
-        if source.code_column is None:
-            codes: list[float | None] = [
-                float(cast("int", item.code)) for item in declarations
-            ]
-            lookup: FrameOrLazy = build_frame(
-                data={
-                    "variable_name": variables,
-                    "output_column": [item.column for item in declarations],
-                    "mapped_code": codes,
-                },
-                schema=_DOMAIN_LOOKUP_SCHEMA,
-            )
-        else:
-            lookup = build_frame(
-                data={
-                    "variable_name": variables,
-                    "output_column": [item.column for item in declarations],
-                },
-                schema={
-                    name: dtype
-                    for name, dtype in _DOMAIN_LOOKUP_SCHEMA.items()
-                    if name != "mapped_code"
-                },
-            )
+        lookup: FrameOrLazy = build_frame(
+            data={
+                name: list(values) for name, values in dataset._decoding_lookup.items()
+            },
+            schema=_DOMAIN_LOOKUP_SCHEMA,
+        )
     if isinstance(frame, nw.LazyFrame):
         lookup = lookup.lazy()
+
+    # Only a code-bearing schedule melts with a `code_value` column, so a
+    # dataset drawing solely on name-encoded sources has none to coalesce
+    # against until one is supplied here.
+    if "code_value" not in frame.collect_schema():
+        frame = frame.with_columns(nw.lit(None, dtype=nw.Float64()).alias("code_value"))
 
     # `frame` and `lookup` are matched to the same laziness just above, but
     # narwhals' `.join` signature binds a single concrete frame type (see
     # convert_wide_format_to_long_format for the same invariant).
-    decoded = frame.join(lookup, on="variable_name", how="inner")  # type: ignore[arg-type]
-    if source.code_column is None:
-        decoded = decoded.with_columns(nw.col("mapped_code").alias("code_value"))
-        decoded = decoded.drop("mapped_code")
+    decoded = frame.join(
+        lookup,  # type: ignore[arg-type]
+        on=["schedule", "variable_name"],
+        how="inner",
+    )
     return decoded.with_columns(
         nw.col("output_column").alias("variable_name"),
-        nw.lit(code_column).alias("code_column"),
-    ).drop("output_column")
+        nw.lit(dataset.code_column).alias("code_column"),
+        nw.coalesce(nw.col("mapped_code"), nw.col("code_value")).alias("code_value"),
+    ).drop("output_column", "mapped_code")
 
 
 def _derived_expression(
@@ -1083,13 +1079,13 @@ def _derived_expression(
     narwhals.Expr
         The derived column's expression.
     """
-    filled = [nw.col(name).fill_null(0) for name in components]
-    first, *rest = filled
+    columns = [nw.col(name) for name in components]
+    first, *rest = [column.fill_null(0) for column in columns]
     if operation == "sum":
         combined = reduce(operator.add, rest, first)
     else:
         combined = reduce(operator.sub, rest, first)
-    any_present = reduce(operator.or_, (~nw.col(name).is_null() for name in components))
+    any_present = reduce(operator.or_, (~column.is_null() for column in columns))
     return (
         nw.when(any_present).then(combined).otherwise(nw.lit(None, dtype=nw.Float64()))
     )

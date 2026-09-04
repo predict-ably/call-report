@@ -1470,6 +1470,10 @@ dict[str, tuple[str, ...]]]
         dataset draws on exactly such schedules, supplying the codes from
         its own definition instead.
 
+        Every schedule is melted, stacked, and then decoded once, rather
+        than decoded one at a time before stacking. The decoding lookup
+        is keyed by schedule, so one join covers them all.
+
         Everything before `pivot` stays lazy if the loaded schedules are
         lazy. `pivot` is the one step that must collect, and it also
         enforces that `_reshape.CODE_GRAIN_INDEX` plus the output column
@@ -1522,20 +1526,18 @@ dict[str, tuple[str, ...]]]
         frames, code_columns, trailing_columns = self._load_reshape_inputs(
             schedules=available
         )
-        decoded = [
-            _reshape.apply_domain_dataset_decoding(
-                frame=_reshape.melt_schedule_frame(
-                    frame=frame,
-                    schedule=schedule,
-                    code_column=code_columns[schedule],
-                    trailing_columns=trailing_columns[schedule],
-                ),
-                source=dataset.source_by_schedule[schedule],
-                code_column=dataset.code_column,
+        melted = [
+            _reshape.melt_schedule_frame(
+                frame=frame,
+                schedule=schedule,
+                code_column=code_columns[schedule],
+                trailing_columns=trailing_columns[schedule],
             )
             for schedule, frame in frames.items()
         ]
-        combined = concat(frames=decoded, how="union")
+        combined = _reshape.apply_domain_dataset_decoding(
+            frame=concat(frames=melted, how="union"), dataset=dataset
+        )
         if not include_totals:
             combined = _reshape.exclude_reported_totals(
                 frame=combined, total_codes=dataset.total_codes
