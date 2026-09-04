@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import operator
 from collections.abc import Sequence
+from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Literal, overload
 
@@ -39,6 +40,7 @@ from call_report.core._backend import (
     concat,
     date_dtype,
     finalize_as,
+    is_in_null_safe,
     pivot,
 )
 from call_report.exceptions import ReshapeError
@@ -60,6 +62,30 @@ RESHAPE_INDEX: tuple[str, ...] = ("UNINUM", "period")
 """tuple[str, ...]: The grain every wide- and long-format row is keyed by."""
 
 _EXCLUDED_FROM_MELT = frozenset({*FIXED_IDENTIFIER_COLUMNS, "period"})
+
+
+def reshape_index_dtypes() -> dict[str, nw.dtypes.DType]:
+    """Return the concrete dtype each `RESHAPE_INDEX` column is held as.
+
+    A function rather than a constant, because `date_dtype` reads the
+    configured backend at call time. Every grain column needs an entry:
+    `melt_schedule_frame` casts each one whose dtype narwhals could not
+    infer, and a grain column with no entry here would silently keep the
+    `narwhals.Unknown` dtype that breaks a later concat.
+
+    Returns
+    -------
+    dict[str, narwhals.dtypes.DType]
+        One entry per `RESHAPE_INDEX` column.
+
+    Examples
+    --------
+    >>> from call_report.fca._reshape import reshape_index_dtypes
+    >>> sorted(reshape_index_dtypes())
+    ['UNINUM', 'period']
+    """
+    return {"UNINUM": nw.Int64(), "period": date_dtype()}
+
 
 _LONG_FORMAT_GRAIN: tuple[str, ...] = (
     *RESHAPE_INDEX,
@@ -88,6 +114,46 @@ of this grain. It is folded into each measure column's name instead, so
 two schedules reporting at the same code contribute columns to one row
 rather than a row each.
 """
+
+
+@dataclass(frozen=True, kw_only=True)
+class ScheduleInputs:
+    """One schedule's loaded frame and the layout facts needed to melt it.
+
+    `FCACallReport._load_reshape_inputs` produces one of these per
+    schedule. Carrying the three together means a caller cannot pair a
+    frame with another schedule's code column, which three dicts keyed
+    in parallel left possible.
+
+    Attributes
+    ----------
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        The schedule's already period-stacked frame. Lazy if the
+        configured backend loaded it lazily.
+    code_column : str, optional
+        The schedule's code column name (`FCALayout.multi_columns[0]`),
+        or ``None`` for a schedule with no code column.
+    trailing_columns : tuple[str, ...]
+        The schedule's trailing single-occurrence columns
+        (`FCALayout.trailing_columns`), empty for a schedule with none.
+
+    Examples
+    --------
+    >>> from call_report.core._backend import build_frame
+    >>> from call_report.fca._reshape import ScheduleInputs
+    >>> inputs = ScheduleInputs(
+    ...     frame=build_frame(data={"UNINUM": [1], "INV_CODE": [15]}),
+    ...     code_column="INV_CODE",
+    ...     trailing_columns=(),
+    ... )
+    >>> inputs.code_column
+    'INV_CODE'
+    """  # numpydoc ignore=PR01
+
+    frame: FrameOrLazy
+    code_column: str | None
+    trailing_columns: tuple[str, ...]
+
 
 _LOOKUP_SCHEMA: dict[str, nw.dtypes.DType] = {
     "column_key": nw.String(),
@@ -216,13 +282,14 @@ def melt_schedule_frame(
     columns. That relies on the same union-concat null-fill used for a
     schedule that has no code column.
 
-    `UNINUM` and `period` are each cast to a concrete dtype up front if
+    Every `RESHAPE_INDEX` column is cast to a concrete dtype up front if
     `Unknown`, which happens when a schedule has zero rows across every
-    requested period (see `_cast_unknown_dtype`). Neither is touched by
-    `_cast_numeric_to_float64`'s later `"value"` and `"code_value"` calls,
-    but both carry the same cross-piece concat risk, and an `Unknown`
-    `period` also fails a decoding join with `ArrowInvalid` under
-    pyarrow before it ever reaches a concat.
+    requested period (see `_cast_unknown_dtype`). None of them is touched
+    by `_cast_numeric_to_float64`'s later `"value"` and `"code_value"`
+    calls, but all carry the same cross-piece concat risk, and an
+    `Unknown` `period` also fails a decoding join with `ArrowInvalid`
+    under pyarrow before it ever reaches a concat.
+    `reshape_index_dtypes` names the target for each.
 
     Parameters
     ----------
@@ -245,8 +312,8 @@ def melt_schedule_frame(
         ``value``, plus ``code_column``/``code_value`` for any row that
         came from a coded field. Lazy if `frame` was lazy.
     """
-    frame = _cast_unknown_dtype(frame, column="UNINUM", target=nw.Int64())
-    frame = _cast_unknown_dtype(frame, column="period", target=date_dtype())
+    for column, target in reshape_index_dtypes().items():
+        frame = _cast_unknown_dtype(frame, column=column, target=target)
     exclude = set(_EXCLUDED_FROM_MELT) | set(trailing_columns)
     if code_column is not None:
         exclude.add(code_column)
@@ -382,9 +449,7 @@ def _with_column_key(frame: FrameOrLazy) -> FrameOrLazy:
 
 def to_wide_format(
     *,
-    frames: dict[str, FrameOrLazy],
-    code_columns: dict[str, str | None],
-    trailing_columns: dict[str, tuple[str, ...]],
+    inputs: dict[str, ScheduleInputs],
 ) -> nw.DataFrame[Any]:
     """Build the wide-format frame from a set of already-loaded schedules.
 
@@ -392,22 +457,15 @@ def to_wide_format(
     them, computes each row's `column_key`, then pivots on it. A schedule
     with no code column gets null `code_column` and `code_value` once
     unioned against schedules that have them. Everything before `pivot`
-    stays lazy if `frames`' values are lazy. `pivot` is the one step that
+    stays lazy if `inputs`' frames are lazy. `pivot` is the one step that
     must collect, since a pivoted result's schema depends on
     `column_key`'s distinct values.
 
     Parameters
     ----------
-    frames : dict[str, narwhals.DataFrame or narwhals.LazyFrame]
-        Each schedule's already-loaded, already-stacked frame, keyed by
-        schedule root name.
-    code_columns : dict[str, str or None]
-        Each schedule's code column name, keyed the same way as `frames`.
-        Use ``None`` for a schedule with no code column.
-    trailing_columns : dict[str, tuple[str, ...]]
-        Each schedule's trailing single-occurrence columns, keyed the
-        same way as `frames`. Use an empty tuple for a schedule with
-        none.
+    inputs : dict[str, ScheduleInputs]
+        Each schedule's loaded frame and layout facts, keyed by schedule
+        root name.
 
     Returns
     -------
@@ -416,12 +474,12 @@ def to_wide_format(
     """
     melted = [
         melt_schedule_frame(
-            frame=frame,
+            frame=item.frame,
             schedule=schedule,
-            code_column=code_columns[schedule],
-            trailing_columns=trailing_columns[schedule],
+            code_column=item.code_column,
+            trailing_columns=item.trailing_columns,
         )
-        for schedule, frame in frames.items()
+        for schedule, item in inputs.items()
     ]
     combined = concat(frames=melted, how="union")
     combined = _with_column_key(combined)
@@ -470,16 +528,14 @@ def _with_is_multiple_flag(frame: FrameOrLazy) -> FrameOrLazy:
 
 def to_long_format(
     *,
-    frames: dict[str, FrameOrLazy],
-    code_columns: dict[str, str | None],
-    trailing_columns: dict[str, tuple[str, ...]],
+    inputs: dict[str, ScheduleInputs],
 ) -> nw.DataFrame[Any]:
     """Build the long-format frame from a set of already-loaded schedules.
 
     Melts and tags every schedule via `melt_schedule_frame`, the same
     per-schedule step `to_wide_format` uses, concatenates them, and adds
     `is_multiple`. Unlike `to_wide_format`, there is no pivot, so the melt,
-    concat, and flag steps all stay lazy if `frames`' values are lazy. The
+    concat, and flag steps all stay lazy if `inputs`' frames are lazy. The
     one place this collects is the final `assert_unique_grain` call, which
     verifies `_LONG_FORMAT_GRAIN` is actually unique in the data. That is
     not a lazy-safe question, so it is a single unavoidable collect,
@@ -487,16 +543,9 @@ def to_long_format(
 
     Parameters
     ----------
-    frames : dict[str, narwhals.DataFrame or narwhals.LazyFrame]
-        Each schedule's already-loaded, already-stacked frame, keyed by
-        schedule root name.
-    code_columns : dict[str, str or None]
-        Each schedule's code column name, keyed the same way as `frames`.
-        Use ``None`` for a schedule with no code column.
-    trailing_columns : dict[str, tuple[str, ...]]
-        Each schedule's trailing single-occurrence columns, keyed the
-        same way as `frames`. Use an empty tuple for a schedule with
-        none.
+    inputs : dict[str, ScheduleInputs]
+        Each schedule's loaded frame and layout facts, keyed by schedule
+        root name.
 
     Returns
     -------
@@ -511,12 +560,12 @@ def to_long_format(
     """
     melted = [
         melt_schedule_frame(
-            frame=frame,
+            frame=item.frame,
             schedule=schedule,
-            code_column=code_columns[schedule],
-            trailing_columns=trailing_columns[schedule],
+            code_column=item.code_column,
+            trailing_columns=item.trailing_columns,
         )
-        for schedule, frame in frames.items()
+        for schedule, item in inputs.items()
     ]
     combined = concat(frames=melted, how="union")
     combined = _with_is_multiple_flag(combined)
@@ -526,9 +575,7 @@ def to_long_format(
 
 def to_code_grain_format(
     *,
-    frames: dict[str, FrameOrLazy],
-    code_columns: dict[str, str | None],
-    trailing_columns: dict[str, tuple[str, ...]],
+    inputs: dict[str, ScheduleInputs],
 ) -> nw.DataFrame[Any]:
     """Build the code-grain frame from a set of already-loaded schedules.
 
@@ -546,7 +593,7 @@ def to_code_grain_format(
     code-level and are dropped. Both melt with a null `code_column`, so
     one filter removes them.
 
-    Everything before `pivot` stays lazy if `frames`' values are lazy.
+    Everything before `pivot` stays lazy if `inputs`' frames are lazy.
     `pivot` is the one step that must collect, since a pivoted result's
     schema depends on `column_key`'s distinct values, and it is also what
     enforces that `CODE_GRAIN_INDEX` plus `column_key` is a unique grain.
@@ -558,16 +605,9 @@ def to_code_grain_format(
 
     Parameters
     ----------
-    frames : dict[str, narwhals.DataFrame or narwhals.LazyFrame]
-        Each schedule's already-loaded, already-stacked frame, keyed by
-        schedule root name.
-    code_columns : dict[str, str or None]
-        Each schedule's code column name, keyed the same way as `frames`.
-        Use ``None`` for a schedule with no code column.
-    trailing_columns : dict[str, tuple[str, ...]]
-        Each schedule's trailing single-occurrence columns, keyed the
-        same way as `frames`. Use an empty tuple for a schedule with
-        none.
+    inputs : dict[str, ScheduleInputs]
+        Each schedule's loaded frame and layout facts, keyed by schedule
+        root name.
 
     Returns
     -------
@@ -578,18 +618,18 @@ def to_code_grain_format(
     Raises
     ------
     ReshapeError
-        If no schedule in `frames` has a code column, if every coded
+        If no schedule in `inputs` has a code column, if every coded
         schedule resolved to zero rows for the requested periods, or if
         `CODE_GRAIN_INDEX` plus the column name is not a unique grain.
     """
     melted = [
         melt_schedule_frame(
-            frame=frame,
+            frame=item.frame,
             schedule=schedule,
-            code_column=code_columns[schedule],
-            trailing_columns=trailing_columns[schedule],
+            code_column=item.code_column,
+            trailing_columns=item.trailing_columns,
         )
-        for schedule, frame in frames.items()
+        for schedule, item in inputs.items()
     ]
     combined = concat(frames=melted, how="union")
     # `collect_schema()` rather than `.columns`, which emits a
@@ -597,7 +637,7 @@ def to_code_grain_format(
     if "code_column" not in combined.collect_schema():
         raise ReshapeError(
             "None of the requested schedules reports a code, so there is no "
-            f"code grain to build: {sorted(frames)}."
+            f"code grain to build: {sorted(inputs)}."
         )
     coded = _with_plain_column_key(combined.filter(~nw.col("code_column").is_null()))
     code_grain = pivot(
@@ -1144,10 +1184,8 @@ def exclude_reported_totals(
     Used by `FCACallReport._to_domain_dataset` to implement
     ``include_totals=False``. A null `code_value` is never one of the
     source's own declared totals, so it must survive this on every
-    backend. `is_in` against a null value is itself null, and that null
-    is backend-inconsistent under `filter` (pandas keeps the row, polars
-    and pyarrow drop it), so the null case is made explicit here rather
-    than left to each backend's own null-propagation behavior.
+    backend. `call_report.core._backend.is_in_null_safe` is what
+    guarantees that.
 
     Parameters
     ----------
@@ -1162,7 +1200,7 @@ def exclude_reported_totals(
         `frame` with every row whose `code_value` is in `total_codes`
         removed. Lazy if `frame` was lazy.
     """
-    is_total = nw.col("code_value").is_in(sorted(total_codes)).fill_null(value=False)
+    is_total = is_in_null_safe(column="code_value", values=sorted(total_codes))
     return frame.filter(~is_total)
 
 

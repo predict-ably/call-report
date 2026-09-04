@@ -23,6 +23,7 @@ from call_report.core._backend import (
     convert_dataframe_type,
     finalize,
     finalize_as,
+    is_in_null_safe,
     pivot,
 )
 from call_report.exceptions import LayoutParseError, ReshapeError
@@ -374,6 +375,31 @@ def test_finalize_as_is_keyword_only() -> None:
         frame = build_frame(data={"UNINUM": [1]})
     with pytest.raises(TypeError):
         finalize_as(frame, None)  # type: ignore[call-overload]
+
+
+# ---------------------------------------------------------------------------
+# is_in_null_safe
+# ---------------------------------------------------------------------------
+
+
+def test_is_in_null_safe_matches_a_listed_value(backend: str) -> None:
+    """A value in the set tests True on every backend."""
+    frame = build_frame(data={"code": [110, 155]})
+    kept = frame.filter(is_in_null_safe(column="code", values=[155]))
+    assert kept["code"].to_list() == [155]
+
+
+def test_is_in_null_safe_answers_false_for_a_null(backend: str) -> None:
+    """A null tests False rather than null, so filtering it is not backend-dependent.
+
+    `is_in` against a null is itself null, and a null predicate under
+    `filter` disagrees across backends: pandas keeps the row, polars and
+    pyarrow drop it. A null is not a member of any set of known values,
+    so every backend must keep it when the test is negated.
+    """
+    frame = build_frame(data={"code": [110, None]})
+    kept = frame.filter(~is_in_null_safe(column="code", values=[155]))
+    assert kept.shape[0] == 2
 
 
 # ---------------------------------------------------------------------------

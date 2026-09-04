@@ -1160,9 +1160,11 @@ def test_to_wide_format_does_not_collect_before_reshaping(
     captured_frames: dict[str, object] = {}
     original = _reshape.to_wide_format
 
-    def spy(*, frames: dict[str, object], **kwargs: object) -> object:
-        captured_frames.update(frames)
-        return original(frames=frames, **kwargs)  # type: ignore[arg-type]
+    def spy(*, inputs: dict[str, Any], **kwargs: object) -> object:
+        captured_frames.update(
+            {schedule: item.frame for schedule, item in inputs.items()}
+        )
+        return original(inputs=inputs, **kwargs)
 
     with config_context(dataframe_backend="polars", lazy=True):
         report = FCACallReport(
@@ -1397,9 +1399,11 @@ def test_to_long_format_does_not_collect_before_the_grain_check(
     captured_frames: dict[str, object] = {}
     original = _reshape.to_long_format
 
-    def spy(*, frames: dict[str, object], **kwargs: object) -> object:
-        captured_frames.update(frames)
-        return original(frames=frames, **kwargs)  # type: ignore[arg-type]
+    def spy(*, inputs: dict[str, Any], **kwargs: object) -> object:
+        captured_frames.update(
+            {schedule: item.frame for schedule, item in inputs.items()}
+        )
+        return original(inputs=inputs, **kwargs)
 
     with config_context(dataframe_backend="polars", lazy=True):
         report = FCACallReport(
