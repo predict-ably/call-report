@@ -400,9 +400,9 @@ class DomainDataset:
         column's components are a non-empty list of real source output
         columns rather than another derived column's name.
 
-        A missing or misshapen key raises `SchemaError` too, naming the
-        dataset, the way the shipped-metadata parsers in
-        `call_report.core` raise for the same kind of issue.
+        A definition with a missing or misspelled key also raises
+        `SchemaError`, and the message names the dataset. The parsers in
+        `call_report.core` raise the same error for the same problem.
 
         Within one source group, an output column name may repeat across
         variables. That is deliberate, and is how a schedule split maps
