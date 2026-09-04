@@ -19,6 +19,11 @@ _DATA_DIRECTORY = "data"
 def read_packaged_json_text(*, subdirectory: str, name: str) -> str:
     """Read one packaged JSON file's text.
 
+    Locates the file through `importlib.resources`, so it is found the
+    same way whether the package is installed normally, installed
+    editable, or zipped. The text is returned unparsed, since each
+    caller parses it into a different type.
+
     Parameters
     ----------
     subdirectory : str
