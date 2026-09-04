@@ -10,6 +10,9 @@ producing a null column.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import pandas as pd
 import polars as pl
 import pyarrow as pa
@@ -324,6 +327,87 @@ def test_a_derived_column_naming_an_unproduced_component_raises() -> None:
         ],
     }
     with pytest.raises(SchemaError, match=r"\['not_a_column'\]"):
+        DomainDataset.from_dict(data=data)
+
+
+# ---------------------------------------------------------------------------
+# Malformed-JSON error translation
+# ---------------------------------------------------------------------------
+
+
+def _valid_definition() -> dict[str, Any]:
+    """Build the smallest definition `from_dict` accepts.
+
+    The malformed-JSON tests each break exactly one part of this, so what
+    they assert is attributable to that one break.
+    """
+    return {
+        "name": "example",
+        "code_column": "SEGMENT",
+        "codes": [{"code": 1, "label": "One", "is_total": False}],
+        "sources": [
+            {
+                "schedules": ["RCF1"],
+                "code_column": "LOANSTATUS",
+                "columns": {"ACCR": {"column": "accruing"}},
+            }
+        ],
+        "derived": [
+            {"column": "total", "operation": "sum", "components": ["accruing"]}
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("mutate", "description"),
+    [
+        (lambda data: data["sources"][0].pop("code_column"), "source-key"),
+        (
+            lambda data: data["sources"][0]["columns"]["ACCR"].pop("column"),
+            "column-key",
+        ),
+        (lambda data: data["derived"][0].pop("components"), "derived-key"),
+        (lambda data: data["codes"][0].pop("is_total"), "code-key"),
+        (lambda data: data.__setitem__("sources", 42), "wrong-type"),
+    ],
+    ids=["source-key", "column-key", "derived-key", "code-key", "wrong-type"],
+)
+def test_from_dict_wraps_malformed_json_in_schema_error(
+    mutate: Callable[[dict[str, Any]], object], description: str
+) -> None:
+    """A missing or misshapen key raises SchemaError, not a raw KeyError.
+
+    Every other shipped-metadata parser in the package translates this
+    class of damage into `SchemaError`, so a caller catching that
+    uniformly across `call_report.core` and `call_report.fca` sees this
+    one too. The parametrized cases cover each separately wrapped block:
+    the sources, the derived columns, and the final construction.
+    """
+    data = _valid_definition()
+    mutate(data)
+    with pytest.raises(SchemaError, match="malformed domain dataset JSON"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_from_dict_error_names_the_dataset() -> None:
+    """The error carries the dataset name, as the sibling parsers' errors do."""
+    data = _valid_definition()
+    del data["codes"][0]["is_total"]
+    with pytest.raises(SchemaError, match="'example'"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_from_dict_error_survives_a_missing_name() -> None:
+    """A definition missing "name" itself still reports, rather than failing twice.
+
+    The name is read for the error message before any parsing can fail,
+    so a typo'd `name` key does not turn a `SchemaError` back into the
+    raw `KeyError` this translation exists to prevent.
+    """
+    data = _valid_definition()
+    del data["name"]
+    del data["codes"][0]["is_total"]
+    with pytest.raises(SchemaError, match="<unnamed>"):
         DomainDataset.from_dict(data=data)
 
 

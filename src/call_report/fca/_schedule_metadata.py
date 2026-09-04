@@ -11,10 +11,10 @@ side: each file is parsed at most once per process, on first request.
 from __future__ import annotations
 
 import functools
-import importlib.resources
 from collections.abc import Mapping
 
 from call_report.core import FileMetadata
+from call_report.fca._resources import read_packaged_json_text
 from call_report.fca.enums import FCASchedule
 from call_report.fca.institutions import INSTITUTIONS_ROOT
 
@@ -35,10 +35,8 @@ def _load_file_metadata(*, root: str) -> FileMetadata:
     FileMetadata
         The parsed metadata.
     """
-    resource = importlib.resources.files("call_report.fca").joinpath(
-        "data", "schedules", f"{root}.json"
-    )
-    return FileMetadata.from_json(text=resource.read_text(encoding="utf-8"))
+    text = read_packaged_json_text(subdirectory="schedules", name=root)
+    return FileMetadata.from_json(text=text)
 
 
 @functools.cache
