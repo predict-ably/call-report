@@ -22,6 +22,7 @@ from call_report.fca._domain_datasets import (
 from call_report.fca._reshape import (
     CODE_GRAIN_INDEX,
     LONG_FORMAT_COLUMNS,
+    NO_DOMAIN_DATASET_MEASUREMENTS,
     _cast_numeric_to_float64,
     _parse_wide_column_key,
     _with_column_key,
@@ -1227,6 +1228,31 @@ def test_to_code_grain_format_without_a_coded_schedule_raises(backend: str) -> N
         to_code_grain_format(**_reshape_inputs(coded=False))
 
 
+def test_to_code_grain_format_without_coded_rows_raises(backend: str) -> None:
+    """A coded schedule with zero rows raises rather than returning bare keys.
+
+    The schedule declares a code column, so the "reports a code" guard
+    passes, but the filter to coded rows leaves nothing and the pivot
+    returns just the four index columns. Without this check that silently
+    useless frame is returned, the asymmetry issue #84 reported between
+    this entry point and `convert_long_format_to_code_grain_format`.
+    """
+    empty = build_frame(
+        data={
+            "UNINUM": [],
+            "period": [],
+            "INV_CODE": [],
+            "BKVAL": [],
+        }
+    )
+    with pytest.raises(ReshapeError, match="no coded measurement columns"):
+        to_code_grain_format(
+            frames={"RCB": empty},
+            code_columns={"RCB": "INV_CODE"},
+            trailing_columns={"RCB": ()},
+        )
+
+
 def test_to_code_grain_format_duplicate_grain_raises(backend: str) -> None:
     """A duplicated (UNINUM, period, code, variable) row raises, never aggregates."""
     rcb = build_frame(
@@ -1664,7 +1690,9 @@ def test_assert_pivot_has_measurements_raises_on_index_only_frame(
     """
     pivoted = build_frame(data={column: [] for column in CODE_GRAIN_INDEX})
     with pytest.raises(ReshapeError, match="no measurement columns"):
-        assert_pivot_has_measurements(pivoted=pivoted)
+        assert_pivot_has_measurements(
+            pivoted=pivoted, message=NO_DOMAIN_DATASET_MEASUREMENTS
+        )
 
 
 def test_assert_pivot_has_measurements_passes_with_a_measurement_column(
@@ -1674,7 +1702,9 @@ def test_assert_pivot_has_measurements_passes_with_a_measurement_column(
     pivoted = build_frame(
         data={**{column: [] for column in CODE_GRAIN_INDEX}, "accruing": []}
     )
-    assert_pivot_has_measurements(pivoted=pivoted)
+    assert_pivot_has_measurements(
+        pivoted=pivoted, message=NO_DOMAIN_DATASET_MEASUREMENTS
+    )
 
 
 # ---------------------------------------------------------------------------

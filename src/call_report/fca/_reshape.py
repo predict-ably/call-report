@@ -551,6 +551,11 @@ def to_code_grain_format(
     schema depends on `column_key`'s distinct values, and it is also what
     enforces that `CODE_GRAIN_INDEX` plus `column_key` is a unique grain.
 
+    A schedule can declare a code column and still contribute no coded
+    rows, which pivots to a frame of `CODE_GRAIN_INDEX` and nothing else.
+    `assert_pivot_has_measurements` rejects that, so an empty result
+    cannot be mistaken for a narrow one.
+
     Parameters
     ----------
     frames : dict[str, narwhals.DataFrame or narwhals.LazyFrame]
@@ -573,7 +578,8 @@ def to_code_grain_format(
     Raises
     ------
     ReshapeError
-        If no schedule in `frames` has a code column, or if
+        If no schedule in `frames` has a code column, if every coded
+        schedule resolved to zero rows for the requested periods, or if
         `CODE_GRAIN_INDEX` plus the column name is not a unique grain.
     """
     melted = [
@@ -594,9 +600,13 @@ def to_code_grain_format(
             f"code grain to build: {sorted(frames)}."
         )
     coded = _with_plain_column_key(combined.filter(~nw.col("code_column").is_null()))
-    return pivot(
+    code_grain = pivot(
         frame=coded, on="column_key", index=list(CODE_GRAIN_INDEX), values="value"
     )
+    assert_pivot_has_measurements(
+        pivoted=code_grain, message=NO_CODE_GRAIN_MEASUREMENTS
+    )
+    return code_grain
 
 
 def _parse_wide_column_key(
@@ -951,11 +961,9 @@ def convert_long_format_to_code_grain_format(
     code_grain = pivot(
         frame=coded, on="column_key", index=list(CODE_GRAIN_INDEX), values="value"
     )
-    if len(code_grain.columns) == len(CODE_GRAIN_INDEX):
-        raise ReshapeError(
-            "`long` has no multiple-occurrence rows (every row's code_column is "
-            "null), so there is no code grain to build."
-        )
+    assert_pivot_has_measurements(
+        pivoted=code_grain, message=NO_MULTIPLE_OCCURRENCE_ROWS
+    )
     return finalize_as(frame=code_grain, dataframe_type=dataframe_type)
 
 
@@ -1158,7 +1166,28 @@ def exclude_reported_totals(
     return frame.filter(~is_total)
 
 
-def assert_pivot_has_measurements(*, pivoted: nw.DataFrame[Any]) -> None:
+NO_DOMAIN_DATASET_MEASUREMENTS = (
+    "The requested schedules contributed no measurement columns, so there is "
+    "no domain dataset to build. This happens when every contributing "
+    "schedule resolved to zero rows for the requested periods."
+)
+"""str: `assert_pivot_has_measurements` message for a curated domain dataset."""
+
+NO_CODE_GRAIN_MEASUREMENTS = (
+    "The requested schedules contributed no coded measurement columns, so "
+    "there is no code grain to build. This happens when every schedule that "
+    "declares a code column resolved to zero rows for the requested periods."
+)
+"""str: `assert_pivot_has_measurements` message for `to_code_grain_format`."""
+
+NO_MULTIPLE_OCCURRENCE_ROWS = (
+    "`long` has no multiple-occurrence rows (every row's code_column is "
+    "null), so there is no code grain to build."
+)
+"""str: `assert_pivot_has_measurements` message for the long-format conversion."""
+
+
+def assert_pivot_has_measurements(*, pivoted: nw.DataFrame[Any], message: str) -> None:
     """Raise if a pivoted frame carries no columns beyond `CODE_GRAIN_INDEX`.
 
     A pivot on an entirely empty input still produces the four
@@ -1166,10 +1195,17 @@ def assert_pivot_has_measurements(*, pivoted: nw.DataFrame[Any]) -> None:
     would look like a real, if narrow, result rather than the absence of
     any real one.
 
+    Every code-grain route pivots to the same shape and so needs the same
+    check. `message` is what differs between them, since each reaches an
+    empty pivot for its own reason.
+
     Parameters
     ----------
     pivoted : narwhals.DataFrame
         The frame `core._backend.pivot` returned.
+    message : str
+        The `ReshapeError` message to raise, describing why this caller's
+        pivot came back with no measurements.
 
     Raises
     ------
@@ -1179,12 +1215,7 @@ def assert_pivot_has_measurements(*, pivoted: nw.DataFrame[Any]) -> None:
         the requested periods.
     """
     if len(pivoted.columns) == len(CODE_GRAIN_INDEX):
-        raise ReshapeError(
-            "The requested schedules contributed no measurement columns, so "
-            "there is no domain dataset to build. This happens when every "
-            "contributing schedule resolved to zero rows for the requested "
-            "periods."
-        )
+        raise ReshapeError(message)
 
 
 def pivot_domain_dataset_wide(*, frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
