@@ -625,6 +625,40 @@ def pivot(
         ) from error
 
 
+def is_in_null_safe(*, column: str, values: Sequence[Any]) -> nw.Expr:
+    """Build an ``is_in`` test that answers False, not null, for a null value.
+
+    ``is_in`` against a null is itself null, and a null predicate is
+    backend-inconsistent under ``filter``: pandas keeps the row, polars
+    and pyarrow drop it. A null is not a member of any set of known
+    values, so the test is made explicitly False rather than left to each
+    backend's own null handling.
+
+    Parameters
+    ----------
+    column : str
+        The column to test.
+    values : Sequence[Any]
+        The values that count as a match.
+
+    Returns
+    -------
+    narwhals.Expr
+        A boolean expression, never null.
+
+    Examples
+    --------
+    >>> from call_report.core._backend import build_frame, is_in_null_safe
+    >>> frame = build_frame(data={"code": [110, 155, None]})
+    >>> kept = frame.filter(~is_in_null_safe(column="code", values=[155]))
+    >>> kept.shape[0]
+    2
+    >>> 155 in kept["code"].to_list()
+    False
+    """
+    return nw.col(column).is_in(list(values)).fill_null(value=False)
+
+
 def assert_unique_grain(
     *, frame: FrameOrLazy, columns: Sequence[str]
 ) -> nw.DataFrame[Any]:

@@ -19,7 +19,6 @@ from call_report.core import (
 )
 from call_report.core._backend import (
     DataFrameType,
-    FrameOrLazy,
     concat,
     date_dtype,
     finalize,
@@ -914,12 +913,8 @@ class FCACallReport(BaseCallReport):
         ScheduleNotFoundError
             If `schedules` resolves to zero schedules.
         """
-        frames, code_columns, trailing_columns = self._load_reshape_inputs(
-            schedules=schedules
-        )
-        return _reshape.to_wide_format(
-            frames=frames, code_columns=code_columns, trailing_columns=trailing_columns
-        )
+        inputs = self._load_reshape_inputs(schedules=schedules)
+        return _reshape.to_wide_format(inputs=inputs)
 
     @overload
     def to_long_format(
@@ -1066,12 +1061,8 @@ class FCACallReport(BaseCallReport):
         ReshapeError
             If the long-format grain is not unique in the source data.
         """
-        frames, code_columns, trailing_columns = self._load_reshape_inputs(
-            schedules=schedules
-        )
-        return _reshape.to_long_format(
-            frames=frames, code_columns=code_columns, trailing_columns=trailing_columns
-        )
+        inputs = self._load_reshape_inputs(schedules=schedules)
+        return _reshape.to_long_format(inputs=inputs)
 
     @overload
     def to_code_grain_format(
@@ -1225,18 +1216,12 @@ class FCACallReport(BaseCallReport):
         ReshapeError
             If an explicitly named schedule has no code column.
         """
-        frames, code_columns, trailing_columns = self._load_code_grain_inputs(
-            schedules=schedules
-        )
-        return _reshape.to_code_grain_format(
-            frames=frames, code_columns=code_columns, trailing_columns=trailing_columns
-        )
+        inputs = self._load_code_grain_inputs(schedules=schedules)
+        return _reshape.to_code_grain_format(inputs=inputs)
 
     def _load_code_grain_inputs(
         self, *, schedules: Iterable[FCASchedule | str] | None
-    ) -> tuple[
-        dict[str, FrameOrLazy], dict[str, str | None], dict[str, tuple[str, ...]]
-    ]:
+    ) -> dict[str, _reshape.ScheduleInputs]:
         """Narrow `schedules` to the code-bearing ones, then load each.
 
         The code-grain counterpart to `_load_reshape_inputs`, which it
@@ -1257,10 +1242,9 @@ class FCACallReport(BaseCallReport):
 
         Returns
         -------
-        tuple[dict[str, FrameOrLazy], dict[str, str or None], \
-dict[str, tuple[str, ...]]]
-            `frames`, `code_columns`, and `trailing_columns`, each keyed
-            by schedule root name.
+        dict[str, ScheduleInputs]
+            Each schedule's frame, code column, and trailing columns,
+            keyed by schedule root name.
 
         Raises
         ------
@@ -1519,21 +1503,19 @@ dict[str, tuple[str, ...]]]
                 f"{dataset.name!r} domain dataset draws on, was found in any period "
                 f"of {self.periods_[0].label}-{self.periods_[-1].label}."
             )
-        frames, code_columns, trailing_columns = self._load_reshape_inputs(
-            schedules=available
-        )
+        inputs = self._load_reshape_inputs(schedules=available)
         decoded = [
             _reshape.apply_domain_dataset_decoding(
                 frame=_reshape.melt_schedule_frame(
-                    frame=frame,
+                    frame=item.frame,
                     schedule=schedule,
-                    code_column=code_columns[schedule],
-                    trailing_columns=trailing_columns[schedule],
+                    code_column=item.code_column,
+                    trailing_columns=item.trailing_columns,
                 ),
                 source=dataset.source_by_schedule[schedule],
                 code_column=dataset.code_column,
             )
-            for schedule, frame in frames.items()
+            for schedule, item in inputs.items()
         ]
         combined = concat(frames=decoded, how="union")
         if not include_totals:
@@ -1554,9 +1536,7 @@ dict[str, tuple[str, ...]]]
 
     def _load_reshape_inputs(
         self, *, schedules: Iterable[FCASchedule | str] | None
-    ) -> tuple[
-        dict[str, FrameOrLazy], dict[str, str | None], dict[str, tuple[str, ...]]
-    ]:
+    ) -> dict[str, _reshape.ScheduleInputs]:
         """Resolve `schedules` and load each one's frame, code, and trailing columns.
 
         Shared by `_to_wide_format`, `_to_long_format`, and
@@ -1574,10 +1554,9 @@ dict[str, tuple[str, ...]]]
 
         Returns
         -------
-        tuple[dict[str, FrameOrLazy], dict[str, str or None], \
-dict[str, tuple[str, ...]]]
-            `frames`, `code_columns`, and `trailing_columns`, each keyed
-            by schedule root name.
+        dict[str, ScheduleInputs]
+            Each schedule's frame, code column, and trailing columns,
+            keyed by schedule root name.
 
         Raises
         ------
@@ -1593,17 +1572,19 @@ dict[str, tuple[str, ...]]]
                 "requested periods; see errors_ for details."
             )
 
-        frames: dict[str, FrameOrLazy] = {}
-        code_columns: dict[str, str | None] = {}
-        trailing_columns: dict[str, tuple[str, ...]] = {}
+        inputs: dict[str, _reshape.ScheduleInputs] = {}
         for schedule in resolved:
-            frames[schedule.value] = nw.from_native(self._load(schedule=schedule))
+            # `_load` before `_layout_for_schedule`: a schedule with no
+            # available period has no layout to read, and `_load` is what
+            # reports that as ScheduleNotFoundError rather than IndexError.
+            frame = nw.from_native(self._load(schedule=schedule))
             layout = self._layout_for_schedule(schedule=schedule)
-            code_columns[schedule.value] = (
-                layout.multi_columns[0] if layout.multi_columns else None
+            inputs[schedule.value] = _reshape.ScheduleInputs(
+                frame=frame,
+                code_column=(layout.multi_columns[0] if layout.multi_columns else None),
+                trailing_columns=layout.trailing_columns,
             )
-            trailing_columns[schedule.value] = layout.trailing_columns
-        return frames, code_columns, trailing_columns
+        return inputs
 
     def _resolve_reshape_schedules(
         self, *, schedules: Iterable[FCASchedule | str] | None

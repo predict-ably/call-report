@@ -21,6 +21,8 @@ from call_report.fca._domain_datasets import (
 from call_report.fca._reshape import (
     CODE_GRAIN_INDEX,
     LONG_FORMAT_COLUMNS,
+    RESHAPE_INDEX,
+    ScheduleInputs,
     _cast_numeric_to_float64,
     _parse_wide_column_key,
     _with_column_key,
@@ -35,11 +37,42 @@ from call_report.fca._reshape import (
     exclude_reported_totals,
     melt_schedule_frame,
     pivot_domain_dataset_wide,
+    reshape_index_dtypes,
     to_code_grain_format,
     to_long_format,
     to_wide_format,
 )
 from tests.helpers import is_missing, rows_of, sorted_rows
+
+
+def test_reshape_index_dtypes_covers_every_grain_column() -> None:
+    """Every RESHAPE_INDEX column has a declared dtype, with no extras.
+
+    `melt_schedule_frame` casts each grain column whose dtype narwhals
+    could not infer, which happens when a schedule has zero rows for
+    every requested period. A grain column added to RESHAPE_INDEX without
+    an entry here would keep the `narwhals.Unknown` dtype and break a
+    later concat intermittently, so the two are pinned to each other.
+    """
+    assert set(reshape_index_dtypes()) == set(RESHAPE_INDEX)
+
+
+def _schedule(
+    frame: Any,
+    *,
+    code_column: str | None = None,
+    trailing_columns: tuple[str, ...] = (),
+) -> ScheduleInputs:
+    """Wrap one schedule's frame and layout facts for a reshape entry point.
+
+    The reshape functions take one `ScheduleInputs` per schedule. Most
+    test schedules have neither a code column nor trailing columns, so
+    both default to the empty case here.
+    """
+    return ScheduleInputs(
+        frame=frame, code_column=code_column, trailing_columns=trailing_columns
+    )
+
 
 # ---------------------------------------------------------------------------
 # melt_schedule_frame
@@ -315,9 +348,10 @@ def test_to_wide_format_combines_coded_and_plain_schedules() -> None:
         }
     )
     result = to_wide_format(
-        frames={"RC": rc, "RCB": rcb},
-        code_columns={"RC": None, "RCB": "INV_CODE"},
-        trailing_columns={"RC": (), "RCB": ()},
+        inputs={
+            "RC": _schedule(rc),
+            "RCB": _schedule(rcb, code_column="INV_CODE"),
+        },
     )
     rows = {row["UNINUM"]: row for row in sorted_rows(result)}
     assert rows[1]["RC__TOTASSETS"] == 1000.0
@@ -337,9 +371,9 @@ def test_to_wide_format_duplicate_grain_raises_reshape_error() -> None:
     )
     with pytest.raises(ReshapeError):
         to_wide_format(
-            frames={"RC": rc},
-            code_columns={"RC": None},
-            trailing_columns={"RC": ()},
+            inputs={
+                "RC": _schedule(rc),
+            },
         )
 
 
@@ -368,9 +402,10 @@ def test_to_wide_format_empty_schedule_alongside_a_populated_one() -> None:
             nw.lit(period_end).alias("period")
         )
     result = to_wide_format(
-        frames={"RCO": empty, "RC": populated},
-        code_columns={"RCO": None, "RC": None},
-        trailing_columns={"RCO": (), "RC": ()},
+        inputs={
+            "RCO": _schedule(empty),
+            "RC": _schedule(populated),
+        },
     )
     assert isinstance(result, nw.DataFrame)
     assert result.collect_schema()["RC__BKVAL"] == nw.Float64()
@@ -380,7 +415,7 @@ def test_to_wide_format_is_keyword_only() -> None:
     """to_wide_format takes no positional arguments."""
     rc = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"], "A": [1]})
     with pytest.raises(TypeError):
-        to_wide_format({"RC": rc}, {"RC": None}, {"RC": ()})  # type: ignore[call-arg]
+        to_wide_format({"RC": _schedule(rc)})  # type: ignore[call-arg]
 
 
 # ---------------------------------------------------------------------------
@@ -483,9 +518,10 @@ def test_to_wide_format_full_pipeline_stays_lazy_until_pivot() -> None:
     assert isinstance(keyed, nw.LazyFrame)
 
     result = to_wide_format(
-        frames={"RC": rc, "RCB": rcb},
-        code_columns={"RC": None, "RCB": "INV_CODE"},
-        trailing_columns={"RC": (), "RCB": ()},
+        inputs={
+            "RC": _schedule(rc),
+            "RCB": _schedule(rcb, code_column="INV_CODE"),
+        },
     )
     assert isinstance(result, nw.DataFrame)
     rows = {row["UNINUM"]: row for row in sorted_rows(result)}
@@ -564,9 +600,10 @@ def test_to_long_format_combines_coded_and_plain_schedules() -> None:
         }
     )
     result = to_long_format(
-        frames={"RC": rc, "RCB": rcb},
-        code_columns={"RC": None, "RCB": "INV_CODE"},
-        trailing_columns={"RC": (), "RCB": ()},
+        inputs={
+            "RC": _schedule(rc),
+            "RCB": _schedule(rcb, code_column="INV_CODE"),
+        },
     )
     assert isinstance(result, nw.DataFrame)
     rows = result.rows(named=True)
@@ -594,9 +631,9 @@ def test_to_long_format_trailing_column_is_single() -> None:
         }
     )
     result = to_long_format(
-        frames={"RCR7": rcr7},
-        code_columns={"RCR7": "CAPCODE"},
-        trailing_columns={"RCR7": ("TOTAL",)},
+        inputs={
+            "RCR7": _schedule(rcr7, code_column="CAPCODE", trailing_columns=("TOTAL",)),
+        },
     )
     rows = result.rows(named=True)
     total_row = next(r for r in rows if r["variable_name"] == "TOTAL")
@@ -615,7 +652,9 @@ def test_to_long_format_no_coded_schedule_still_has_code_columns() -> None:
         data={"UNINUM": [1], "period": ["2026-03-31"], "TOTASSETS": [1000]}
     )
     result = to_long_format(
-        frames={"RC": rc}, code_columns={"RC": None}, trailing_columns={"RC": ()}
+        inputs={
+            "RC": _schedule(rc),
+        },
     )
     assert set(result.columns) == {
         "UNINUM",
@@ -641,7 +680,9 @@ def test_to_long_format_duplicate_grain_raises_reshape_error() -> None:
     )
     with pytest.raises(ReshapeError, match="not a unique grain"):
         to_long_format(
-            frames={"RC": rc}, code_columns={"RC": None}, trailing_columns={"RC": ()}
+            inputs={
+                "RC": _schedule(rc),
+            },
         )
 
 
@@ -660,9 +701,10 @@ def test_to_long_format_empty_schedule_alongside_a_populated_one() -> None:
             nw.lit(period_end).alias("period")
         )
     result = to_long_format(
-        frames={"RCO": empty, "RC": populated},
-        code_columns={"RCO": None, "RC": None},
-        trailing_columns={"RCO": (), "RC": ()},
+        inputs={
+            "RCO": _schedule(empty),
+            "RC": _schedule(populated),
+        },
     )
     assert isinstance(result, nw.DataFrame)
     assert result.collect_schema()["value"] == nw.Float64()
@@ -672,7 +714,7 @@ def test_to_long_format_is_keyword_only() -> None:
     """to_long_format takes no positional arguments."""
     rc = build_frame(data={"UNINUM": [1], "period": ["2026-03-31"], "A": [1]})
     with pytest.raises(TypeError):
-        to_long_format({"RC": rc}, {"RC": None}, {"RC": ()})  # type: ignore[call-arg]
+        to_long_format({"RC": _schedule(rc)})  # type: ignore[call-arg]
 
 
 def test_to_long_format_stays_lazy_until_grain_check() -> None:
@@ -700,9 +742,10 @@ def test_to_long_format_stays_lazy_until_grain_check() -> None:
     assert isinstance(flagged, nw.LazyFrame)
 
     result = to_long_format(
-        frames={"RC": rc, "RCB": rcb},
-        code_columns={"RC": None, "RCB": "INV_CODE"},
-        trailing_columns={"RC": (), "RCB": ()},
+        inputs={
+            "RC": _schedule(rc),
+            "RCB": _schedule(rcb, code_column="INV_CODE"),
+        },
     )
     assert isinstance(result, nw.DataFrame)
     # 2 RC rows (one TOTASSETS per UNINUM) + 2 RCB rows (one BKVAL per code).
@@ -976,11 +1019,7 @@ def _reshape_inputs(*, coded_first: bool = False, coded: bool = True) -> dict[st
         }
     )
     if not coded:
-        return {
-            "frames": {"RC": rc},
-            "code_columns": {"RC": None},
-            "trailing_columns": {"RC": ()},
-        }
+        return {"inputs": {"RC": _schedule(rc)}}
     rcb = build_frame(
         data={
             "UNINUM": [1, 1],
@@ -989,12 +1028,10 @@ def _reshape_inputs(*, coded_first: bool = False, coded: bool = True) -> dict[st
             "BKVAL": [100.5, 150.5],
         }
     )
-    frames = {"RCB": rcb, "RC": rc} if coded_first else {"RC": rc, "RCB": rcb}
-    return {
-        "frames": frames,
-        "code_columns": {"RC": None, "RCB": "INV_CODE"},
-        "trailing_columns": {"RC": (), "RCB": ()},
-    }
+    inputs = {"RC": _schedule(rc), "RCB": _schedule(rcb, code_column="INV_CODE")}
+    if coded_first:
+        inputs = {"RCB": inputs["RCB"], "RC": inputs["RC"]}
+    return {"inputs": inputs}
 
 
 @pytest.mark.parametrize(
@@ -1068,7 +1105,14 @@ def test_long_format_column_order_holds_when_lazy(lazy_polars_backend: str) -> N
     inputs = _reshape_inputs()
     lazy_inputs = {
         **inputs,
-        "frames": {name: frame.lazy() for name, frame in inputs["frames"].items()},
+        "inputs": {
+            name: _schedule(
+                item.frame.lazy(),
+                code_column=item.code_column,
+                trailing_columns=item.trailing_columns,
+            )
+            for name, item in inputs["inputs"].items()
+        },
     }
     result = to_long_format(**lazy_inputs)
     assert tuple(result.columns) == LONG_FORMAT_COLUMNS
@@ -1182,9 +1226,10 @@ def test_to_code_grain_format_stacks_different_code_columns(backend: str) -> Non
         }
     )
     result = to_code_grain_format(
-        frames={"RCB": rcb, "RCF": rcf},
-        code_columns={"RCB": "INV_CODE", "RCF": "LOANSTATUS"},
-        trailing_columns={"RCB": (), "RCF": ()},
+        inputs={
+            "RCB": _schedule(rcb, code_column="INV_CODE"),
+            "RCF": _schedule(rcf, code_column="LOANSTATUS"),
+        },
     )
     rows = {row["code_column"]: row for row in sorted_rows(result)}
     assert set(rows) == {"INV_CODE", "LOANSTATUS"}
@@ -1202,9 +1247,13 @@ def test_to_code_grain_format_drops_trailing_columns(backend: str) -> None:
     grain, exactly like a "single"-scenario schedule's fields.
     """
     result = to_code_grain_format(
-        frames={"RCR7": _rcr7_frame()},
-        code_columns={"RCR7": "RegCapCode"},
-        trailing_columns={"RCR7": ("AvgDailyRWARegCap",)},
+        inputs={
+            "RCR7": _schedule(
+                _rcr7_frame(),
+                code_column="RegCapCode",
+                trailing_columns=("AvgDailyRWARegCap",),
+            ),
+        },
     )
     assert tuple(result.columns) == (*CODE_GRAIN_INDEX, "RCR7__CreditEquil")
     rows = sorted_rows(result, by=["UNINUM", "code_value"])
@@ -1238,9 +1287,9 @@ def test_to_code_grain_format_duplicate_grain_raises(backend: str) -> None:
     )
     with pytest.raises(ReshapeError):
         to_code_grain_format(
-            frames={"RCB": rcb},
-            code_columns={"RCB": "INV_CODE"},
-            trailing_columns={"RCB": ()},
+            inputs={
+                "RCB": _schedule(rcb, code_column="INV_CODE"),
+            },
         )
 
 
@@ -1251,7 +1300,14 @@ def test_to_code_grain_format_stays_lazy_until_the_pivot(
     inputs = _reshape_inputs()
     lazy_inputs = {
         **inputs,
-        "frames": {name: frame.lazy() for name, frame in inputs["frames"].items()},
+        "inputs": {
+            name: _schedule(
+                item.frame.lazy(),
+                code_column=item.code_column,
+                trailing_columns=item.trailing_columns,
+            )
+            for name, item in inputs["inputs"].items()
+        },
     }
     result = to_code_grain_format(**lazy_inputs)
     assert isinstance(result, nw.DataFrame)
