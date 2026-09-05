@@ -147,6 +147,58 @@ def test_loan_portfolio_derived_columns_are_declared() -> None:
     ) == {"restructured_accruing"}
 
 
+def test_loan_performance_bundle_loads() -> None:
+    """The shipped loan performance bundle parses into the expected shape."""
+    dataset = get_fca_domain_dataset(domain_dataset="loan_performance")
+    assert dataset.name == "loan_performance"
+    assert dataset.code_column == "PERFORMANCE_STATUS"
+    assert dataset.schedules == ("RCF",)
+    assert len(dataset.codes) == 6
+
+
+def test_loan_performance_is_scoped_to_one_schedule() -> None:
+    """The bundle has no join and no era split, unlike loan_portfolio.
+
+    RCK, RCL, and RCM were investigated as join candidates. RCL's
+    nonaccrual rollforward crosswalks exactly to RCF's codes 54 and 56
+    combined, but RCK's accrual rollforward does not tie to RCF's codes
+    10 and 20 combined (a consistent, unexplained gap across periods), and
+    RCM has no corresponding RCF code at all. The bundle was scoped down
+    to RCF alone rather than mix in an unreconciled join.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="loan_performance")
+    assert len(dataset.sources) == 1
+    assert dataset.sources[0].schedules == ("RCF",)
+
+
+def test_loan_performance_source_is_code_bearing() -> None:
+    """RC-F reports the performance status as a code, unlike RI-E in loan_portfolio."""
+    dataset = get_fca_domain_dataset(domain_dataset="loan_performance")
+    source = dataset.sources[0]
+    assert source.code_column == "LOANSTATUS"
+    assert all(item.code is None for item in source.columns.values())
+
+
+def test_loan_performance_total_code_is_flagged() -> None:
+    """60 is the only code marked a subtotal, and it is marked."""
+    dataset = get_fca_domain_dataset(domain_dataset="loan_performance")
+    assert dataset.total_codes == frozenset({60})
+
+
+def test_loan_performance_has_no_derived_columns() -> None:
+    """No derived columns are declared.
+
+    A useful non_performing measure would sum past_due_90 (code 10) with
+    total_past_due (codes 54 and 56), but those live on three different
+    code rows in the narrow grain, and a derived column can only combine
+    output columns already on the same row. Computing it is left to the
+    caller against the wide=True output instead, documented in the user
+    guide rather than shipped as a derived column here.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="loan_performance")
+    assert dataset.derived == ()
+
+
 def test_get_fca_domain_dataset_is_cached() -> None:
     """A second request returns the same parsed object rather than re-reading."""
     first = get_fca_domain_dataset(domain_dataset="loan_portfolio")
@@ -464,14 +516,19 @@ def test_get_domain_dataset_codes_unknown_name_raises() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_every_declared_variable_exists_in_the_shipped_metadata() -> None:
+@pytest.mark.parametrize("member", list(FCADomainDataset))
+def test_every_declared_variable_exists_in_the_shipped_metadata(
+    member: FCADomainDataset,
+) -> None:
     """Each curated variable is a real field of the schedule it is declared on.
 
-    This bundle is hand-written, with no generator script behind it, so
-    nothing else would catch a typo or a field FCA retires. Without this
-    the reshape would quietly produce a null column instead of failing.
+    Every shipped bundle is hand-written, with no generator script behind
+    it, so nothing else would catch a typo or a field FCA retires.
+    Without this the reshape would quietly produce a null column instead
+    of failing. Parametrized over every shipped dataset so a new bundle
+    is covered automatically, with no test to remember to add.
     """
-    dataset = get_fca_domain_dataset(domain_dataset="loan_portfolio")
+    dataset = get_fca_domain_dataset(domain_dataset=member)
     missing: list[str] = []
     for source in dataset.sources:
         for schedule in source.schedules:
@@ -486,15 +543,20 @@ def test_every_declared_variable_exists_in_the_shipped_metadata() -> None:
     assert missing == []
 
 
-def test_grouped_schedules_declare_identical_variables() -> None:
+@pytest.mark.parametrize("member", list(FCADomainDataset))
+def test_grouped_schedules_declare_identical_variables(
+    member: FCADomainDataset,
+) -> None:
     """Schedules grouped as one source must really carry the same fields.
 
     Grouping RIE with RIE2 is only sound because their field names are
     identical across the 2023 split. If FCA changes one of them, mapping
     both to one output column stops being a continuity fix and starts
-    being a silent splice.
+    being a silent splice. Parametrized over every shipped dataset; a
+    dataset with no multi-schedule group (like loan_performance) has
+    nothing to check and passes trivially.
     """
-    dataset = get_fca_domain_dataset(domain_dataset="loan_portfolio")
+    dataset = get_fca_domain_dataset(domain_dataset=member)
     for source in dataset.sources:
         if len(source.schedules) == 1:
             continue
@@ -511,13 +573,16 @@ def test_grouped_schedules_declare_identical_variables() -> None:
             assert declared <= names, f"{schedule} is missing {declared - names}"
 
 
-def test_derived_components_are_real_output_columns() -> None:
+@pytest.mark.parametrize("member", list(FCADomainDataset))
+def test_derived_components_are_real_output_columns(member: FCADomainDataset) -> None:
     """Every derived column is computed from columns the sources actually produce.
 
     A derived column naming a component nothing declares would raise at
-    the pivot, well away from the bundle that caused it.
+    the pivot, well away from the bundle that caused it. Parametrized
+    over every shipped dataset; one with no derived columns (like
+    loan_performance) has nothing to check and passes trivially.
     """
-    dataset = get_fca_domain_dataset(domain_dataset="loan_portfolio")
+    dataset = get_fca_domain_dataset(domain_dataset=member)
     produced = {
         item.column for source in dataset.sources for item in source.columns.values()
     }

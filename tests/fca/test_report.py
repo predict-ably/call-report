@@ -1908,6 +1908,130 @@ def test_to_domain_dataset_no_declared_schedule_in_range_raises(
 
 
 # ---------------------------------------------------------------------------
+# to_domain_dataset: loan_performance
+# ---------------------------------------------------------------------------
+
+
+def test_to_domain_dataset_loan_performance_curated_columns_and_grain() -> None:
+    """The curated frame is keyed by performance status and named for aging.
+
+    Unlike loan_portfolio, this bundle draws on one schedule (RC-F) with
+    no join, so the point of the test is that the grain and column names
+    still come out curated (not schedule-prefixed) even so.
+    """
+    performance = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="loan_performance"
+    )
+    columns = list(rows_of(performance)[0])
+    assert columns[:4] == ["UNINUM", "period", "code_column", "code_value"]
+    assert not any("__" in name for name in columns)
+    assert {"not_past_due", "past_due_30", "past_due_90", "total_past_due"} <= set(
+        columns
+    )
+
+
+def test_to_domain_dataset_loan_performance_wide_matches_narrow() -> None:
+    """wide=True and wide=False carry exactly the same cells, reshaped.
+
+    Since this bundle has no derived columns, every wide cell must equal
+    its narrow counterpart exactly, with nothing computed in between.
+    """
+    report = _archive_report("2026-03-31", "2026-03-31")
+    narrow = report.to_domain_dataset(domain_dataset="loan_performance")
+    wide = report.to_domain_dataset(domain_dataset="loan_performance", wide=True)
+
+    assert "code_column" not in wide.columns
+    assert "code_value" not in wide.columns
+    assert "10__not_past_due" in wide.columns
+
+    narrow_rows = {(row["UNINUM"], row["code_value"]): row for row in rows_of(narrow)}
+    wide_row = next(row for row in rows_of(wide) if row["UNINUM"] == 620000)
+    for code, measure in [
+        (10.0, "not_past_due"),
+        (54.0, "total_past_due"),
+        (80.0, "total_past_due"),
+    ]:
+        assert (
+            wide_row[f"{int(code)}__{measure}"] == narrow_rows[(620000, code)][measure]
+        )
+
+
+def test_to_domain_dataset_loan_performance_excludes_totals_by_default() -> None:
+    """include_totals defaults to False, dropping code 60's reported subtotal."""
+    report = _archive_report("2026-03-31", "2026-03-31")
+    default = report.to_domain_dataset(domain_dataset="loan_performance")
+    with_totals = report.to_domain_dataset(
+        domain_dataset="loan_performance", include_totals=True
+    )
+    assert 60.0 not in {row["code_value"] for row in rows_of(default)}
+    assert 60.0 in {row["code_value"] for row in rows_of(with_totals)}
+
+
+def test_to_domain_dataset_loan_performance_number_of_loans_is_a_count() -> None:
+    """Code 80 shares not_past_due/etc.'s names but holds counts, not dollars.
+
+    The code value and its label are what disambiguate the unit; no
+    special-casing is needed in the reshape for this to work correctly.
+    """
+    performance = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="loan_performance", include_totals=True
+    )
+    rows = {
+        row["code_value"]: row
+        for row in rows_of(performance)
+        if row["UNINUM"] == 620000
+    }
+    assert is_missing(rows[80.0]["not_past_due"])
+    assert not is_missing(rows[80.0]["total_past_due"])
+    assert rows[80.0]["total_past_due"] < rows[60.0]["total_past_due"]
+
+
+def test_to_domain_dataset_loan_performance_accepts_an_enum_member() -> None:
+    """`domain_dataset` accepts the FCADomainDataset member, not just the string."""
+    performance = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset=FCADomainDataset.LOAN_PERFORMANCE
+    )
+    assert "not_past_due" in rows_of(performance)[0]
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_to_domain_dataset_loan_performance_honors_dataframe_type(
+    dataframe_type: DataFrameType,
+) -> None:
+    """dataframe_type converts the result as a final step, single-source too."""
+    expected_type = {
+        "pandas": pd.DataFrame,
+        "pyarrow_table": pa.Table,
+        "polars_dataframe": pl.DataFrame,
+        "polars_lazyframe": pl.LazyFrame,
+    }[dataframe_type]
+    result = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="loan_performance", dataframe_type=dataframe_type
+    )
+    assert isinstance(result, expected_type)
+
+
+def test_to_domain_dataset_loan_performance_no_declared_schedule_in_range_raises(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """A range with none of the dataset's schedules raises rather than empty.
+
+    The hand-built fixture releases carry RC, RCB, and RCR7, none of which
+    loan_performance draws on.
+    """
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(ScheduleNotFoundError, match="loan_performance"):
+        report.to_domain_dataset(domain_dataset="loan_performance")
+
+
+# ---------------------------------------------------------------------------
 # FCACallReport.available_domain_datasets
 # ---------------------------------------------------------------------------
 

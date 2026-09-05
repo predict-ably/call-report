@@ -1,0 +1,59 @@
+{
+  "name": "loan_performance",
+  "code_column": "PERFORMANCE_STATUS",
+  "codes": [
+    {
+      "code": 10,
+      "label": "Accruing",
+      "is_total": false
+    },
+    {
+      "code": 20,
+      "label": "Formally restructured accruing",
+      "is_total": false
+    },
+    {
+      "code": 54,
+      "label": "Nonaccrual: Cash basis",
+      "is_total": false
+    },
+    {
+      "code": 56,
+      "label": "Nonaccrual: Other",
+      "is_total": false
+    },
+    {
+      "code": 60,
+      "label": "Total",
+      "is_total": true
+    },
+    {
+      "code": 80,
+      "label": "Number of loans",
+      "is_total": false
+    }
+  ],
+  "sources": [
+    {
+      "schedules": [
+        "RCF"
+      ],
+      "code_column": "LOANSTATUS",
+      "columns": {
+        "NOTPDUE": {
+          "column": "not_past_due"
+        },
+        "PDUE30": {
+          "column": "past_due_30"
+        },
+        "PDUE90": {
+          "column": "past_due_90"
+        },
+        "TOTPDUE": {
+          "column": "total_past_due"
+        }
+      }
+    }
+  ],
+  "derived": []
+}
