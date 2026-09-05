@@ -350,9 +350,7 @@ here, excluded by default the same way ``loan_portfolio``'s code 155 is:
 
    >>> report.to_domain_dataset(domain_dataset="loan_performance").shape
    (295, 8)
-   >>> report.to_domain_dataset(
-   ...     domain_dataset="loan_performance", include_totals=True
-   ... ).shape
+   >>> report.to_domain_dataset(domain_dataset="loan_performance", include_totals=True).shape
    (354, 8)
 
 Code 80 ("Number of loans") shares its column names with the dollar-valued
@@ -366,9 +364,7 @@ no version of:
    >>> counted = report.to_domain_dataset(
    ...     domain_dataset="loan_performance", include_totals=True
    ... )
-   >>> row = counted[
-   ...     (counted["UNINUM"] == 620000) & (counted["code_value"] == 80.0)
-   ... ].iloc[0]
+   >>> row = counted[(counted["UNINUM"] == 620000) & (counted["code_value"] == 80.0)].iloc[0]
    >>> bool(row["not_past_due"] != row["not_past_due"]), float(row["total_past_due"])
    (True, 18520.0)
 
