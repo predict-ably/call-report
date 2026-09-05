@@ -25,18 +25,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install pip-tools
-        run: pip install "pip-tools>=7.4.1"
+      # The dev extra already includes the pandas/polars/pyarrow backends
+      # (see pyproject.toml), so dev + docs installs the same package union
+      # the old requirements.txt/-dev.txt/-docs.txt trio covered together.
+      - name: Install package with dev and docs dependencies
+        run: pip install -e ".[dev,docs]"
 
-      - name: Regenerate the requirements files
-        run: scripts/generate_requirements.sh
-
+      # No `inputs:` here, unlike a requirements-file audit. With none
+      # given, this action audits the environment's installed
+      # distributions directly, so it sees the full resolved package set,
+      # transitive dependencies included, exactly as pip actually resolved
+      # it just now rather than a separately maintained, driftable pin.
       - name: Audit dependencies for known vulnerabilities
         uses: pypa/gh-action-pip-audit@v1.1.0
-        with:
-          # All three groups. Their union is every extra, so this scans the
-          # same package set a single --all-extras file would.
-          inputs: >-
-            requirements.txt
-            requirements-dev.txt
-            requirements-docs.txt

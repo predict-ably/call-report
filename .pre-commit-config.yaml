@@ -14,7 +14,6 @@ repos:
       - id: check-symlinks
       - id: detect-private-key
       - id: fix-byte-order-marker
-      - id: requirements-txt-fixer
       - id: debug-statements
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
