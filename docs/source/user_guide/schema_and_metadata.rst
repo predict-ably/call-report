@@ -222,6 +222,8 @@ metadata. FCA rewrote ``PROVLNS``'s definition in that same quarter:
    'Provisions for Losses on Loans,Sales Contracts,Notes,and Leases'
    >>> change.after.versions[0].definition
    'Provisions for credit losses: On loans, sales contracts, notes, and leases'
+   >>> change.content_changed
+   True
 
 One thing to know when comparing two quarters this way: each snapshot
 stamps its fields with its own quarter, so every field common to both
@@ -233,12 +235,22 @@ or not its dtype or definition moved:
    >>> len(drift.changed)
    43
 
-Read ``added`` and ``removed`` for which columns came and went. For content
-changes, compare the ``dtype`` and ``definition`` on each
-``FieldChange``'s ``before`` and ``after``, as above. Comparing a layout
-against the canonical schema *for the same quarter*, as in the previous
-section, has no such stamp difference, so there ``changed`` means only what
-it says.
+Most of that is span-only noise: the field is unchanged, only the quarter
+it was snapshotted at differs. :attr:`~call_report.core.FieldChange.periods_changed`
+names that directly, and :attr:`~call_report.core.FieldSchemaDiff.content_changed`
+filters ``changed`` down to the fields whose dtype or definition actually
+moved:
+
+.. doctest::
+
+   >>> change.periods_changed
+   True
+   >>> [item.name for item in drift.content_changed]
+   ['PROVLNS']
+
+Comparing a layout against the canonical schema *for the same quarter*, as
+in the previous section, has no such stamp difference, so there
+``content_changed`` and ``changed`` agree.
 
 When metadata and a release disagree
 ====================================

@@ -1003,6 +1003,123 @@ def test_field_schema_diff_is_empty_false_when_order_changed() -> None:
 
 
 # ---------------------------------------------------------------------------
+# FieldChange.dtype_changed / definition_changed / periods_changed / content_changed
+# ---------------------------------------------------------------------------
+
+
+def test_field_change_dtype_changed_true_when_dtype_differs() -> None:
+    """dtype_changed is True, and the other two axes False, when only dtype differs."""
+    change = FieldChange(
+        name="UNINUM",
+        before=_field(dtype=nw.Int64()),
+        after=_field(dtype=nw.Float64()),
+    )
+    assert change.dtype_changed is True
+    assert change.definition_changed is False
+    assert change.periods_changed is False
+
+
+def test_field_change_definition_changed_true_when_definition_differs() -> None:
+    """definition_changed is True, the other two False, when only definition differs."""
+    change = FieldChange(
+        name="UNINUM", before=_field(definition="old"), after=_field(definition="new")
+    )
+    assert change.definition_changed is True
+    assert change.dtype_changed is False
+    assert change.periods_changed is False
+
+
+def test_field_change_periods_changed_true_when_span_differs() -> None:
+    """periods_changed is True, the other two False, when only the span differs."""
+    change = FieldChange(
+        name="UNINUM",
+        before=_field(periods=EARLY_SPAN),
+        after=_field(periods=LATE_SPAN),
+    )
+    assert change.periods_changed is True
+    assert change.dtype_changed is False
+    assert change.definition_changed is False
+
+
+def test_field_change_content_changed_true_for_dtype_or_definition() -> None:
+    """content_changed is True whether dtype or definition is the one that moved."""
+    dtype_only = FieldChange(
+        name="UNINUM",
+        before=_field(dtype=nw.Int64()),
+        after=_field(dtype=nw.Float64()),
+    )
+    definition_only = FieldChange(
+        name="UNINUM", before=_field(definition="old"), after=_field(definition="new")
+    )
+    assert dtype_only.content_changed is True
+    assert definition_only.content_changed is True
+
+
+def test_field_change_content_changed_false_when_only_periods_differ() -> None:
+    """content_changed is False for the issue #68 case: a span-only difference."""
+    change = FieldChange(
+        name="UNINUM",
+        before=_field(periods=EARLY_SPAN),
+        after=_field(periods=LATE_SPAN),
+    )
+    assert change.periods_changed is True
+    assert change.content_changed is False
+
+
+def test_field_change_dtype_changed_true_when_version_count_differs() -> None:
+    """A field split into a different number of versions counts as a dtype change."""
+    before = _field(periods=FULL_SPAN)
+    after = FieldAttributes(
+        name="UNINUM",
+        versions=(
+            FieldVersion(dtype=nw.Int64(), definition="", periods=EARLY_SPAN),
+            FieldVersion(dtype=nw.Float64(), definition="", periods=ADJACENT_SPAN),
+        ),
+    )
+    change = FieldChange(name="UNINUM", before=before, after=after)
+    assert change.dtype_changed is True
+    assert change.content_changed is True
+
+
+# ---------------------------------------------------------------------------
+# FieldSchemaDiff.content_changed
+# ---------------------------------------------------------------------------
+
+
+def test_field_schema_diff_content_changed_filters_period_only_changes() -> None:
+    """content_changed excludes fields that only differ by version span.
+
+    Mirrors the cross-quarter `as_of` workflow from issue #68: PROVLNS has
+    a real definition change, UNINUM only differs by which quarter its one
+    surviving version is stamped with.
+    """
+    before = FieldSchema(
+        fields=[
+            _field("PROVLNS", definition="old definition", periods=EARLY_SPAN),
+            _field("UNINUM", periods=EARLY_SPAN),
+        ]
+    )
+    after = FieldSchema(
+        fields=[
+            _field("PROVLNS", definition="new definition", periods=LATE_SPAN),
+            _field("UNINUM", periods=LATE_SPAN),
+        ]
+    )
+    diff = before.compare(other=after)
+    assert len(diff.changed) == 2
+    assert [change.name for change in diff.content_changed] == ["PROVLNS"]
+
+
+def test_field_schema_diff_content_changed_empty_for_period_only_diff() -> None:
+    """content_changed is empty when every changed field differs only by span."""
+    before = FieldSchema(fields=[_field("UNINUM", periods=EARLY_SPAN)])
+    after = FieldSchema(fields=[_field("UNINUM", periods=LATE_SPAN)])
+    diff = before.compare(other=after)
+    assert len(diff.changed) == 1
+    assert diff.content_changed == ()
+
+
+# ---------------------------------------------------------------------------
 # FieldSchema.to_json / from_json
 # ---------------------------------------------------------------------------
 

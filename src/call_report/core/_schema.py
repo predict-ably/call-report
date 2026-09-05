@@ -787,6 +787,184 @@ class FieldChange:
     before: FieldAttributes
     after: FieldAttributes
 
+    @property
+    def dtype_changed(self) -> bool:
+        """Return whether the field's dtype differs between `before` and `after`.
+
+        Compares each version's `dtype`, in order, ignoring `definition`
+        and `periods`. A field whose version count differs between
+        `before` and `after` counts as changed too, since the two
+        sequences of dtypes then have different lengths.
+
+        Returns
+        -------
+        bool
+            ``True`` if the sequence of `dtype` values differs between
+            `before` and `after`.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldChange,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
+        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+        >>> old = FieldAttributes(
+        ...     name="PROVLNS",
+        ...     versions=(FieldVersion(dtype=nw.Int64(), definition="", periods=span),),
+        ... )
+        >>> new = FieldAttributes(
+        ...     name="PROVLNS",
+        ...     versions=(
+        ...         FieldVersion(dtype=nw.Float64(), definition="", periods=span),
+        ...     ),
+        ... )
+        >>> FieldChange(name="PROVLNS", before=old, after=new).dtype_changed
+        True
+        """
+        return tuple(version.dtype for version in self.before.versions) != tuple(
+            version.dtype for version in self.after.versions
+        )
+
+    @property
+    def definition_changed(self) -> bool:
+        """Return whether the field's definition differs between `before` and `after`.
+
+        Compares each version's `definition`, in order, ignoring `dtype`
+        and `periods`. A field whose version count differs between
+        `before` and `after` counts as changed too, since the two
+        sequences of definitions then have different lengths.
+
+        Returns
+        -------
+        bool
+            ``True`` if the sequence of `definition` values differs
+            between `before` and `after`.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldChange,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
+        >>> span = PeriodRange(start="2000-03-31", end="2026-03-31")
+        >>> old = FieldAttributes(
+        ...     name="PROVLNS",
+        ...     versions=(
+        ...         FieldVersion(dtype=nw.Int64(), definition="old", periods=span),
+        ...     ),
+        ... )
+        >>> new = FieldAttributes(
+        ...     name="PROVLNS",
+        ...     versions=(
+        ...         FieldVersion(dtype=nw.Int64(), definition="new", periods=span),
+        ...     ),
+        ... )
+        >>> FieldChange(name="PROVLNS", before=old, after=new).definition_changed
+        True
+        """
+        return tuple(version.definition for version in self.before.versions) != tuple(
+            version.definition for version in self.after.versions
+        )
+
+    @property
+    def periods_changed(self) -> bool:
+        """Return whether the field's version spans differ between `before` and `after`.
+
+        Compares each version's `periods`, in order, ignoring `dtype` and
+        `definition`. This is the difference that shows up on every field
+        common to two schemas taken from different quarters via
+        `FieldSchema.as_of`, since narrowing to a quarter stamps each
+        surviving field's one remaining version with that quarter alone.
+
+        Returns
+        -------
+        bool
+            ``True`` if the sequence of `periods` values differs between
+            `before` and `after`.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldChange,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
+        >>> q4_2014 = PeriodRange(start="2014-12-31", end="2014-12-31")
+        >>> q1_2015 = PeriodRange(start="2015-03-31", end="2015-03-31")
+        >>> before = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(
+        ...         FieldVersion(dtype=nw.Int64(), definition="", periods=q4_2014),
+        ...     ),
+        ... )
+        >>> after = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(
+        ...         FieldVersion(dtype=nw.Int64(), definition="", periods=q1_2015),
+        ...     ),
+        ... )
+        >>> FieldChange(name="UNINUM", before=before, after=after).periods_changed
+        True
+        """
+        return tuple(version.periods for version in self.before.versions) != tuple(
+            version.periods for version in self.after.versions
+        )
+
+    @property
+    def content_changed(self) -> bool:
+        """Return whether the field's dtype or definition differs, ignoring periods.
+
+        Shorthand for ``dtype_changed or definition_changed``. Use this to
+        tell a field whose dtype or definition actually moved apart from
+        one whose only difference is `periods_changed`, the case
+        `FieldSchemaDiff.content_changed` filters `changed` down to.
+
+        Returns
+        -------
+        bool
+            ``True`` if `dtype_changed` or `definition_changed` is
+            ``True``.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldChange,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
+        >>> q4_2014 = PeriodRange(start="2014-12-31", end="2014-12-31")
+        >>> q1_2015 = PeriodRange(start="2015-03-31", end="2015-03-31")
+        >>> before = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(
+        ...         FieldVersion(dtype=nw.Int64(), definition="", periods=q4_2014),
+        ...     ),
+        ... )
+        >>> after = FieldAttributes(
+        ...     name="UNINUM",
+        ...     versions=(
+        ...         FieldVersion(dtype=nw.Int64(), definition="", periods=q1_2015),
+        ...     ),
+        ... )
+        >>> change = FieldChange(name="UNINUM", before=before, after=after)
+        >>> change.periods_changed
+        True
+        >>> change.content_changed
+        False
+        """
+        return self.dtype_changed or self.definition_changed
+
 
 @dataclass(frozen=True, kw_only=True)
 class FieldSchemaDiff:
@@ -843,6 +1021,65 @@ class FieldSchemaDiff:
         False
         """
         return not (self.added or self.removed or self.changed or self.order_changed)
+
+    @property
+    def content_changed(self) -> tuple[FieldChange, ...]:
+        """Return the entries in `changed` whose dtype or definition differs.
+
+        A convenience filter over `changed` for comparing schemas across
+        quarters, where a field is commonly stamped with a different
+        `periods` (see `FieldChange.periods_changed`) purely because it
+        was narrowed by `FieldSchema.as_of`, and that difference carries
+        no signal on its own. `changed` still reports every such field, so
+        this property is the way to ask what changed beyond that.
+
+        Returns
+        -------
+        tuple[FieldChange, ...]
+            The subset of `changed` where `FieldChange.content_changed` is
+            ``True``.
+
+        Examples
+        --------
+        >>> import narwhals as nw
+        >>> from call_report.core import (
+        ...     FieldAttributes,
+        ...     FieldSchema,
+        ...     FieldVersion,
+        ...     PeriodRange,
+        ... )
+        >>> def _field(
+        ...     name: str, definition: str, periods: PeriodRange
+        ... ) -> FieldAttributes:
+        ...     return FieldAttributes(
+        ...         name=name,
+        ...         versions=(
+        ...             FieldVersion(
+        ...                 dtype=nw.Int64(), definition=definition, periods=periods
+        ...             ),
+        ...         ),
+        ...     )
+        >>> q4_2014 = PeriodRange(start="2014-12-31", end="2014-12-31")
+        >>> q1_2015 = PeriodRange(start="2015-03-31", end="2015-03-31")
+        >>> before = FieldSchema(
+        ...     fields=[
+        ...         _field("PROVLNS", "old definition", q4_2014),
+        ...         _field("UNINUM", "", q4_2014),
+        ...     ]
+        ... )
+        >>> after = FieldSchema(
+        ...     fields=[
+        ...         _field("PROVLNS", "new definition", q1_2015),
+        ...         _field("UNINUM", "", q1_2015),
+        ...     ]
+        ... )
+        >>> diff = before.compare(other=after)
+        >>> len(diff.changed)
+        2
+        >>> [change.name for change in diff.content_changed]
+        ['PROVLNS']
+        """
+        return tuple(change for change in self.changed if change.content_changed)
 
 
 class FieldSchema(Mapping[str, FieldAttributes]):
