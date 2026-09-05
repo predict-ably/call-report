@@ -116,6 +116,7 @@ class FCADomainDataset(StrEnum):
     """  # numpydoc ignore=PR01
 
     LOAN_PORTFOLIO = "loan_portfolio"
+    LOAN_PERFORMANCE = "loan_performance"
 
     @classmethod
     def coerce(cls, *, value: FCADomainDataset | str) -> FCADomainDataset:

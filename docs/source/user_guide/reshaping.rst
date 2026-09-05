@@ -303,6 +303,94 @@ name, since a domain dataset only ever declares one ``code_column`` and it
 therefore disambiguates nothing once every column already names its own
 measure.
 
+Loan performance
+-----------------
+
+``loan_performance`` curates RC-F, the whole-book counterpart to
+``loan_portfolio``. Rows are keyed by performance status rather than
+portfolio:
+
+.. doctest::
+
+   >>> performance = report.to_domain_dataset(domain_dataset="loan_performance")
+   >>> list(performance.columns)
+   ['UNINUM', 'period', 'code_column', 'code_value', 'not_past_due', 'past_due_30', 'past_due_90', 'total_past_due']
+
+Code 10 is loans currently accruing, and code 54 is nonaccrual loans on a
+cash basis:
+
+.. doctest::
+
+   >>> from call_report.fca import get_domain_dataset_codes
+   >>> codes = get_domain_dataset_codes(domain_dataset="loan_performance")
+   >>> codes[codes["code"].isin([10, 54])][["code", "label"]]
+      code                   label
+   0    10                Accruing
+   2    54  Nonaccrual: Cash basis
+
+**This bundle draws on RC-F alone, unlike loan_portfolio.** RC-K's accrual
+loan rollforward, RC-L's nonaccrual rollforward, and RC-M's other-property
+rollforward were all investigated as join candidates, the same kind of
+schedule RI-E is for ``loan_portfolio``. RC-L's ending balance crosswalks
+exactly to RC-F's codes 54 and 56 combined. RC-K's does not: it is
+consistently short of RC-F's codes 10 and 20 combined by a gap that holds
+steady in dollar terms from one quarter to the next rather than shrinking,
+growing with the book, or being explained by transfers already netted into
+RC-K's own rollforward, which points to a real difference in what the two
+schedules count rather than noise. RC-M has no corresponding RC-F code at
+all. Rather than fold in a join with an unreconciled gap, this dataset is
+scoped to RC-F by itself for now; RC-K, RC-L, and RC-M remain candidates for
+a future revision once the discrepancy can be explained from the FCA
+instructions directly.
+
+Because of that, RC-F's own reported total (code 60) is the only subtotal
+here, excluded by default the same way ``loan_portfolio``'s code 155 is:
+
+.. doctest::
+
+   >>> report.to_domain_dataset(domain_dataset="loan_performance").shape
+   (295, 8)
+   >>> report.to_domain_dataset(
+   ...     domain_dataset="loan_performance", include_totals=True
+   ... ).shape
+   (354, 8)
+
+Code 80 ("Number of loans") shares its column names with the dollar-valued
+codes but reports a loan count. That is not a special case for the reshape:
+the code value is what tells a reader the unit, exactly as it does for every
+other code, and a null appears in the aging-bucket columns that a count has
+no version of:
+
+.. doctest::
+
+   >>> counted = report.to_domain_dataset(
+   ...     domain_dataset="loan_performance", include_totals=True
+   ... )
+   >>> row = counted[
+   ...     (counted["UNINUM"] == 620000) & (counted["code_value"] == 80.0)
+   ... ].iloc[0]
+   >>> bool(row["not_past_due"] != row["not_past_due"]), float(row["total_past_due"])
+   (True, 18520.0)
+
+**No derived ``non_performing`` column ships here.** The natural definition,
+``past_due_90`` for accruing loans plus ``total_past_due`` for both
+nonaccrual codes, sums three different code rows, and a derived column can
+only combine columns already on the same row (which is why
+``loan_portfolio``'s derived columns never needed to cross codes: RC-F.1
+reports accruing, nonaccrual, and restructured as sibling columns within one
+portfolio row, not as separate code rows). Compute it from the wide shape
+instead:
+
+.. doctest::
+
+   >>> wide = report.to_domain_dataset(domain_dataset="loan_performance", wide=True)
+   >>> row = wide[wide["UNINUM"] == 620000].iloc[0]
+   >>> non_performing = (
+   ...     row["10__past_due_90"] + row["54__total_past_due"] + row["56__total_past_due"]
+   ... )
+   >>> float(non_performing)
+   64834.0
+
 Converting between the shapes
 =============================
 

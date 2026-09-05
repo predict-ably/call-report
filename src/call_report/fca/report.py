@@ -708,8 +708,9 @@ class FCACallReport(BaseCallReport):
         ...     end="2026-03-31",
         ...     transport=PackagedArchiveTransport(),
         ... )
-        >>> report.available_domain_datasets()
-        (<FCADomainDataset.LOAN_PORTFOLIO: 'loan_portfolio'>,)
+        >>> report.available_domain_datasets()  # doctest: +NORMALIZE_WHITESPACE
+        (<FCADomainDataset.LOAN_PORTFOLIO: 'loan_portfolio'>,
+         <FCADomainDataset.LOAN_PERFORMANCE: 'loan_performance'>)
         """
         return tuple(FCADomainDataset)
 
