@@ -185,12 +185,35 @@ module that only holds it. A target that genuinely cannot resolve goes in
 - **Version** is single-sourced from `src/call_report/__init__.py` (`__version__`) via
   hatchling; bump it there.
 
-## Writing docstrings
+## Writing docstrings and other documentation
 
 Beyond the numpy convention and the `numpydoc` gate, this project holds
 docstrings to a specific standard of *voice* and *content*. A docstring
 documents the code for someone reading it later. It is not a place to record
 how the work went.
+
+The same voice and content rules apply to every other piece of prose this
+project ships, including the Sphinx user guide (`docs/source/user_guide/`)
+and any other `docs/source/**` page. A user guide page documents what a
+reader can rely on and how to use it. It is not a place to record how a
+feature was curated, what alternatives were investigated, or why one design
+was chosen over another. That reasoning belongs in a code comment, a test
+docstring, a commit message, or a pull request description, whichever is
+closest to the decision, not in the page a user reads to learn the API.
+
+Not this:
+
+> This dataset draws on schedule X alone rather than joining schedule Y,
+> because spot-checking archive data found that Y's ending balance does not
+> tie out to X's totals, a gap that held steady across several quarters and
+> whose cause would need the official instructions to confirm.
+
+This:
+
+> This dataset draws on schedule X alone.
+
+The first is a research note. The second is what a reader of the user guide
+actually needs: the fact, stated plainly.
 
 **Plain language.**
 
@@ -226,8 +249,8 @@ sentence with no clear subject, and ends on "raise for the same kind of
 issue", which takes a second pass to resolve. The second splits it in two,
 uses plain words, and says which thing does the naming.
 
-**No anecdotes.** Do not write notes to the reviewer into a docstring. These
-have all appeared here and have all been removed:
+**No anecdotes.** Do not write notes to the reviewer into a docstring or a
+documentation page. These have all appeared here and have all been removed:
 
 - "confirmed real", "verified", "confirmed directly", "confirmed to vary"
 - "this has not been observed in any real FCA release"
@@ -240,20 +263,23 @@ the same fact with a note about the author's confidence attached.
 
 **Document the contract, not the line.** If a sentence explains why one
 specific statement is written the way it is, it belongs in a code comment
-next to that statement, not in the docstring. A docstring describes what a
-caller can rely on. Rationale for a `collect_schema()` call over `.columns`
-is a comment.
+next to that statement, not in the docstring or the user guide. A docstring
+or a user guide page describes what a caller can rely on. Rationale for a
+`collect_schema()` call over `.columns` is a comment; rationale for why a
+dataset draws on one schedule and not another is a comment, a commit
+message, or a pull request description.
 
 **Keep repeated parameters identical.** When the same parameter appears on
 many functions (`dataframe_type`, `backend`, `schedule`), its description is
 written once and copied verbatim. Three different wordings of one parameter
 is a defect.
 
-**Examples are tests.** `--doctest-modules` runs every `Examples` block, so
-they must execute and match their output. Construct real objects and show
-real, meaningful output. Prefer `# doctest: +ELLIPSIS` for genuinely variable
-output; reserve `+SKIP` for what cannot run in a sandbox, such as live
-network access.
+**Examples are tests.** `--doctest-modules` runs every docstring `Examples`
+block, and Sphinx's doctest builder runs every `.. doctest::` block in
+`docs/source/**`, so both must execute and match their output. Construct
+real objects and show real, meaningful output. Prefer `# doctest: +ELLIPSIS`
+for genuinely variable output; reserve `+SKIP` for what cannot run in a
+sandbox, such as live network access.
 
 ## Writing tests
 
