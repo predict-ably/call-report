@@ -2032,6 +2032,71 @@ def test_to_domain_dataset_loan_performance_no_declared_schedule_in_range_raises
         report.to_domain_dataset(domain_dataset="loan_performance")
 
 
+_CAPITAL_CONTINUOUS_COLUMNS = (
+    "capital_stock",
+    "paid_in_capital",
+    "allocated_surplus_qualified",
+    "allocated_surplus_nonqualified",
+    "unallocated_retained_earnings",
+    "accumulated_other_comprehensive_income",
+    "total_net_worth",
+)
+"""tuple[str, ...]: The capital columns RI-D reports on both sides of 2017Q1."""
+
+
+_CAPITAL_BOUNDARY_RESTATEMENTS: dict[int, dict[str, float]] = {
+    710056: {
+        "unallocated_retained_earnings": -179.0,
+        "accumulated_other_comprehensive_income": 4.0,
+        "total_net_worth": -175.0,
+    },
+    710862: {
+        "allocated_surplus_nonqualified": -14816.0,
+        "unallocated_retained_earnings": 14816.0,
+    },
+    720186: {
+        "allocated_surplus_nonqualified": -1.0,
+        "total_net_worth": -1.0,
+    },
+}
+"""dict[int, dict[str, float]]: Institutions that restated across 2017Q1.
+
+Each maps a UNINUM to the change from its 2016Q4 ending balance to its
+2017Q1 beginning balance. 710862 moved an amount between two equity
+components and left total net worth alone. The other two restated their
+opening position outright.
+"""
+
+
+def _capital_boundary_rows() -> tuple[
+    dict[int, dict[str, Any]], dict[int, dict[str, Any]]
+]:
+    """Return every institution's balances on each side of the 2017Q1 boundary.
+
+    Returns
+    -------
+    tuple[dict[int, dict[str, Any]], dict[int, dict[str, Any]]]
+        The 2016Q4 ending balance rows and the 2017Q1 beginning balance
+        rows, each keyed by UNINUM.
+    """
+    rows = rows_of(
+        _archive_report("2016-12-31", "2017-03-31").to_domain_dataset(
+            domain_dataset="capital"
+        )
+    )
+    ending = {
+        int(row["UNINUM"]): row
+        for row in rows
+        if as_date(row["period"]) == date(2016, 12, 31) and row["code_value"] == 130.0
+    }
+    beginning = {
+        int(row["UNINUM"]): row
+        for row in rows
+        if as_date(row["period"]) == date(2017, 3, 31) and row["code_value"] == 10.0
+    }
+    return ending, beginning
+
+
 def _capital_row(report: FCACallReport, *, period: date, code: float) -> dict[str, Any]:
     """Return one institution's capital row for a period and curated code.
 
@@ -2085,17 +2150,115 @@ def test_to_domain_dataset_capital_spans_the_2017_renumbering() -> None:
     report = _archive_report("2016-12-31", "2017-03-31")
     ending = _capital_row(report, period=date(2016, 12, 31), code=130.0)
     beginning = _capital_row(report, period=date(2017, 3, 31), code=10.0)
-    for column in (
-        "capital_stock",
-        "paid_in_capital",
-        "allocated_surplus_qualified",
-        "allocated_surplus_nonqualified",
-        "unallocated_retained_earnings",
-        "accumulated_other_comprehensive_income",
-        "total_net_worth",
-    ):
+    for column in _CAPITAL_CONTINUOUS_COLUMNS:
         assert ending[column] == beginning[column], column
     assert ending["total_net_worth"] == 2225248.0
+
+
+def test_to_domain_dataset_capital_keeps_every_institution_across_the_boundary() -> (
+    None
+):
+    """No institution loses a continuous column at the renumbering.
+
+    A column mapped on only one side of 2017Q1 leaves a null on the
+    other, ending or starting that institution's series without saying
+    so. Checking one institution cannot catch a mapping that is wrong
+    only for the institutions that report the column differently, so
+    every institution present on both sides is checked.
+    """
+    ending, beginning = _capital_boundary_rows()
+    shared = sorted(set(ending) & set(beginning))
+    assert len(shared) == 81
+    unpopulated = [
+        (uninum, label, column)
+        for uninum in shared
+        for label, row in (("2016Q4", ending[uninum]), ("2017Q1", beginning[uninum]))
+        for column in _CAPITAL_CONTINUOUS_COLUMNS
+        if is_missing(row[column])
+    ]
+    assert unpopulated == []
+
+
+def test_to_domain_dataset_capital_carries_every_institution_across_the_boundary() -> (
+    None
+):
+    """Each institution's 2016Q4 ending balance is its 2017Q1 beginning balance.
+
+    Three institutions restated their opening position between the two
+    filings. Their changes are stated in
+    `_CAPITAL_BOUNDARY_RESTATEMENTS` rather than absorbed by a tolerance,
+    so a crosswalk change that moved them shows up as a failure. A column
+    or code mapped wrongly would move every institution rather than three.
+    """
+    ending, beginning = _capital_boundary_rows()
+    moved = {}
+    for uninum in sorted(set(ending) & set(beginning)):
+        changes = {
+            column: beginning[uninum][column] - ending[uninum][column]
+            for column in _CAPITAL_CONTINUOUS_COLUMNS
+            if beginning[uninum][column] != ending[uninum][column]
+        }
+        if changes:
+            moved[uninum] = changes
+    assert moved == _CAPITAL_BOUNDARY_RESTATEMENTS
+
+
+def test_to_domain_dataset_capital_gives_every_institution_the_same_codes() -> None:
+    """The code crosswalk resolves to one vocabulary for every institution.
+
+    Both eras have to land on the same codes for every institution, not
+    just for one that happens to report every code.
+    """
+    rows = rows_of(
+        _archive_report("2016-12-31", "2017-03-31").to_domain_dataset(
+            domain_dataset="capital"
+        )
+    )
+    codes_by_institution: dict[tuple[int, date], set[int]] = {}
+    for row in rows:
+        key = (int(row["UNINUM"]), as_date(row["period"]))
+        codes_by_institution.setdefault(key, set()).add(int(row["code_value"]))
+    expected = {10, 25, 35, 70, 75, 80, 85, 120, 130}
+    assert {frozenset(codes) for codes in codes_by_institution.values()} == {
+        frozenset(expected)
+    }
+
+
+def test_to_domain_dataset_capital_roll_ups_hold_for_every_institution() -> None:
+    """Each derived roll-up equals its parts on every post-2017 row.
+
+    The roll-up is what keeps the two split columns continuous, so it has
+    to hold for every institution and every code, not only the beginning
+    balance of a sampled one.
+    """
+    rows = rows_of(
+        _archive_report("2017-03-31", "2017-03-31").to_domain_dataset(
+            domain_dataset="capital"
+        )
+    )
+    roll_ups = {
+        "capital_stock": (
+            "capital_stock_purchased",
+            "capital_stock_allocated",
+            "preferred_stock_perpetual",
+            "preferred_stock_other",
+        ),
+        "allocated_surplus_nonqualified": (
+            "allocated_surplus_nonqualified_subject_to_retirement",
+            "allocated_surplus_nonqualified_not_subject_to_retirement",
+        ),
+    }
+    mismatched = []
+    for row in rows:
+        for column, parts in roll_ups.items():
+            reported = [row[part] for part in parts if not is_missing(row[part])]
+            # A row where every part is null is a measure the source did
+            # not report, and stays null rather than becoming zero.
+            expected = sum(reported) if reported else None
+            actual = None if is_missing(row[column]) else row[column]
+            if actual != expected:
+                mismatched.append((int(row["UNINUM"]), int(row["code_value"]), column))
+    assert mismatched == []
 
 
 def test_to_domain_dataset_capital_rolls_up_the_split_columns() -> None:
