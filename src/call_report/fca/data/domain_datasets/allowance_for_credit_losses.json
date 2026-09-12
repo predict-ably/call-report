@@ -1,0 +1,96 @@
+{
+  "name": "allowance_for_credit_losses",
+  "code_column": "ACL_STAGE",
+  "codes": [
+    {
+      "code": 10,
+      "label": "Beginning balance",
+      "is_total": false
+    },
+    {
+      "code": 20,
+      "label": "Provision for credit losses",
+      "is_total": false
+    },
+    {
+      "code": 30,
+      "label": "Charge-offs",
+      "is_total": false
+    },
+    {
+      "code": 40,
+      "label": "Write-downs from transfer of financial assets",
+      "is_total": false
+    },
+    {
+      "code": 50,
+      "label": "Recoveries",
+      "is_total": false
+    },
+    {
+      "code": 60,
+      "label": "Other",
+      "is_total": false
+    },
+    {
+      "code": 70,
+      "label": "Ending balance",
+      "is_total": false
+    }
+  ],
+  "sources": [
+    {
+      "schedules": [
+        "RIE1"
+      ],
+      "code_column": "ACLCode",
+      "columns": {
+        "ACLLoanLease": {
+          "column": "loans_and_leases"
+        },
+        "ACLHTMDebtSec": {
+          "column": "htm_debt_securities"
+        },
+        "ACLAFSDebtSec": {
+          "column": "afs_debt_securities"
+        }
+      }
+    },
+    {
+      "schedules": [
+        "RIE"
+      ],
+      "code_column": null,
+      "continues": [
+        "loans_and_leases"
+      ],
+      "columns": {
+        "ALLNALLOSSBBAL": {
+          "code": 10,
+          "column": "loans_and_leases"
+        },
+        "PROVLNS": {
+          "code": 20,
+          "column": "loans_and_leases"
+        },
+        "CHGOFFLNS": {
+          "code": 30,
+          "column": "loans_and_leases"
+        },
+        "LNSLOSSREV": {
+          "code": 50,
+          "column": "loans_and_leases"
+        },
+        "OTHADDSSUBS": {
+          "code": 60,
+          "column": "loans_and_leases"
+        },
+        "ALLNLOSS": {
+          "code": 70,
+          "column": "loans_and_leases"
+        }
+      }
+    }
+  ],
+  "derived": []
+}
