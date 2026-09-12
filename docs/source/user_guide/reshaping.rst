@@ -410,6 +410,76 @@ continuous across the split all the same:
 
 ``htm_debt_securities`` and ``afs_debt_securities`` are RC-I.E.1 detail
 with no RC-I.E counterpart, so they are null before 2023.
+Capital
+--------
+
+``capital`` curates RI-D, the quarterly rollforward of an institution's net
+worth. Rows are keyed by the change that moved it:
+
+.. doctest::
+
+   >>> capital = report.to_domain_dataset(domain_dataset="capital")
+   >>> codes = get_domain_dataset_codes(domain_dataset="capital")
+   >>> codes[codes["code"].isin([35, 85])][["code", "label"]]
+      code                                      label
+   2    35  Net income and other comprehensive income
+   6    85                           Equities retired
+
+Code 10 is the beginning balance and code 130 the ending balance. The codes
+between them are the movements that separate the two.
+
+RI-D renumbered its codes and renamed, split, or retired most of its columns
+at 2017Q1, keeping its own name throughout. This dataset states the crosswalk
+across that boundary, so a series runs from 2000 to the present without a
+break. One quarter's ending balance equals the next quarter's beginning
+balance across it:
+
+.. doctest::
+
+   >>> spanning = FCACallReport(
+   ...     start="2016-12-31", end="2017-03-31", transport=PackagedArchiveTransport()
+   ... )
+   >>> across = spanning.to_domain_dataset(domain_dataset="capital")
+   >>> across = across[across["UNINUM"] == 620000]
+   >>> ending = across[
+   ...     (across["period"] == "2016-12-31") & (across["code_value"] == 130.0)
+   ... ].iloc[0]
+   >>> beginning = across[
+   ...     (across["period"] == "2017-03-31") & (across["code_value"] == 10.0)
+   ... ].iloc[0]
+   >>> float(ending["capital_stock"]), float(beginning["capital_stock"])
+   (351155.0, 351155.0)
+   >>> float(ending["total_net_worth"]), float(beginning["total_net_worth"])
+   (2225248.0, 2225248.0)
+
+``paid_in_capital``, ``allocated_surplus_qualified``, and ``total_net_worth``
+kept their names across the boundary. Four columns did not.
+``unallocated_retained_earnings`` and
+``accumulated_other_comprehensive_income`` were renamed, and
+``capital_stock`` and ``allocated_surplus_nonqualified`` were each split into
+parts. From 2017Q1 those two are computed from the parts, which stay
+available as columns of their own:
+
+.. doctest::
+
+   >>> parts = [
+   ...     "capital_stock_purchased",
+   ...     "capital_stock_allocated",
+   ...     "preferred_stock_perpetual",
+   ...     "preferred_stock_other",
+   ... ]
+   >>> float(sum(beginning[part] for part in parts))
+   351155.0
+
+Before 2017Q1 those columns are null and ``capital_stock`` is RI-D's own
+combined figure. ``surplus_reserve`` is the reverse: RI-D reported it through
+2016Q4 and no column replaced it, so it is null from 2017Q1 onward and absent
+from a frame covering only later periods.
+
+.. doctest::
+
+   >>> "surplus_reserve" in capital.columns
+   False
 
 Converting between the shapes
 =============================

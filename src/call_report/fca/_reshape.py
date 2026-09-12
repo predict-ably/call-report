@@ -47,6 +47,8 @@ from call_report.exceptions import ReshapeError
 from call_report.fca.layout import FIXED_IDENTIFIER_COLUMNS
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     import pandas
     import polars
     import pyarrow
@@ -1024,6 +1026,22 @@ so the dtypes are declared here instead. This is the same hazard
 """
 
 
+_CODE_REMAP_SCHEMA: dict[str, nw.dtypes.DType] = {
+    "schedule": nw.String(),
+    "code_value": nw.Float64(),
+    "remapped_code": nw.Float64(),
+    "dropped": nw.Boolean(),
+}
+"""dict[str, narwhals.dtypes.DType]: Declared dtypes for the code remap lookup.
+
+`remapped_code` is null for every dropped code, and a dataset that drops
+codes without renumbering any leaves the column entirely null, which is
+the inference hazard `_DOMAIN_LOOKUP_SCHEMA` documents. `code_value`
+matches the melted frame's own, which `_cast_numeric_to_float64` has
+already made Float64.
+"""
+
+
 def apply_domain_dataset_decoding(
     *, frame: FrameOrLazy, dataset: DomainDataset
 ) -> FrameOrLazy:
@@ -1065,15 +1083,11 @@ def apply_domain_dataset_decoding(
         `frame` with `variable_name`, `code_column`, and `code_value`
         expressed in the dataset's terms. Lazy if `frame` was lazy.
     """
-    with config_context(dataframe_backend=frame.implementation.name.lower()):
-        lookup: FrameOrLazy = build_frame(
-            data={
-                name: list(values) for name, values in dataset._decoding_lookup.items()
-            },
-            schema=_DOMAIN_LOOKUP_SCHEMA,
-        )
-    if isinstance(frame, nw.LazyFrame):
-        lookup = lookup.lazy()
+    lookup = _matched_lookup_frame(
+        frame=frame,
+        data=dataset._decoding_lookup,
+        schema=_DOMAIN_LOOKUP_SCHEMA,
+    )
 
     # Only a code-bearing schedule melts with a `code_value` column, so a
     # dataset drawing solely on name-encoded sources has none to coalesce
@@ -1089,11 +1103,130 @@ def apply_domain_dataset_decoding(
         on=["schedule", "variable_name"],
         how="inner",
     )
+    if dataset.remaps_codes:
+        decoded = _apply_code_remap(frame=decoded, dataset=dataset)
     return decoded.with_columns(
         nw.col("output_column").alias("variable_name"),
         nw.lit(dataset.code_column).alias("code_column"),
         nw.coalesce(nw.col("mapped_code"), nw.col("code_value")).alias("code_value"),
     ).drop("output_column", "mapped_code")
+
+
+def _matched_lookup_frame(
+    *,
+    frame: FrameOrLazy,
+    data: Mapping[str, tuple[Any, ...]],
+    schema: dict[str, nw.dtypes.DType],
+) -> FrameOrLazy:
+    """Build one of a domain dataset's lookup frames to match `frame`.
+
+    A lookup is joined against `frame`, so it has to be built under the
+    same backend and be lazy exactly when `frame` is.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        The frame the lookup will be joined against.
+    data : Mapping[str, tuple[Any, ...]]
+        The lookup's column-oriented rows.
+    schema : dict[str, narwhals.dtypes.DType]
+        The lookup's declared dtypes.
+
+    Returns
+    -------
+    narwhals.DataFrame or narwhals.LazyFrame
+        The lookup frame. Lazy if `frame` was lazy.
+    """
+    with config_context(dataframe_backend=frame.implementation.name.lower()):
+        lookup: FrameOrLazy = build_frame(
+            data={name: list(values) for name, values in data.items()},
+            schema=schema,
+        )
+    if isinstance(frame, nw.LazyFrame):
+        lookup = lookup.lazy()
+    return lookup
+
+
+def _apply_code_remap(*, frame: FrameOrLazy, dataset: DomainDataset) -> FrameOrLazy:
+    """Rewrite a decoded frame's code values into a dataset's curated ones.
+
+    Only a schedule that renumbered its codes partway through its history
+    needs this. The join is left rather than inner, so a code the dataset
+    does not remap keeps the value it already had, and a `code_map` says
+    only what changes. A code the dataset drops is filtered out here
+    instead, which is what excludes a code that carries no information of
+    its own.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        The decoded frame, still carrying each row's own `code_value`.
+    dataset : DomainDataset
+        The curated dataset whose `code_map` declarations are applied.
+
+    Returns
+    -------
+    narwhals.DataFrame or narwhals.LazyFrame
+        `frame` with every remapped code rewritten and every dropped code
+        removed. Lazy if `frame` was lazy.
+    """
+    remap = _matched_lookup_frame(
+        frame=frame,
+        data=dataset._code_remap_lookup,
+        schema=_CODE_REMAP_SCHEMA,
+    )
+    remapped = frame.join(
+        remap,  # type: ignore[arg-type]
+        on=["schedule", "code_value"],
+        how="left",
+    )
+    # A row that matched no remap row has a null `dropped`, which is the
+    # pass-through case rather than the drop.
+    return (
+        remapped.filter(~nw.col("dropped").fill_null(value=False))
+        .with_columns(
+            nw.coalesce(nw.col("remapped_code"), nw.col("code_value")).alias(
+                "code_value"
+            )
+        )
+        .drop("remapped_code", "dropped")
+    )
+
+
+def aggregate_remapped_codes(*, frame: FrameOrLazy) -> FrameOrLazy:
+    """Sum the decoded rows that a code remap put on one curated code.
+
+    Runs only for a dataset whose `DomainDataset.remaps_codes` is True.
+    A renumbering that merged two of a schedule's codes into one leaves
+    two rows where the pivot expects one, and for a rollforward those two
+    rows are addends of the merged one.
+
+    A null counts as zero, but only where at least one row of the group
+    carries a value. A group that is null throughout stays null, because
+    a measure of zero and a measure the source did not report say
+    different things. `_derived_expression` draws the same distinction.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        The decoded frame, in the dataset's own terms.
+
+    Returns
+    -------
+    narwhals.DataFrame or narwhals.LazyFrame
+        `frame` grouped down to one row per code grain and output column.
+        Lazy if `frame` was lazy.
+    """
+    grouped = frame.group_by(*CODE_GRAIN_INDEX, "variable_name").agg(
+        nw.col("value").sum().alias("_total"),
+        nw.col("value").count().alias("_reported"),
+    )
+    return grouped.with_columns(
+        nw.when(nw.col("_reported") > 0)
+        .then(nw.col("_total"))
+        .otherwise(nw.lit(None, dtype=nw.Float64()))
+        .alias("value")
+    ).drop("_total", "_reported")
 
 
 def _derived_expression(

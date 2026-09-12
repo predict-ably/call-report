@@ -711,7 +711,8 @@ class FCACallReport(BaseCallReport):
         >>> report.available_domain_datasets()  # doctest: +NORMALIZE_WHITESPACE
         (<FCADomainDataset.LOAN_PORTFOLIO: 'loan_portfolio'>,
          <FCADomainDataset.LOAN_PERFORMANCE: 'loan_performance'>,
-         <FCADomainDataset.ALLOWANCE_FOR_CREDIT_LOSSES: 'allowance_for_credit_losses'>)
+         <FCADomainDataset.ALLOWANCE_FOR_CREDIT_LOSSES: 'allowance_for_credit_losses'>,
+         <FCADomainDataset.CAPITAL: 'capital'>)
         """
         return tuple(FCADomainDataset)
 
@@ -1463,8 +1464,12 @@ class FCACallReport(BaseCallReport):
         Everything before `pivot` stays lazy if the loaded schedules are
         lazy. `pivot` is the one step that must collect, and it also
         enforces that `_reshape.CODE_GRAIN_INDEX` plus the output column
-        is a unique grain. `wide` runs a second pivot afterward, via
-        `_reshape.pivot_domain_dataset_wide`, on the already-eager result.
+        is a unique grain. A dataset that remaps codes reaches that grain
+        by summing instead, via `_reshape.aggregate_remapped_codes`,
+        since a schedule that merged two of its codes into one leaves two
+        rows for the merged code. `wide` runs a second pivot afterward,
+        via `_reshape.pivot_domain_dataset_wide`, on the already-eager
+        result.
 
         Parameters
         ----------
@@ -1526,6 +1531,8 @@ class FCACallReport(BaseCallReport):
             combined = _reshape.exclude_reported_totals(
                 frame=combined, total_codes=dataset.total_codes
             )
+        if dataset.remaps_codes:
+            combined = _reshape.aggregate_remapped_codes(frame=combined)
         pivoted = pivot(
             frame=combined,
             on="variable_name",

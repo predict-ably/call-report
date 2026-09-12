@@ -245,6 +245,96 @@ def test_allowance_for_credit_losses_has_no_derived_columns() -> None:
     assert dataset.derived == ()
 
 
+def test_capital_bundle_loads() -> None:
+    """The shipped capital bundle parses into the expected shape."""
+    dataset = get_fca_domain_dataset(domain_dataset="capital")
+    assert dataset.name == "capital"
+    assert dataset.code_column == "NET_WORTH_CHANGE"
+    assert dataset.schedules == ("RID",)
+    assert len(dataset.codes) == 9
+
+
+def test_capital_spans_the_2017_renumbering_in_one_source() -> None:
+    """RI-D keeps one root name across the split, so one group covers both eras.
+
+    The five codes RI-D reports in both eras (10, 70, 80, 120, 130) mean
+    the same thing in each, so a single code_map covers the whole history
+    without an era-specific group.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="capital")
+    assert len(dataset.sources) == 1
+    source = dataset.sources[0]
+    assert source.code_column == "CAP_CODE"
+    assert dataset.remaps_codes
+    assert {10, 70, 80, 120, 130}.isdisjoint(source.code_map)
+
+
+def test_capital_code_map_merges_the_codes_2017_split() -> None:
+    """The codes RI-D split in 2017 map back onto one curated code each.
+
+    Net income (old 60) became net income (35) plus other comprehensive
+    income (45), and retirements (old 100) became stock retired (85) plus
+    allocated equity retired (105). Each new pair populates disjoint
+    columns, so summing the pair restores the shape the old code had.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="capital")
+    code_map = dataset.sources[0].code_map
+    assert code_map[60] == 35
+    assert code_map[45] == 35
+    assert code_map[100] == 85
+    assert code_map[105] == 85
+    assert code_map[117] == 85
+    assert code_map[110] == code_map[115] == 75
+    assert code_map[20] == code_map[40] == code_map[50] == 25
+
+
+def test_capital_drops_the_amended_beginning_balance_code() -> None:
+    """Old code 30 is excluded because it carries no information of its own.
+
+    It equals code 10 plus code 20 exactly, on every column and in every
+    archived period, and has no counterpart from 2017Q1 onward. Keeping
+    it would add a column-for-column duplicate of the beginning balance
+    that stops halfway through the history.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="capital")
+    assert dataset.sources[0].code_map[30] is None
+    assert 30 not in {item.code for item in dataset.codes}
+
+
+def test_capital_derived_columns_roll_up_the_2017_column_splits() -> None:
+    """Each column RI-D split in 2017 has a derived roll-up of its parts.
+
+    The roll-up fills only the periods where the pre-2017 column is
+    absent, since `add_derived_columns` never overwrites a reported
+    value.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="capital")
+    derived = {item.column: item for item in dataset.derived}
+    assert set(derived) == {"capital_stock", "allocated_surplus_nonqualified"}
+    assert all(item.operation == "sum" for item in derived.values())
+    assert derived["capital_stock"].components == (
+        "capital_stock_purchased",
+        "capital_stock_allocated",
+        "preferred_stock_perpetual",
+        "preferred_stock_other",
+    )
+    assert derived["allocated_surplus_nonqualified"].components == (
+        "allocated_surplus_nonqualified_subject_to_retirement",
+        "allocated_surplus_nonqualified_not_subject_to_retirement",
+    )
+
+
+def test_capital_declares_no_subtotal_codes() -> None:
+    """Every code is a member of the rollforward rather than a subtotal.
+
+    The beginning and ending balances are the two ends of the walk, not
+    subtotals of the codes between them, so a caller aggregating over
+    codes has nothing to exclude.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="capital")
+    assert dataset.total_codes == frozenset()
+
+
 def test_get_fca_domain_dataset_is_cached() -> None:
     """A second request returns the same parsed object rather than re-reading."""
     first = get_fca_domain_dataset(domain_dataset="loan_portfolio")
@@ -409,6 +499,91 @@ def test_a_name_encoded_source_variable_missing_its_code_raises() -> None:
     }
     with pytest.raises(SchemaError, match=r"\['CHGOFFRE'\]"):
         DomainDataset.from_dict(data=data)
+
+
+# ---------------------------------------------------------------------------
+# code_map validation
+# ---------------------------------------------------------------------------
+
+
+def test_a_name_encoded_source_declaring_a_code_map_raises() -> None:
+    """Only a source reporting its own codes has codes to remap.
+
+    A name-encoded source declares each variable's code directly, so a
+    code_map there would have nothing to match against.
+    """
+    data = {
+        "name": "broken",
+        "code_column": "SEGMENT",
+        "codes": [{"code": 1, "label": "One", "is_total": False}],
+        "sources": [
+            {
+                "schedules": ["RIE"],
+                "code_column": None,
+                "code_map": {"2": 1},
+                "columns": {"CHGOFFRE": {"column": "charge_off", "code": 1}},
+            }
+        ],
+        "derived": [],
+    }
+    with pytest.raises(SchemaError, match="code_map for a source with no code_column"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_a_code_map_targeting_an_undeclared_code_raises() -> None:
+    """A remap onto a code the dataset does not declare is a typo, not a code.
+
+    Without the check, the rows land on a code that has no label and that
+    `get_domain_dataset_codes` never lists.
+    """
+    data = {
+        "name": "broken",
+        "code_column": "SEGMENT",
+        "codes": [{"code": 1, "label": "One", "is_total": False}],
+        "sources": [
+            {
+                "schedules": ["RCF1"],
+                "code_column": "LOANSTATUS",
+                "code_map": {"2": 9},
+                "columns": {"ACCR": {"column": "balance"}},
+            }
+        ],
+        "derived": [],
+    }
+    with pytest.raises(SchemaError, match=r"code_map targeting \[9\]"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_a_code_map_may_drop_a_code_without_declaring_it() -> None:
+    """A code mapped to null is dropped, so it needs no declared code."""
+    data = {
+        "name": "example",
+        "code_column": "SEGMENT",
+        "codes": [{"code": 1, "label": "One", "is_total": False}],
+        "sources": [
+            {
+                "schedules": ["RCF1"],
+                "code_column": "LOANSTATUS",
+                "code_map": {"2": None},
+                "columns": {"ACCR": {"column": "balance"}},
+            }
+        ],
+        "derived": [],
+    }
+    dataset = DomainDataset.from_dict(data=data)
+    assert dataset.sources[0].code_map == {2: None}
+    assert dataset.remaps_codes
+
+
+def test_a_source_code_map_is_read_only() -> None:
+    """Mutating a parsed code_map raises rather than corrupting the cache.
+
+    `get_fca_domain_dataset` hands out one parsed object for the life of
+    the process, so an in-place edit would reach every later lookup.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="capital")
+    with pytest.raises(TypeError):
+        dataset.sources[0].code_map[10] = 999  # type: ignore[index]
 
 
 # ---------------------------------------------------------------------------

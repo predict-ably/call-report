@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import functools
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, get_args, overload
@@ -143,6 +143,15 @@ class DomainDatasetSource:
         deliberately continue an earlier source's column of the same
         name rather than colliding with it. Empty for a source that
         introduces every one of its own columns fresh.
+    code_map : Mapping[int, int | None]
+        What each of the source's own code values becomes in the curated
+        vocabulary, for a schedule that renumbered its codes partway
+        through its history. A code mapped to ``None`` is dropped. A code
+        absent from the mapping passes through unchanged, so this states
+        only what changes. Two codes mapping to one curated code are
+        summed, which is how a schedule that later split one code into
+        two stays comparable with its own earlier periods. Empty for a
+        source whose codes mean the same thing in every period.
 
     Examples
     --------
@@ -164,18 +173,20 @@ class DomainDatasetSource:
     code_column: str | None
     columns: Mapping[str, DomainDatasetColumn]
     continues: frozenset[str] = frozenset()
+    code_map: Mapping[int, int | None] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Replace `columns` with a read-only view of the same mapping.
+        """Replace `columns` and `code_map` with read-only views of themselves.
 
-        After construction, mutating `columns` raises rather than
-        silently changing this instance.
+        After construction, mutating either raises rather than silently
+        changing this instance.
         """
         # dataclass(frozen=True) only stops `columns` from being rebound,
         # not the dict it holds from being mutated in place, which would
         # reach every later lookup through the process-wide
         # get_fca_domain_dataset cache.
         object.__setattr__(self, "columns", MappingProxyType(dict(self.columns)))
+        object.__setattr__(self, "code_map", MappingProxyType(dict(self.code_map)))
 
     @property
     def output_columns(self) -> frozenset[str]:
@@ -347,6 +358,81 @@ class DomainDataset:
             }
         )
 
+    @property
+    def remaps_codes(self) -> bool:
+        """Return whether any source rewrites its schedule's own code values.
+
+        A dataset that remaps codes sums the rows that land on one
+        curated code, since a renumbering that merges two codes into one
+        would otherwise leave two rows where the reshape expects one.
+        A dataset that does not keeps the stricter guarantee that the
+        code grain is already unique.
+
+        Returns
+        -------
+        bool
+            True if at least one source declares a non-empty `code_map`.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCADomainDataset, get_fca_domain_dataset
+        >>> dataset = get_fca_domain_dataset(
+        ...     domain_dataset=FCADomainDataset.LOAN_PORTFOLIO
+        ... )
+        >>> dataset.remaps_codes
+        False
+        """
+        return any(source.code_map for source in self.sources)
+
+    @cached_property
+    def _code_remap_lookup(self) -> Mapping[str, tuple[Any, ...]]:
+        """Return the rows that rewrite source code values into curated ones.
+
+        One row per (schedule, source code) pair a `code_map` names, as
+        three parallel columns: the schedule the row applies to, the
+        code value to match, and the curated code it becomes.
+        `dropped` marks a code the dataset excludes, whose rows are
+        filtered out instead of rewritten.
+
+        Codes are carried as floats to match the melted frame's own
+        `code_value`, which `call_report.fca._reshape` casts to Float64
+        so that one join covers every backend.
+
+        Plain Python rather than a dataframe, for the reason
+        `_decoding_lookup` gives.
+
+        Returns
+        -------
+        Mapping[str, tuple[Any, ...]]
+            Column-oriented rows, keyed ``"schedule"``, ``"code_value"``,
+            ``"remapped_code"``, and ``"dropped"``.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCADomainDataset, get_fca_domain_dataset
+        >>> dataset = get_fca_domain_dataset(domain_dataset=FCADomainDataset.CAPITAL)
+        >>> lookup = dataset._code_remap_lookup
+        >>> rows = dict(zip(lookup["code_value"], lookup["remapped_code"]))
+        >>> rows[60.0]
+        35.0
+        """
+        rows = [
+            (schedule, source_code, curated)
+            for source in self.sources
+            for schedule in source.schedules
+            for source_code, curated in sorted(source.code_map.items())
+        ]
+        return MappingProxyType(
+            {
+                "schedule": tuple(row[0] for row in rows),
+                "code_value": tuple(float(row[1]) for row in rows),
+                "remapped_code": tuple(
+                    None if row[2] is None else float(row[2]) for row in rows
+                ),
+                "dropped": tuple(row[2] is None for row in rows),
+            }
+        )
+
     @cached_property
     def _decoding_lookup(self) -> Mapping[str, tuple[Any, ...]]:
         """Return the rows that rewrite source variables into this dataset's terms.
@@ -415,7 +501,9 @@ class DomainDataset:
         silently: that no two source groups declare the same output
         column unless the later one declares `continues`, that each
         source's per-variable `code` values agree with whether it
-        declares its own `code_column`, that every derived column names a
+        declares its own `code_column`, that only a source reporting its
+        own codes remaps them, that a `code_map` targets codes the
+        dataset declares, that every derived column names a
         real `DerivedOperation`, and that a derived column's components
         are a non-empty list of real source output columns rather than
         another derived column's name.
@@ -450,10 +538,11 @@ class DomainDataset:
             source's `continues` names a column it does not itself
             produce or one no earlier source group produces, if a
             source's `code_column` disagrees with whether its variables
-            declare a `code`, if a derived column names an operation
-            other than ``"sum"`` or ``"difference"``, or if a derived
-            column's components are empty or name something no source
-            produces.
+            declare a `code`, if a source with no `code_column` declares
+            a `code_map`, if a `code_map` targets a code the dataset does
+            not declare, if a derived column names an operation other
+            than ``"sum"`` or ``"difference"``, or if a derived column's
+            components are empty or name something no source produces.
 
         Examples
         --------
@@ -492,9 +581,25 @@ class DomainDataset:
                         for variable, item in source["columns"].items()
                     },
                     continues=frozenset(source.get("continues", ())),
+                    # JSON object keys are strings, while a code is an
+                    # integer everywhere else in this module.
+                    code_map={
+                        int(source_code): curated
+                        for source_code, curated in source.get("code_map", {}).items()
+                    },
                 )
                 for source in data["sources"]
             )
+
+            codes = tuple(
+                DomainDatasetCode(
+                    code=item["code"],
+                    label=item["label"],
+                    is_total=item["is_total"],
+                )
+                for item in data["codes"]
+            )
+            declared_codes = {item.code for item in codes}
 
             seen: set[str] = set()
             for source in sources:
@@ -550,6 +655,30 @@ class DomainDataset:
                         "without one must declare a code for every variable."
                     )
 
+                if source.code_map and not has_code_column:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares a code_map for a "
+                        "source with no code_column. Only a source that reports "
+                        "its own codes has codes to remap; a name-encoded source "
+                        "declares each variable's code directly instead."
+                    )
+
+                undeclared = sorted(
+                    {
+                        curated
+                        for curated in source.code_map.values()
+                        if curated is not None
+                    }
+                    - declared_codes
+                )
+                if undeclared:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares a code_map targeting "
+                        f"{undeclared}, which its codes do not declare. Every "
+                        "curated code a source maps onto has to be one of the "
+                        "dataset's own codes."
+                    )
+
             valid_operations = get_args(DerivedOperation)
             derived = tuple(
                 DomainDatasetDerived(
@@ -587,14 +716,7 @@ class DomainDataset:
             return cls(
                 name=data["name"],
                 code_column=data["code_column"],
-                codes=tuple(
-                    DomainDatasetCode(
-                        code=item["code"],
-                        label=item["label"],
-                        is_total=item["is_total"],
-                    )
-                    for item in data["codes"]
-                ),
+                codes=codes,
                 sources=sources,
                 derived=derived,
             )
