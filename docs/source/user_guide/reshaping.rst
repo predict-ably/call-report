@@ -369,6 +369,47 @@ shape instead:
    >>> float(non_performing)
    64834.0
 
+Allowance for credit losses
+----------------------------
+
+``allowance_for_credit_losses`` curates the institution-level allowance
+rollforward. Rows are keyed by rollforward stage:
+
+.. doctest::
+
+   >>> allowance = report.to_domain_dataset(domain_dataset="allowance_for_credit_losses")
+   >>> list(allowance.columns)
+   ['UNINUM', 'period', 'code_column', 'code_value', 'afs_debt_securities', 'htm_debt_securities', 'loans_and_leases']
+
+Code 10 is the beginning balance and code 70 is the ending balance:
+
+.. doctest::
+
+   >>> codes = get_domain_dataset_codes(domain_dataset="allowance_for_credit_losses")
+   >>> codes[codes["code"].isin([10, 70])][["code", "label"]]
+      code              label
+   0    10  Beginning balance
+   6    70     Ending balance
+
+This dataset spans the 2023 split between RC-I.E and RC-I.E.1. RC-I.E.1
+reports the rollforward as a code (``ACLCode``) with a column per asset
+class. RC-I.E reported only ``loans_and_leases``, as separately named
+fields rather than a code. The two cannot be grouped into one source the
+way ``loan_portfolio`` groups RI-E and RI-E.2, since a source has one
+`code_column` setting and RC-I.E.1 has one while RC-I.E does not. RC-I.E's
+source declares `continues` instead, keeping ``loans_and_leases``
+continuous across the split all the same:
+
+.. doctest::
+
+   >>> row = allowance[
+   ...     (allowance["UNINUM"] == 620000) & (allowance["code_value"] == 70.0)
+   ... ].iloc[0]
+   >>> float(row["loans_and_leases"])
+   40396.0
+
+``htm_debt_securities`` and ``afs_debt_securities`` are RC-I.E.1 detail
+with no RC-I.E counterpart, so they are null before 2023.
 Capital
 --------
 

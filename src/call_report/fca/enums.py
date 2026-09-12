@@ -117,6 +117,7 @@ class FCADomainDataset(StrEnum):
 
     LOAN_PORTFOLIO = "loan_portfolio"
     LOAN_PERFORMANCE = "loan_performance"
+    ALLOWANCE_FOR_CREDIT_LOSSES = "allowance_for_credit_losses"
     CAPITAL = "capital"
 
     @classmethod

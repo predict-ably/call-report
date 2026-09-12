@@ -11,7 +11,11 @@ Curation, rather than a naming convention, is what resolves collisions
 here. Two schedules that measure the same thing map to one output column
 deliberately, and two that measure different things are given different
 names. `DomainDataset.from_dict` enforces the resulting rule, that no two
-source groups declare the same output column.
+source groups declare the same output column unless the later one
+declares `DomainDatasetSource.continues`, for a split where the
+successor schedule's codedness itself changed and grouping the schedules
+into one source (the ordinary way to keep a column continuous) is not an
+option.
 """
 
 from __future__ import annotations
@@ -112,6 +116,14 @@ class DomainDatasetSource:
     mid-history schedule splits appear. Grouping them is what keeps a
     series continuous across such a split.
 
+    Grouping only works within one source, since a source has one
+    `code_column` setting shared by every schedule in it. A split where
+    the successor schedule's codedness itself changes (a coded schedule
+    replacing a previously name-encoded one, or the reverse) needs two
+    separate sources instead, and `continues` is how the later one
+    declares it deliberately picks up an earlier source's column rather
+    than colliding with it by accident.
+
     Attributes
     ----------
     schedules : tuple[str, ...]
@@ -126,6 +138,11 @@ class DomainDatasetSource:
         `DomainDatasetSource` returned from the process-wide
         `get_fca_domain_dataset` cache cannot mutate it and corrupt every
         later lookup.
+    continues : frozenset[str]
+        Output columns, among this source's own `columns`, that
+        deliberately continue an earlier source's column of the same
+        name rather than colliding with it. Empty for a source that
+        introduces every one of its own columns fresh.
     code_map : Mapping[int, int | None]
         What each of the source's own code values becomes in the curated
         vocabulary, for a schedule that renumbered its codes partway
@@ -146,6 +163,7 @@ class DomainDatasetSource:
     ...     schedules=("RCF1",),
     ...     code_column="LOANSTATUS",
     ...     columns={"ACCR": DomainDatasetColumn(column="accruing", code=None)},
+    ...     continues=frozenset(),
     ... )
     >>> sorted(source.output_columns)
     ['accruing']
@@ -154,6 +172,7 @@ class DomainDatasetSource:
     schedules: tuple[str, ...]
     code_column: str | None
     columns: Mapping[str, DomainDatasetColumn]
+    continues: frozenset[str] = frozenset()
     code_map: Mapping[int, int | None] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -480,10 +499,11 @@ class DomainDataset:
 
         Validates invariants a hand-authored definition can violate
         silently: that no two source groups declare the same output
-        column, that each source's per-variable `code` values agree with
-        whether it declares its own `code_column`, that only a source
-        reporting its own codes remaps them, that a `code_map` targets
-        codes the dataset declares, that every derived column names a
+        column unless the later one declares `continues`, that each
+        source's per-variable `code` values agree with whether it
+        declares its own `code_column`, that only a source reporting its
+        own codes remaps them, that a `code_map` targets codes the
+        dataset declares, that every derived column names a
         real `DerivedOperation`, and that a derived column's components
         are a non-empty list of real source output columns rather than
         another derived column's name.
@@ -494,7 +514,10 @@ class DomainDataset:
 
         Within one source group, an output column name may repeat across
         variables. That is deliberate, and is how a schedule split maps
-        to one continuous column.
+        to one continuous column. Across source groups, an output column
+        name may repeat only when the later source lists it in
+        `continues`, for a split whose codedness changed and so cannot be
+        expressed as one group.
 
         Parameters
         ----------
@@ -511,13 +534,15 @@ class DomainDataset:
         SchemaError
             If `data` is malformed (a missing key, or a value of the
             wrong shape), if two source groups declare the same output
-            column, if a source's `code_column` disagrees with whether
-            its variables declare a `code`, if a source with no
-            `code_column` declares a `code_map`, if a `code_map` targets
-            a code the dataset does not declare, if a derived column
-            names an operation other than ``"sum"`` or ``"difference"``,
-            or if a derived column's components are empty or name
-            something no source produces.
+            column without the later one declaring `continues`, if a
+            source's `continues` names a column it does not itself
+            produce or one no earlier source group produces, if a
+            source's `code_column` disagrees with whether its variables
+            declare a `code`, if a source with no `code_column` declares
+            a `code_map`, if a `code_map` targets a code the dataset does
+            not declare, if a derived column names an operation other
+            than ``"sum"`` or ``"difference"``, or if a derived column's
+            components are empty or name something no source produces.
 
         Examples
         --------
@@ -555,6 +580,7 @@ class DomainDataset:
                         )
                         for variable, item in source["columns"].items()
                     },
+                    continues=frozenset(source.get("continues", ())),
                     # JSON object keys are strings, while a code is an
                     # integer everywhere else in this module.
                     code_map={
@@ -577,13 +603,36 @@ class DomainDataset:
 
             seen: set[str] = set()
             for source in sources:
-                collisions = sorted(seen & source.output_columns)
+                unknown_continuations = sorted(source.continues - source.output_columns)
+                if unknown_continuations:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares continues="
+                        f"{unknown_continuations} for a source that does not "
+                        "itself produce those columns. continues names one of "
+                        "this source's own output columns as a deliberate "
+                        "continuation of an earlier group's column, not a new "
+                        "declaration."
+                    )
+
+                collisions = sorted((seen & source.output_columns) - source.continues)
                 if collisions:
                     raise SchemaError(
                         f"Domain dataset {name!r} declares {collisions} in more "
                         "than one source group, which would put two different "
-                        "measures in one column."
+                        "measures in one column. Declare continues if this is a "
+                        "deliberate continuation across a schedule split whose "
+                        "codedness changed."
                     )
+
+                unresolved_continuations = sorted(source.continues - seen)
+                if unresolved_continuations:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares continues="
+                        f"{unresolved_continuations}, but no earlier source "
+                        "group produces those columns yet. continues can only "
+                        "name a column an earlier group already declares."
+                    )
+
                 seen |= source.output_columns
 
                 # Exactly one of the two carries the code: a source with a

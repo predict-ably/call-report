@@ -711,6 +711,7 @@ class FCACallReport(BaseCallReport):
         >>> report.available_domain_datasets()  # doctest: +NORMALIZE_WHITESPACE
         (<FCADomainDataset.LOAN_PORTFOLIO: 'loan_portfolio'>,
          <FCADomainDataset.LOAN_PERFORMANCE: 'loan_performance'>,
+         <FCADomainDataset.ALLOWANCE_FOR_CREDIT_LOSSES: 'allowance_for_credit_losses'>,
          <FCADomainDataset.CAPITAL: 'capital'>)
         """
         return tuple(FCADomainDataset)

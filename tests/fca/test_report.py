@@ -2439,6 +2439,155 @@ def test_to_domain_dataset_capital_under_lazy_polars() -> None:
 
 
 # ---------------------------------------------------------------------------
+# to_domain_dataset: allowance_for_credit_losses
+# ---------------------------------------------------------------------------
+
+
+def test_to_domain_dataset_allowance_curated_columns_and_grain() -> None:
+    """The curated frame is keyed by rollforward stage and named for asset class."""
+    allowance = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="allowance_for_credit_losses"
+    )
+    columns = list(rows_of(allowance)[0])
+    assert columns[:4] == ["UNINUM", "period", "code_column", "code_value"]
+    assert not any("__" in name for name in columns)
+    assert {"loans_and_leases", "htm_debt_securities", "afs_debt_securities"} <= set(
+        columns
+    )
+
+
+def test_to_domain_dataset_allowance_spans_the_2023_split_via_continues() -> None:
+    """loans_and_leases is one continuous column across the RI-E to RI-E.1 split.
+
+    RI-E1 replaced RI-E's flat institution-level fields with a coded
+    rollforward at 2023Q1. RI-E's `continues` declaration is what keeps
+    this series whole rather than truncating it at the boundary.
+    """
+    allowance = _archive_report("2022-09-30", "2023-06-30").to_domain_dataset(
+        domain_dataset="allowance_for_credit_losses"
+    )
+    rows = [
+        row
+        for row in rows_of(allowance)
+        if row["UNINUM"] == 620000 and row["code_value"] == 10.0
+    ]
+    by_period = {as_date(row["period"]): row["loans_and_leases"] for row in rows}
+    assert set(by_period) == {
+        date(2022, 9, 30),
+        date(2022, 12, 31),
+        date(2023, 3, 31),
+        date(2023, 6, 30),
+    }
+    assert all(not is_missing(value) for value in by_period.values())
+    # The ending balance one quarter must equal the next quarter's beginning.
+    ending = {
+        as_date(row["period"]): row["loans_and_leases"]
+        for row in rows_of(allowance)
+        if row["UNINUM"] == 620000 and row["code_value"] == 70.0
+    }
+    assert ending[date(2022, 12, 31)] == by_period[date(2023, 3, 31)]
+
+
+def test_to_domain_dataset_allowance_asset_class_detail_null_before_2023() -> None:
+    """htm_debt_securities/afs_debt_securities are new RI-E1 detail, null before it.
+
+    RI-E never reported an asset-class breakdown, only loans, so those two
+    columns have nothing to report before 2023Q1, over a range that spans
+    the split so both columns exist in the result at all.
+    """
+    allowance = _archive_report("2022-09-30", "2023-03-31").to_domain_dataset(
+        domain_dataset="allowance_for_credit_losses"
+    )
+    before = next(
+        row
+        for row in rows_of(allowance)
+        if row["UNINUM"] == 620000
+        and row["code_value"] == 10.0
+        and as_date(row["period"]) == date(2022, 9, 30)
+    )
+    after = next(
+        row
+        for row in rows_of(allowance)
+        if row["UNINUM"] == 620000
+        and row["code_value"] == 10.0
+        and as_date(row["period"]) == date(2023, 3, 31)
+    )
+    assert is_missing(before["htm_debt_securities"])
+    assert is_missing(before["afs_debt_securities"])
+    assert not is_missing(before["loans_and_leases"])
+    assert not is_missing(after["htm_debt_securities"])
+
+
+def test_to_domain_dataset_allowance_wide_matches_narrow() -> None:
+    """wide=True and wide=False carry exactly the same cells, reshaped."""
+    report = _archive_report("2026-03-31", "2026-03-31")
+    narrow = report.to_domain_dataset(domain_dataset="allowance_for_credit_losses")
+    wide = report.to_domain_dataset(
+        domain_dataset="allowance_for_credit_losses", wide=True
+    )
+
+    assert "code_column" not in wide.columns
+    assert "code_value" not in wide.columns
+    assert "10__loans_and_leases" in wide.columns
+
+    narrow_rows = {(row["UNINUM"], row["code_value"]): row for row in rows_of(narrow)}
+    wide_row = next(row for row in rows_of(wide) if row["UNINUM"] == 620000)
+    for code, measure in [
+        (10.0, "loans_and_leases"),
+        (70.0, "loans_and_leases"),
+        (10.0, "htm_debt_securities"),
+    ]:
+        assert (
+            wide_row[f"{int(code)}__{measure}"] == narrow_rows[(620000, code)][measure]
+        )
+
+
+def test_to_domain_dataset_allowance_accepts_an_enum_member() -> None:
+    """`domain_dataset` accepts the FCADomainDataset member, not just the string."""
+    allowance = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset=FCADomainDataset.ALLOWANCE_FOR_CREDIT_LOSSES
+    )
+    assert "loans_and_leases" in rows_of(allowance)[0]
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_to_domain_dataset_allowance_honors_dataframe_type(
+    dataframe_type: DataFrameType,
+) -> None:
+    """dataframe_type converts the result as a final step, continues source too."""
+    expected_type = {
+        "pandas": pd.DataFrame,
+        "pyarrow_table": pa.Table,
+        "polars_dataframe": pl.DataFrame,
+        "polars_lazyframe": pl.LazyFrame,
+    }[dataframe_type]
+    result = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="allowance_for_credit_losses", dataframe_type=dataframe_type
+    )
+    assert isinstance(result, expected_type)
+
+
+def test_to_domain_dataset_allowance_no_declared_schedule_in_range_raises(
+    data_dir: Path, release_2026q1: Path
+) -> None:
+    """A range with none of the dataset's schedules raises rather than empty.
+
+    The hand-built fixture releases carry RC, RCB, and RCR7, none of which
+    allowance_for_credit_losses draws on.
+    """
+    report = FCACallReport(
+        start="2026-03-31",
+        end="2026-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(ScheduleNotFoundError, match="allowance_for_credit_losses"):
+        report.to_domain_dataset(domain_dataset="allowance_for_credit_losses")
+
+
+# ---------------------------------------------------------------------------
 # FCACallReport.available_domain_datasets
 # ---------------------------------------------------------------------------
 

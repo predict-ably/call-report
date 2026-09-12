@@ -18,6 +18,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
+from call_report.core import ReportingPeriod
 from call_report.core._backend import DataFrameType
 from call_report.exceptions import DomainDatasetNotFoundError, SchemaError
 from call_report.fca import (
@@ -26,7 +27,7 @@ from call_report.fca import (
     get_fca_domain_dataset,
     get_fca_file_metadata,
 )
-from call_report.fca._domain_datasets import DomainDataset
+from call_report.fca._domain_datasets import DomainDataset, DomainDatasetSource
 from call_report.fca.enums import FCASchedule
 from tests.helpers import rows_of
 
@@ -199,6 +200,51 @@ def test_loan_performance_has_no_derived_columns() -> None:
     assert dataset.derived == ()
 
 
+def test_allowance_for_credit_losses_bundle_loads() -> None:
+    """The shipped allowance bundle parses into the expected shape."""
+    dataset = get_fca_domain_dataset(domain_dataset="allowance_for_credit_losses")
+    assert dataset.name == "allowance_for_credit_losses"
+    assert dataset.code_column == "ACL_STAGE"
+    assert dataset.schedules == ("RIE1", "RIE")
+    assert len(dataset.codes) == 7
+
+
+def test_allowance_for_credit_losses_continues_across_the_2023_split() -> None:
+    """RI-E1's coded rollforward and RI-E's flat fields share one column.
+
+    RI-E1 is coded (`ACLCode`) and RI-E is name-encoded, so they cannot be
+    grouped into one source the way `loan_portfolio` groups RI-E and
+    RI-E.2. RI-E's `continues` declares that its own `loans_and_leases`
+    column deliberately continues RI-E1's, rather than colliding with it.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="allowance_for_credit_losses")
+    by_schedule = {source.schedules: source for source in dataset.sources}
+    coded = by_schedule[("RIE1",)]
+    continuation = by_schedule[("RIE",)]
+
+    assert coded.code_column == "ACLCode"
+    assert continuation.code_column is None
+    assert continuation.continues == frozenset({"loans_and_leases"})
+    assert "loans_and_leases" in coded.output_columns
+    assert "loans_and_leases" in continuation.output_columns
+
+
+def test_allowance_for_credit_losses_has_no_total_code() -> None:
+    """None of the seven rollforward stages is a reported subtotal."""
+    dataset = get_fca_domain_dataset(domain_dataset="allowance_for_credit_losses")
+    assert dataset.total_codes == frozenset()
+
+
+def test_allowance_for_credit_losses_has_no_derived_columns() -> None:
+    """The ending balance is reported directly, not computed.
+
+    Every stage's value is already present on the source schedules, so
+    nothing needs to be derived from sibling columns.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="allowance_for_credit_losses")
+    assert dataset.derived == ()
+
+
 def test_capital_bundle_loads() -> None:
     """The shipped capital bundle parses into the expected shape."""
     dataset = get_fca_domain_dataset(domain_dataset="capital")
@@ -332,6 +378,74 @@ def test_two_source_groups_sharing_an_output_column_raises() -> None:
         ],
         "derived": [],
     }
+    with pytest.raises(SchemaError, match=r"\['balance'\]"):
+        DomainDataset.from_dict(data=data)
+
+
+def _continuation_definition() -> dict[str, Any]:
+    """Build a minimal two-source definition where the second continues the first.
+
+    Mirrors `allowance_for_credit_losses`'s own shape: a coded source
+    (its own `code_column`) followed by a name-encoded one that
+    deliberately reuses the first's output column via `continues`. The
+    `continues` tests each mutate one piece of this to break it.
+    """
+    return {
+        "name": "example",
+        "code_column": "SEGMENT",
+        "codes": [{"code": 1, "label": "One", "is_total": False}],
+        "sources": [
+            {
+                "schedules": ["RIE1"],
+                "code_column": "ACLCode",
+                "columns": {"ACLLoanLease": {"column": "balance"}},
+            },
+            {
+                "schedules": ["RIE"],
+                "code_column": None,
+                "continues": ["balance"],
+                "columns": {"ALLNALLOSSBBAL": {"code": 1, "column": "balance"}},
+            },
+        ],
+        "derived": [],
+    }
+
+
+def test_continues_allows_a_later_source_to_reuse_an_earlier_columns_name() -> None:
+    """A declared continuation is not a collision.
+
+    This is the escape hatch for a schedule split whose codedness itself
+    changes (a coded schedule replacing a previously name-encoded one, or
+    the reverse), where grouping the schedules into one source is not an
+    option because a source has only one `code_column` setting.
+    """
+    dataset = DomainDataset.from_dict(data=_continuation_definition())
+    assert [source.output_columns for source in dataset.sources] == [
+        frozenset({"balance"}),
+        frozenset({"balance"}),
+    ]
+
+
+def test_continues_naming_a_column_the_source_does_not_produce_raises() -> None:
+    """`continues` must name one of this source's own output columns.
+
+    Otherwise it declares a continuation of nothing, which is likely a
+    typo rather than a deliberate cross-group reuse.
+    """
+    data = _continuation_definition()
+    data["sources"][1]["continues"] = ["not_a_column_this_source_declares"]
+    with pytest.raises(SchemaError, match=r"\['not_a_column_this_source_declares'\]"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_continues_naming_a_column_no_earlier_source_produces_raises() -> None:
+    """`continues` must name a column an earlier group actually declares.
+
+    Without this, a source could claim to continue a column that never
+    existed, silently skipping the collision check for no reason.
+    """
+    data = _continuation_definition()
+    data["sources"][0]["columns"]["ACLLoanLease"]["column"] = "something_else"
     with pytest.raises(SchemaError, match=r"\['balance'\]"):
         DomainDataset.from_dict(data=data)
 
@@ -763,3 +877,44 @@ def test_derived_components_are_real_output_columns(member: FCADomainDataset) ->
     }
     for item in dataset.derived:
         assert set(item.components) <= produced, item.column
+
+
+def _source_span(
+    source: DomainDatasetSource,
+) -> tuple[ReportingPeriod, ReportingPeriod]:
+    """Return the earliest start and latest end across a source's schedules."""
+    starts: list[ReportingPeriod] = []
+    ends: list[ReportingPeriod] = []
+    for schedule in source.schedules:
+        for span in get_fca_file_metadata(
+            schedule=FCASchedule.coerce(value=schedule)
+        ).periods:
+            starts.append(span[0])
+            ends.append(span[-1])
+    return min(starts), max(ends)
+
+
+@pytest.mark.parametrize("member", list(FCADomainDataset))
+def test_continued_columns_do_not_overlap_periods(member: FCADomainDataset) -> None:
+    """A continued column's two sources must not actually publish at the same time.
+
+    `continues` exists for a split with no gap: an earlier source retired
+    exactly when a later, differently-coded one took over. Overlapping
+    periods would mean the pivot sees two rows for the same
+    (UNINUM, period, code, column) cell instead of one continuous series.
+    Parametrized over every shipped dataset; one with no continuation
+    (like loan_performance) has nothing to check and passes trivially.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset=member)
+    produced_by: dict[str, DomainDatasetSource] = {}
+    for source in dataset.sources:
+        for column in source.continues:
+            earlier = produced_by[column]
+            earlier_start, earlier_end = _source_span(earlier)
+            this_start, this_end = _source_span(source)
+            assert earlier_end < this_start or this_end < earlier_start, (
+                f"{member.value}: {column!r} continuation overlaps its earlier "
+                "source's published periods"
+            )
+        for column in source.output_columns - source.continues:
+            produced_by[column] = source
