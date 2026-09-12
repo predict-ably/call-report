@@ -1,0 +1,74 @@
+{
+  "name": "capital",
+  "code_column": "NET_WORTH_CHANGE",
+  "codes": [
+    {"code": 10, "label": "Beginning balance", "is_total": false},
+    {"code": 25, "label": "Prior period and accounting adjustments", "is_total": false},
+    {"code": 35, "label": "Net income and other comprehensive income", "is_total": false},
+    {"code": 70, "label": "Dividends", "is_total": false},
+    {"code": 75, "label": "Equities issued", "is_total": false},
+    {"code": 80, "label": "Patronage distributions", "is_total": false},
+    {"code": 85, "label": "Equities retired", "is_total": false},
+    {"code": 120, "label": "Other", "is_total": false},
+    {"code": 130, "label": "Ending balance", "is_total": false}
+  ],
+  "sources": [
+    {
+      "schedules": ["RID"],
+      "code_column": "CAP_CODE",
+      "code_map": {
+        "20": 25,
+        "30": null,
+        "40": 25,
+        "45": 35,
+        "50": 25,
+        "60": 35,
+        "90": 120,
+        "95": 120,
+        "100": 85,
+        "105": 85,
+        "110": 75,
+        "115": 75,
+        "117": 85
+      },
+      "columns": {
+        "CAP": {"column": "capital_stock"},
+        "CapStkPurch": {"column": "capital_stock_purchased"},
+        "CAPSTKALLOC": {"column": "capital_stock_allocated"},
+        "PREFSTKPERP": {"column": "preferred_stock_perpetual"},
+        "PREFSTKO": {"column": "preferred_stock_other"},
+        "PAIDIN": {"column": "paid_in_capital"},
+        "ALSUR": {"column": "allocated_surplus_qualified"},
+        "NONALSUR": {"column": "allocated_surplus_nonqualified"},
+        "NQASSubj2Retire": {"column": "allocated_surplus_nonqualified_subject_to_retirement"},
+        "NQASNotSubj2Retire": {"column": "allocated_surplus_nonqualified_not_subject_to_retirement"},
+        "SURES": {"column": "surplus_reserve"},
+        "UALSUR": {"column": "unallocated_retained_earnings"},
+        "UNRETERN": {"column": "unallocated_retained_earnings"},
+        "OTHCOMPINCOME": {"column": "accumulated_other_comprehensive_income"},
+        "ACNOCOMINC": {"column": "accumulated_other_comprehensive_income"},
+        "TOTNW": {"column": "total_net_worth"}
+      }
+    }
+  ],
+  "derived": [
+    {
+      "column": "capital_stock",
+      "operation": "sum",
+      "components": [
+        "capital_stock_purchased",
+        "capital_stock_allocated",
+        "preferred_stock_perpetual",
+        "preferred_stock_other"
+      ]
+    },
+    {
+      "column": "allocated_surplus_nonqualified",
+      "operation": "sum",
+      "components": [
+        "allocated_surplus_nonqualified_subject_to_retirement",
+        "allocated_surplus_nonqualified_not_subject_to_retirement"
+      ]
+    }
+  ]
+}

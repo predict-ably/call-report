@@ -32,6 +32,7 @@ from call_report.fca import (
     convert_long_format_to_code_grain_format,
     convert_long_format_to_wide_format,
     convert_wide_format_to_long_format,
+    get_fca_domain_dataset,
     get_fca_file_metadata,
 )
 from call_report.fca.layout import FCALayout
@@ -2029,6 +2030,249 @@ def test_to_domain_dataset_loan_performance_no_declared_schedule_in_range_raises
     )
     with pytest.raises(ScheduleNotFoundError, match="loan_performance"):
         report.to_domain_dataset(domain_dataset="loan_performance")
+
+
+def _capital_row(report: FCACallReport, *, period: date, code: float) -> dict[str, Any]:
+    """Return one institution's capital row for a period and curated code.
+
+    UNINUM 620000 is used throughout the capital tests because it reports
+    every curated code on both sides of the 2017 renumbering.
+
+    Parameters
+    ----------
+    report : FCACallReport
+        The report to read.
+    period : datetime.date
+        The reporting period the row belongs to.
+    code : float
+        The curated code the row is keyed by.
+
+    Returns
+    -------
+    dict[str, Any]
+        The matching row.
+    """
+    rows = [
+        row
+        for row in rows_of(report.to_domain_dataset(domain_dataset="capital"))
+        if row["UNINUM"] == 620000
+        and row["code_value"] == code
+        and as_date(row["period"]) == period
+    ]
+    return rows[0]
+
+
+def test_to_domain_dataset_capital_curated_columns_and_grain() -> None:
+    """The capital dataset keys rows by the curated net worth change code."""
+    capital = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="capital"
+    )
+    row = rows_of(capital)[0]
+    assert row["code_column"] == "NET_WORTH_CHANGE"
+    for column in ("capital_stock", "paid_in_capital", "total_net_worth"):
+        assert column in row
+
+
+def test_to_domain_dataset_capital_spans_the_2017_renumbering() -> None:
+    """Every continuous column carries across the 2017Q1 boundary unchanged.
+
+    RI-D renumbered its codes and renamed or split most of its columns at
+    2017Q1 while keeping its root name, so a reader following the raw
+    schedule sees a series break there. The ending balance of 2016Q4 and
+    the beginning balance of 2017Q1 are the same position stated twice,
+    so they pin the crosswalk from both sides.
+    """
+    report = _archive_report("2016-12-31", "2017-03-31")
+    ending = _capital_row(report, period=date(2016, 12, 31), code=130.0)
+    beginning = _capital_row(report, period=date(2017, 3, 31), code=10.0)
+    for column in (
+        "capital_stock",
+        "paid_in_capital",
+        "allocated_surplus_qualified",
+        "allocated_surplus_nonqualified",
+        "unallocated_retained_earnings",
+        "accumulated_other_comprehensive_income",
+        "total_net_worth",
+    ):
+        assert ending[column] == beginning[column], column
+    assert ending["total_net_worth"] == 2225248.0
+
+
+def test_to_domain_dataset_capital_rolls_up_the_split_columns() -> None:
+    """The post-2017 stock columns roll up into the pre-2017 aggregate column.
+
+    RI-D replaced ``CAP`` with four separate stock columns at 2017Q1. The
+    derived roll-up is what keeps `capital_stock` continuous, and it must
+    equal the parts it is computed from.
+    """
+    report = _archive_report("2017-03-31", "2017-03-31")
+    row = _capital_row(report, period=date(2017, 3, 31), code=10.0)
+    assert row["capital_stock"] == 351155.0
+    assert (
+        row["capital_stock_purchased"]
+        + row["capital_stock_allocated"]
+        + row["preferred_stock_perpetual"]
+        + row["preferred_stock_other"]
+        == row["capital_stock"]
+    )
+
+
+def test_to_domain_dataset_capital_does_not_overwrite_a_reported_column() -> None:
+    """Before 2017 `capital_stock` is RI-D's own figure, not the derived sum.
+
+    The four columns the roll-up is computed from do not exist yet, so a
+    derived column that overwrote rather than filled would blank the
+    series out for the whole pre-2017 era.
+    """
+    report = _archive_report("2016-12-31", "2017-03-31")
+    row = _capital_row(report, period=date(2016, 12, 31), code=130.0)
+    assert row["capital_stock"] == 351155.0
+    assert is_missing(row["capital_stock_purchased"])
+
+
+def test_to_domain_dataset_capital_merges_the_codes_2017_split() -> None:
+    """Codes RI-D split in 2017 are summed back onto one curated code.
+
+    Net income (35) and other comprehensive income (45) populate disjoint
+    columns, so summing them restores exactly the shape old code 60 had:
+    the earnings movement in one column and the OCI movement in another.
+    """
+    report = _archive_report("2016-12-31", "2017-03-31")
+    before = _capital_row(report, period=date(2016, 12, 31), code=35.0)
+    after = _capital_row(report, period=date(2017, 3, 31), code=35.0)
+    assert before["unallocated_retained_earnings"] == 101154.0
+    assert before["accumulated_other_comprehensive_income"] == -50277.0
+    assert after["unallocated_retained_earnings"] == 82925.0
+    assert after["accumulated_other_comprehensive_income"] == -4238.0
+    assert after["total_net_worth"] == 78687.0
+
+
+def test_to_domain_dataset_capital_merges_two_old_codes_into_one() -> None:
+    """Retirements of stock and of preferred stock sum onto one curated code.
+
+    Pre-2017 RI-D reported them as codes 100 and 117. Their ``CAP``
+    figures for this institution and period are -19357 and -20000, and the
+    curated row has to carry the total rather than either one.
+    """
+    report = _archive_report("2016-12-31", "2016-12-31")
+    row = _capital_row(report, period=date(2016, 12, 31), code=85.0)
+    assert row["capital_stock"] == -39357.0
+    assert row["total_net_worth"] == -39392.0
+
+
+def test_to_domain_dataset_capital_drops_the_amended_beginning_balance() -> None:
+    """Old code 30 never reaches the output, in any era.
+
+    It duplicates the beginning balance whenever there is no restatement
+    and has no counterpart from 2017Q1 onward.
+    """
+    report = _archive_report("2000-03-31", "2026-03-31")
+    codes = {
+        row["code_value"]
+        for row in rows_of(report.to_domain_dataset(domain_dataset="capital"))
+    }
+    assert 30.0 not in codes
+
+
+def test_to_domain_dataset_capital_reports_only_its_declared_codes() -> None:
+    """Every code in the output is one the bundle declares, across all history.
+
+    A code_map states only what changes, so a code FCA adds later would
+    pass through unmapped and reach the output with no label. Running the
+    whole archive is what catches that.
+    """
+    report = _archive_report("2000-03-31", "2026-03-31")
+    codes = {
+        int(row["code_value"])
+        for row in rows_of(report.to_domain_dataset(domain_dataset="capital"))
+    }
+    dataset = get_fca_domain_dataset(domain_dataset="capital")
+    assert codes == {item.code for item in dataset.codes}
+
+
+def test_to_domain_dataset_capital_keeps_an_unreported_measure_null() -> None:
+    """Summing merged codes leaves a measure the source never reported null.
+
+    A measure of zero and a measure the source did not report say
+    different things, and the aggregation that merges codes must not turn
+    the second into the first. RI-D leaves every stock column blank on
+    its net income row.
+    """
+    report = _archive_report("2016-12-31", "2016-12-31")
+    row = _capital_row(report, period=date(2016, 12, 31), code=35.0)
+    assert is_missing(row["capital_stock"])
+    assert row["unallocated_retained_earnings"] == 101154.0
+
+
+def test_to_domain_dataset_capital_omits_a_retired_column_after_its_last_period() -> (
+    None
+):
+    """`surplus_reserve` is absent from a frame covering only later periods.
+
+    RI-D reported it through 2016Q4 and no column replaced it.
+    """
+    report = _archive_report("2025-03-31", "2025-03-31")
+    row = _capital_row(report, period=date(2025, 3, 31), code=130.0)
+    assert "surplus_reserve" not in row
+    report = _archive_report("2016-12-31", "2016-12-31")
+    row = _capital_row(report, period=date(2016, 12, 31), code=130.0)
+    assert "surplus_reserve" in row
+
+
+def test_to_domain_dataset_capital_wide_matches_narrow() -> None:
+    """The wide frame is a deterministic re-pivot of the narrow one."""
+    report = _archive_report("2026-03-31", "2026-03-31")
+    narrow = rows_of(report.to_domain_dataset(domain_dataset="capital"))
+    wide = rows_of(report.to_domain_dataset(domain_dataset="capital", wide=True))
+    by_uninum = {row["UNINUM"]: row for row in wide}
+    for row in narrow:
+        code = int(row["code_value"])
+        wide_row = by_uninum[row["UNINUM"]]
+        assert wide_row[f"{code}__total_net_worth"] == row["total_net_worth"]
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_to_domain_dataset_capital_honors_dataframe_type(
+    dataframe_type: DataFrameType,
+) -> None:
+    """A remapped, aggregated dataset converts under every backend.
+
+    The code remap joins on a float code value and the merge groups and
+    sums, neither of which the other bundles exercise.
+    """
+    expected_type = {
+        "pandas": pd.DataFrame,
+        "pyarrow_table": pa.Table,
+        "polars_dataframe": pl.DataFrame,
+        "polars_lazyframe": pl.LazyFrame,
+    }[dataframe_type]
+    result = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="capital", dataframe_type=dataframe_type
+    )
+    assert isinstance(result, expected_type)
+
+
+def test_to_domain_dataset_capital_under_lazy_polars() -> None:
+    """The remap and the merge both stay lazy until the pivot collects."""
+    with config_context(dataframe_backend="polars", lazy=True):
+        capital = _archive_report("2016-12-31", "2017-03-31").to_domain_dataset(
+            domain_dataset="capital"
+        )
+    rows = [row for row in rows_of(capital) if row["UNINUM"] == 620000]
+    assert {int(row["code_value"]) for row in rows} == {
+        10,
+        25,
+        35,
+        70,
+        75,
+        80,
+        85,
+        120,
+        130,
+    }
 
 
 # ---------------------------------------------------------------------------
