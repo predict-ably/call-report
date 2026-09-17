@@ -1,0 +1,46 @@
+{
+  "name": "asset_transfers",
+  "code_column": "ASSET_TYPE",
+  "split_column": "DIRECTION",
+  "codes": [
+    {"code": 10, "label": "Loan participations", "is_total": false},
+    {"code": 30, "label": "Similar entity transactions", "is_total": false},
+    {"code": 50, "label": "Lease interests", "is_total": false},
+    {"code": 70, "label": "Other assets", "is_total": false},
+    {"code": 90, "label": "Participations in notes receivable", "is_total": false},
+    {"code": 110, "label": "Certain pool items", "is_total": false}
+  ],
+  "sources": [
+    {
+      "schedules": ["RCO"],
+      "code_column": "ASSET_CODE",
+      "code_map": {
+        "20": 10,
+        "40": 30,
+        "60": 50,
+        "80": 70,
+        "100": 90,
+        "120": 110
+      },
+      "split_map": {
+        "10": "Purchased",
+        "20": "Sold",
+        "30": "Purchased",
+        "40": "Sold",
+        "50": "Purchased",
+        "60": "Sold",
+        "70": "Purchased",
+        "80": "Sold",
+        "90": "Purchased",
+        "100": "Sold",
+        "110": "Purchased",
+        "120": "Sold"
+      },
+      "columns": {
+        "TRANSWFCI": {"column": "amortized_cost"},
+        "TRANSWNONFCI": {"column": "fair_value"}
+      }
+    }
+  ],
+  "derived": []
+}

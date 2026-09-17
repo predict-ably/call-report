@@ -119,6 +119,7 @@ class FCADomainDataset(StrEnum):
     LOAN_PERFORMANCE = "loan_performance"
     ALLOWANCE_FOR_CREDIT_LOSSES = "allowance_for_credit_losses"
     CAPITAL = "capital"
+    ASSET_TRANSFERS = "asset_transfers"
 
     @classmethod
     def coerce(cls, *, value: FCADomainDataset | str) -> FCADomainDataset:
