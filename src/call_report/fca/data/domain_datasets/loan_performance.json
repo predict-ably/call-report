@@ -23,6 +23,12 @@
       "is_total": false
     },
     {
+      "code": 57,
+      "label": "Nonaccrual: Total",
+      "is_total": true,
+      "components": [54, 56]
+    },
+    {
       "code": 60,
       "label": "Total",
       "is_total": true
@@ -50,10 +56,16 @@
           "column": "past_due_90"
         },
         "TOTPDUE": {
-          "column": "total_past_due"
+          "column": "total"
         }
       }
     }
   ],
-  "derived": []
+  "derived": [
+    {
+      "column": "total_past_due",
+      "operation": "sum",
+      "components": ["past_due_30", "past_due_90"]
+    }
+  ]
 }

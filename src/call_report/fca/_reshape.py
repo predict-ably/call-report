@@ -1337,6 +1337,83 @@ def exclude_reported_totals(
     return frame.filter(~is_total)
 
 
+def add_derived_code_rows(
+    *, frame: nw.DataFrame[Any], dataset: DomainDataset, include_totals: bool
+) -> nw.DataFrame[Any]:
+    """Append a domain dataset's computed code rows to its pivoted frame.
+
+    A source that breaks a category into parts without reporting the
+    category's own total leaves a reader to add the parts up. A code
+    declaring `DomainDatasetCode.components` is that sum, computed here
+    and appended alongside its members, which stay in the result. RC-F
+    splits nonaccrual into cash basis and other and reports no nonaccrual
+    subtotal, so `loan_performance` computes one.
+
+    Runs after the pivot, since each computed row spans several of the
+    pivot's rows rather than several of its columns. That is the mirror
+    image of `add_derived_columns`, which runs at the same point for the
+    same reason.
+
+    A computed code that is also a subtotal is skipped entirely when
+    `include_totals` is False, rather than built and then filtered.
+    `exclude_reported_totals` has already run by this point, on the
+    narrow frame, and it cannot drop a row that does not exist yet.
+
+    A null counts as zero, but only where at least one member row carries
+    a value, so a category no institution reported stays null rather than
+    becoming a fabricated zero. `_derived_expression` and
+    `aggregate_remapped_codes` draw the same distinction.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame
+        The pivoted frame, one row per code grain.
+    dataset : DomainDataset
+        The curated dataset whose computed codes are appended.
+    include_totals : bool
+        Whether the caller asked to keep subtotal codes.
+
+    Returns
+    -------
+    narwhals.DataFrame
+        `frame` with one added row per computed code, per grain that has
+        at least one member row.
+    """
+    wanted = [
+        item for item in dataset.derived_codes if include_totals or not item.is_total
+    ]
+    if not wanted:
+        return frame
+
+    index = [name for name in CODE_GRAIN_INDEX if name != "code_value"]
+    measures = [name for name in frame.columns if name not in CODE_GRAIN_INDEX]
+    pieces = [frame]
+    for item in wanted:
+        members = frame.filter(
+            is_in_null_safe(column="code_value", values=sorted(item.components))
+        )
+        summed = members.group_by(*index).agg(
+            *[nw.col(name).sum().alias(name) for name in measures],
+            *[nw.col(name).count().alias(f"_reported_{name}") for name in measures],
+        )
+        summed = summed.with_columns(
+            *[
+                nw.when(nw.col(f"_reported_{name}") > 0)
+                .then(nw.col(name))
+                .otherwise(nw.lit(None, dtype=nw.Float64()))
+                .alias(name)
+                for name in measures
+            ],
+            nw.lit(float(item.code)).cast(nw.Float64()).alias("code_value"),
+        )
+        pieces.append(
+            summed.drop(*[f"_reported_{name}" for name in measures]).select(
+                *frame.columns
+            )
+        )
+    return concat(frames=pieces, how="strict")
+
+
 NO_DOMAIN_DATASET_MEASUREMENTS = (
     "The requested schedules contributed no measurement columns, so there is "
     "no domain dataset to build. This happens when every contributing "

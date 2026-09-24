@@ -51,18 +51,26 @@ class DomainDatasetCode:
     The codes are the source's own, not a numbering this package invents,
     so a value here can be matched against the raw file. `label` is the
     curation, giving each code a name a reader does not have to look up.
+    A code declaring `components` is the one exception: it is computed
+    from other codes rather than reported, so its number is chosen here
+    and will not be found in the raw file.
 
     Attributes
     ----------
     code : int
         The code identifying this row, in the source schedule's own
-        vocabulary.
+        vocabulary, or a number this package chooses for a code that
+        declares `components`.
     label : str
         A human-readable name for what `code` identifies.
     is_total : bool
-        Whether this code is a subtotal the source reports rather than a
-        distinct member of the breakdown. A caller summing over codes has
-        to exclude these.
+        Whether this code is a subtotal rather than a distinct member of
+        the breakdown. A caller summing over codes has to exclude these,
+        which `FCACallReport.to_domain_dataset` does by default.
+    components : tuple[int, ...]
+        The codes this one is summed from, for a subtotal the source
+        leaves a reader to compute. The member codes stay in the result
+        alongside it. Empty for a code the source reports itself.
 
     Examples
     --------
@@ -75,6 +83,7 @@ class DomainDatasetCode:
     code: int
     label: str
     is_total: bool
+    components: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -304,11 +313,13 @@ class DomainDataset:
 
     @property
     def total_codes(self) -> frozenset[int]:
-        """Return the codes that are reported subtotals rather than members.
+        """Return the codes that are subtotals rather than members.
 
-        A subtotal row is a figure the source reports itself, not one this
-        package computes, so it is included by default. Aggregating over
-        every code without excluding these double counts.
+        A subtotal is either a figure the source reports itself or one
+        this package computes from other codes (see
+        `DomainDatasetCode.components`). Aggregating over every code
+        without excluding these double counts, so
+        `FCACallReport.to_domain_dataset` drops them by default.
 
         Returns
         -------
@@ -325,6 +336,32 @@ class DomainDataset:
         [155]
         """
         return frozenset(item.code for item in self.codes if item.is_total)
+
+    @property
+    def derived_codes(self) -> tuple[DomainDatasetCode, ...]:
+        """Return the codes computed by summing other codes, in order.
+
+        A source that breaks a category into parts without reporting the
+        category's own total leaves a reader to add the parts up. Such a
+        code is computed after the pivot and appended alongside its
+        members, which stay in the result.
+
+        Returns
+        -------
+        tuple[DomainDatasetCode, ...]
+            Every code declaring a non-empty
+            `DomainDatasetCode.components`, in declaration order.
+
+        Examples
+        --------
+        >>> from call_report.fca import FCADomainDataset, get_fca_domain_dataset
+        >>> dataset = get_fca_domain_dataset(
+        ...     domain_dataset=FCADomainDataset.LOAN_PERFORMANCE
+        ... )
+        >>> [(item.code, item.label) for item in dataset.derived_codes]
+        [(57, 'Nonaccrual: Total')]
+        """
+        return tuple(item for item in self.codes if item.components)
 
     @cached_property
     def source_by_schedule(self) -> Mapping[str, DomainDatasetSource]:
@@ -596,10 +633,39 @@ class DomainDataset:
                     code=item["code"],
                     label=item["label"],
                     is_total=item["is_total"],
+                    components=tuple(item.get("components", ())),
                 )
                 for item in data["codes"]
             )
             declared_codes = {item.code for item in codes}
+            computed_codes = {item.code for item in codes if item.components}
+
+            for code_item in codes:
+                if not code_item.components:
+                    continue
+                missing_components = sorted(set(code_item.components) - declared_codes)
+                if missing_components:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares code {code_item.code} as a "
+                        f"sum of {missing_components}, which it does not declare. A "
+                        "computed code can only sum codes the dataset itself "
+                        "declares."
+                    )
+                # Checked before the nested case, which a self-reference
+                # would otherwise trip first with a less specific message.
+                if code_item.code in code_item.components:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares code {code_item.code} as a "
+                        "sum that includes itself."
+                    )
+                nested = sorted(set(code_item.components) & computed_codes)
+                if nested:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares code {code_item.code} as a "
+                        f"sum of {nested}, which are themselves computed. A "
+                        "computed code sums reported codes only, so the result "
+                        "cannot depend on the order the codes are declared in."
+                    )
 
             seen: set[str] = set()
             for source in sources:

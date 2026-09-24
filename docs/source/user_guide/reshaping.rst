@@ -313,60 +313,77 @@ portfolio:
 .. doctest::
 
    >>> performance = report.to_domain_dataset(domain_dataset="loan_performance")
-   >>> list(performance.columns)
-   ['UNINUM', 'period', 'code_column', 'code_value', 'not_past_due', 'past_due_30', 'past_due_90', 'total_past_due']
+   >>> list(performance.columns)  # doctest: +NORMALIZE_WHITESPACE
+   ['UNINUM', 'period', 'code_column', 'code_value', 'not_past_due',
+    'past_due_30', 'past_due_90', 'total', 'total_past_due']
 
-Code 10 is loans currently accruing, and code 54 is nonaccrual loans on a
-cash basis:
+``total`` is the whole balance, including loans that are not past due.
+``total_past_due`` is ``past_due_30`` plus ``past_due_90`` alone. This bundle
+draws on RC-F alone.
+
+Code 10 is loans currently accruing. Codes 54 and 56 split nonaccrual loans
+into cash basis and other, and code 57 is their sum:
 
 .. doctest::
 
    >>> from call_report.fca import get_domain_dataset_codes
    >>> codes = get_domain_dataset_codes(domain_dataset="loan_performance")
-   >>> codes[codes["code"].isin([10, 54])][["code", "label"]]
-      code                   label
-   0    10                Accruing
-   2    54  Nonaccrual: Cash basis
+   >>> codes[codes["code"].isin([54, 56, 57])][["code", "label", "is_total"]]
+      code                   label  is_total
+   2    54  Nonaccrual: Cash basis     False
+   3    56       Nonaccrual: Other     False
+   4    57       Nonaccrual: Total      True
 
-This bundle draws on RC-F alone. A later revision may extend it to more
-schedules.
-
-RC-F's own reported total (code 60) is the only subtotal here, excluded by
-default the same way ``loan_portfolio``'s code 155 is:
+RC-F reports no nonaccrual subtotal of its own, so code 57 is computed here.
+It is a subtotal, like RC-F's reported total (code 60). Both are excluded by
+default, the same way ``loan_portfolio``'s code 155 is, so summing every code
+cannot count a loan twice:
 
 .. doctest::
 
    >>> report.to_domain_dataset(domain_dataset="loan_performance").shape
-   (295, 8)
+   (295, 9)
    >>> report.to_domain_dataset(domain_dataset="loan_performance", include_totals=True).shape
-   (354, 8)
+   (413, 9)
 
-Code 80 ("Number of loans") shares its column names with the dollar-valued
-codes but reports a loan count. That is not a special case for the reshape:
-the code value is what tells a reader the unit, exactly as it does for every
-other code, and a null appears in the aging-bucket columns that a count has
-no version of:
+With ``include_totals=True``, code 57 appears alongside the two rows it sums:
 
 .. doctest::
 
    >>> counted = report.to_domain_dataset(
    ...     domain_dataset="loan_performance", include_totals=True
    ... )
-   >>> row = counted[(counted["UNINUM"] == 620000) & (counted["code_value"] == 80.0)].iloc[0]
-   >>> bool(row["not_past_due"] != row["not_past_due"]), float(row["total_past_due"])
-   (True, 18520.0)
+   >>> nonaccrual = counted[
+   ...     (counted["UNINUM"] == 620000) & (counted["code_value"].isin([54.0, 56.0, 57.0]))
+   ... ]
+   >>> nonaccrual[["code_value", "total", "total_past_due"]].reset_index(drop=True)
+      code_value    total  total_past_due
+   0        54.0  33156.0         21849.0
+   1        56.0  31678.0         27953.0
+   2        57.0  64834.0         49802.0
 
-No derived ``non_performing`` column ships here. Compute it from the wide
-shape instead:
+Code 80 ("Number of loans") reports a loan count rather than dollars. It is
+the total number of loans, so it appears in ``total``. RC-F leaves every
+aging bucket empty for this code, so those columns and ``total_past_due`` are
+null:
 
 .. doctest::
 
-   >>> wide = report.to_domain_dataset(domain_dataset="loan_performance", wide=True)
-   >>> row = wide[wide["UNINUM"] == 620000].iloc[0]
-   >>> non_performing = (
-   ...     row["10__past_due_90"] + row["54__total_past_due"] + row["56__total_past_due"]
+   >>> row = counted[(counted["UNINUM"] == 620000) & (counted["code_value"] == 80.0)].iloc[0]
+   >>> float(row["total"]), bool(row["total_past_due"] != row["total_past_due"])
+   (18520.0, True)
+
+No ``non_performing`` column ships here. It is accruing loans 90 or more days
+past due plus the whole nonaccrual balance, which is ``total`` on code 57.
+Compute it from the wide shape:
+
+.. doctest::
+
+   >>> wide = report.to_domain_dataset(
+   ...     domain_dataset="loan_performance", include_totals=True, wide=True
    ... )
-   >>> float(non_performing)
+   >>> row = wide[wide["UNINUM"] == 620000].iloc[0]
+   >>> float(row["10__past_due_90"] + row["57__total"])
    64834.0
 
 Allowance for credit losses
