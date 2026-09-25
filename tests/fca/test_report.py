@@ -1934,8 +1934,9 @@ def test_to_domain_dataset_loan_performance_curated_columns_and_grain() -> None:
 def test_to_domain_dataset_loan_performance_wide_matches_narrow() -> None:
     """wide=True and wide=False carry exactly the same cells, reshaped.
 
-    Since this bundle has no derived columns, every wide cell must equal
-    its narrow counterpart exactly, with nothing computed in between.
+    The wide frame is re-pivoted from the narrow one after every derived
+    row and column is added, so each wide cell equals its narrow
+    counterpart exactly.
     """
     report = _archive_report("2026-03-31", "2026-03-31")
     narrow = report.to_domain_dataset(domain_dataset="loan_performance")
@@ -1949,8 +1950,9 @@ def test_to_domain_dataset_loan_performance_wide_matches_narrow() -> None:
     wide_row = next(row for row in rows_of(wide) if row["UNINUM"] == 620000)
     for code, measure in [
         (10.0, "not_past_due"),
+        (54.0, "total"),
         (54.0, "total_past_due"),
-        (80.0, "total_past_due"),
+        (80.0, "total"),
     ]:
         assert (
             wide_row[f"{int(code)}__{measure}"] == narrow_rows[(620000, code)][measure]
@@ -1969,10 +1971,11 @@ def test_to_domain_dataset_loan_performance_excludes_totals_by_default() -> None
 
 
 def test_to_domain_dataset_loan_performance_number_of_loans_is_a_count() -> None:
-    """Code 80 shares not_past_due/etc.'s names but holds counts, not dollars.
+    """Code 80 is the total number of loans, reported in the `total` column.
 
-    The code value and its label are what disambiguate the unit; no
-    special-casing is needed in the reshape for this to work correctly.
+    RC-F reports only one figure for code 80 and leaves every aging bucket
+    empty, so the count is a whole-book total rather than a past due
+    count. Its total_past_due is null for the same reason.
     """
     performance = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
         domain_dataset="loan_performance", include_totals=True
@@ -1983,8 +1986,94 @@ def test_to_domain_dataset_loan_performance_number_of_loans_is_a_count() -> None
         if row["UNINUM"] == 620000
     }
     assert is_missing(rows[80.0]["not_past_due"])
-    assert not is_missing(rows[80.0]["total_past_due"])
-    assert rows[80.0]["total_past_due"] < rows[60.0]["total_past_due"]
+    assert is_missing(rows[80.0]["total_past_due"])
+    assert not is_missing(rows[80.0]["total"])
+    assert rows[80.0]["total"] < rows[60.0]["total"]
+
+
+def test_to_domain_dataset_loan_performance_total_is_the_row_total() -> None:
+    """`total` is not past due plus both past due buckets, on every row.
+
+    RC-F's TOTPDUE includes loans that are not past due. It is off by at
+    most a dollar of rounding, so the check allows for that.
+    """
+    performance = _archive_report("2025-12-31", "2025-12-31").to_domain_dataset(
+        domain_dataset="loan_performance", include_totals=True
+    )
+    dollar_rows = [row for row in rows_of(performance) if row["code_value"] != 80.0]
+    assert dollar_rows
+    for row in dollar_rows:
+        parts = row["not_past_due"] + row["past_due_30"] + row["past_due_90"]
+        assert abs(parts - row["total"]) <= 1
+
+
+def test_to_domain_dataset_loan_performance_total_past_due_excludes_current() -> None:
+    """total_past_due is the two past due buckets and nothing else."""
+    performance = _archive_report("2025-12-31", "2025-12-31").to_domain_dataset(
+        domain_dataset="loan_performance"
+    )
+    for row in rows_of(performance):
+        if row["code_value"] == 80.0:
+            continue
+        assert row["total_past_due"] == row["past_due_30"] + row["past_due_90"]
+
+
+def test_to_domain_dataset_loan_performance_nonaccrual_total_sums_its_members() -> None:
+    """Code 57 equals codes 54 and 56 added together, on every measure.
+
+    Checked for every institution, not a sample, since the sum is built
+    per institution and period.
+    """
+    performance = _archive_report("2025-12-31", "2025-12-31").to_domain_dataset(
+        domain_dataset="loan_performance", include_totals=True
+    )
+    by_key = {(row["UNINUM"], row["code_value"]): row for row in rows_of(performance)}
+    institutions = {uninum for uninum, _ in by_key}
+    for uninum in institutions:
+        total = by_key[(uninum, 57.0)]
+        cash, other = by_key[(uninum, 54.0)], by_key[(uninum, 56.0)]
+        for measure in ("not_past_due", "past_due_30", "past_due_90", "total"):
+            assert total[measure] == cash[measure] + other[measure], (uninum, measure)
+        assert total["total_past_due"] == total["past_due_30"] + total["past_due_90"]
+
+
+def test_to_domain_dataset_loan_performance_nonaccrual_total_is_a_subtotal() -> None:
+    """Code 57 is excluded by default and present with include_totals=True.
+
+    Both member rows stay in the result either way.
+    """
+    report = _archive_report("2025-12-31", "2025-12-31")
+    default = {
+        row["code_value"]
+        for row in rows_of(report.to_domain_dataset(domain_dataset="loan_performance"))
+    }
+    with_totals = {
+        row["code_value"]
+        for row in rows_of(
+            report.to_domain_dataset(
+                domain_dataset="loan_performance", include_totals=True
+            )
+        )
+    }
+    assert 57.0 not in default
+    assert {54.0, 56.0} <= default
+    assert {54.0, 56.0, 57.0} <= with_totals
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_to_domain_dataset_loan_performance_nonaccrual_total_every_backend(
+    dataframe_type: DataFrameType,
+) -> None:
+    """The computed row is built under every backend, lazy included."""
+    result = _archive_report("2025-12-31", "2025-12-31").to_domain_dataset(
+        domain_dataset="loan_performance",
+        include_totals=True,
+        dataframe_type=dataframe_type,
+    )
+    assert 57.0 in {row["code_value"] for row in rows_of(result)}
 
 
 def test_to_domain_dataset_loan_performance_accepts_an_enum_member() -> None:

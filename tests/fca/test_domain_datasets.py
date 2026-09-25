@@ -154,7 +154,7 @@ def test_loan_performance_bundle_loads() -> None:
     assert dataset.name == "loan_performance"
     assert dataset.code_column == "PERFORMANCE_STATUS"
     assert dataset.schedules == ("RCF",)
-    assert len(dataset.codes) == 6
+    assert len(dataset.codes) == 7
 
 
 def test_loan_performance_is_scoped_to_one_schedule() -> None:
@@ -180,24 +180,47 @@ def test_loan_performance_source_is_code_bearing() -> None:
     assert all(item.code is None for item in source.columns.values())
 
 
-def test_loan_performance_total_code_is_flagged() -> None:
-    """60 is the only code marked a subtotal, and it is marked."""
-    dataset = get_fca_domain_dataset(domain_dataset="loan_performance")
-    assert dataset.total_codes == frozenset({60})
+def test_loan_performance_total_codes_are_flagged() -> None:
+    """RC-F's reported total and the computed nonaccrual total are subtotals.
 
-
-def test_loan_performance_has_no_derived_columns() -> None:
-    """No derived columns are declared.
-
-    A useful non_performing measure would sum past_due_90 (code 10) with
-    total_past_due (codes 54 and 56), but those live on three different
-    code rows in the narrow grain, and a derived column can only combine
-    output columns already on the same row. Computing it is left to the
-    caller against the wide=True output instead, documented in the user
-    guide rather than shipped as a derived column here.
+    Both would double count if a caller summed every code, so both are
+    excluded unless include_totals is True.
     """
     dataset = get_fca_domain_dataset(domain_dataset="loan_performance")
-    assert dataset.derived == ()
+    assert dataset.total_codes == frozenset({57, 60})
+
+
+def test_loan_performance_computes_the_nonaccrual_total() -> None:
+    """RC-F splits nonaccrual in two and reports no nonaccrual subtotal.
+
+    Code 57 is that subtotal, summed from 54 and 56, and both members stay
+    in the result alongside it.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="loan_performance")
+    (nonaccrual,) = dataset.derived_codes
+    assert nonaccrual.code == 57
+    assert nonaccrual.components == (54, 56)
+    assert {54, 56} <= {item.code for item in dataset.codes}
+
+
+def test_loan_performance_total_is_the_row_total() -> None:
+    """RC-F's TOTPDUE is the row total, so it lands in `total`.
+
+    FCA defines TOTPDUE as "Total", and it equals not past due plus both
+    past due buckets. Naming it total_past_due would read as the past due
+    amount alone.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="loan_performance")
+    assert dataset.sources[0].columns["TOTPDUE"].column == "total"
+
+
+def test_loan_performance_derives_total_past_due() -> None:
+    """total_past_due is the two past due buckets, without not past due."""
+    dataset = get_fca_domain_dataset(domain_dataset="loan_performance")
+    (derived,) = dataset.derived
+    assert derived.column == "total_past_due"
+    assert derived.operation == "sum"
+    assert derived.components == ("past_due_30", "past_due_90")
 
 
 def test_allowance_for_credit_losses_bundle_loads() -> None:
@@ -707,6 +730,85 @@ def test_a_dataset_without_a_split_column_reports_none() -> None:
     dataset = get_fca_domain_dataset(domain_dataset="loan_portfolio")
     assert dataset.split_column is None
     assert all(not source.split_map for source in dataset.sources)
+
+
+# ---------------------------------------------------------------------------
+# computed code (components) validation
+# ---------------------------------------------------------------------------
+
+
+def _computed_code_definition(*codes: dict[str, Any]) -> dict[str, Any]:
+    """Return a valid single-source definition with the given codes.
+
+    Parameters
+    ----------
+    *codes : dict[str, Any]
+        The code entries, as they would appear in a shipped bundle.
+
+    Returns
+    -------
+    dict[str, Any]
+        A definition ready for `DomainDataset.from_dict`.
+    """
+    return {
+        "name": "example",
+        "code_column": "STATUS",
+        "codes": list(codes),
+        "sources": [
+            {
+                "schedules": ["RCF"],
+                "code_column": "LOANSTATUS",
+                "columns": {"TOTPDUE": {"column": "total"}},
+            }
+        ],
+        "derived": [],
+    }
+
+
+def test_a_computed_code_summing_an_undeclared_code_raises() -> None:
+    """A computed code can only add up codes the dataset declares.
+
+    Without the check, a typo in a component would silently drop that
+    code from the sum rather than failing.
+    """
+    data = _computed_code_definition(
+        {"code": 54, "label": "Cash basis", "is_total": False},
+        {"code": 57, "label": "Total", "is_total": True, "components": [54, 99]},
+    )
+    with pytest.raises(SchemaError, match=r"sum of \[99\], which it does not declare"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_a_computed_code_summing_another_computed_code_raises() -> None:
+    """Computed codes sum reported codes only.
+
+    Allowing one to depend on another would make the result depend on the
+    order the codes are declared in.
+    """
+    data = _computed_code_definition(
+        {"code": 54, "label": "Cash basis", "is_total": False},
+        {"code": 57, "label": "Total", "is_total": True, "components": [54]},
+        {"code": 58, "label": "Grand", "is_total": True, "components": [57]},
+    )
+    with pytest.raises(SchemaError, match="themselves computed"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_a_computed_code_summing_itself_raises() -> None:
+    """A code cannot be one of its own components."""
+    data = _computed_code_definition(
+        {"code": 54, "label": "Cash basis", "is_total": False},
+        {"code": 57, "label": "Total", "is_total": True, "components": [54, 57]},
+    )
+    with pytest.raises(SchemaError, match="includes itself"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_a_reported_code_declares_no_components() -> None:
+    """A code the source reports itself has empty components by default."""
+    dataset = get_fca_domain_dataset(domain_dataset="loan_portfolio")
+    assert dataset.derived_codes == ()
+    assert all(item.components == () for item in dataset.codes)
 
 
 # ---------------------------------------------------------------------------
