@@ -2800,6 +2800,199 @@ def test_to_domain_dataset_asset_transfers_under_lazy_polars() -> None:
     assert {row["DIRECTION"] for row in rows} == {"Purchased", "Sold"}
 
 
+_INVESTMENT_MEASURES = (
+    "amortized_cost",
+    "fair_value",
+    "available_for_sale_amortized_cost",
+    "available_for_sale_fair_value",
+)
+"""tuple[str, ...]: The four measure columns of the investments dataset."""
+
+
+def _raw_investment_codes(
+    report: FCACallReport, uninum: int
+) -> dict[int, dict[str, Any]]:
+    """Return one institution's raw RC-B rows, keyed by INV_CODE.
+
+    Parameters
+    ----------
+    report : FCACallReport
+        A report covering a single period.
+    uninum : int
+        The institution to select.
+
+    Returns
+    -------
+    dict[int, dict[str, Any]]
+        Each raw code's row from `to_code_grain_format`.
+    """
+    return {
+        int(row["code_value"]): row
+        for row in rows_of(report.to_code_grain_format(schedules=["RCB"]))
+        if row["UNINUM"] == uninum
+    }
+
+
+def _investments_by_code(
+    report: FCACallReport, uninum: int
+) -> dict[int, dict[str, Any]]:
+    """Return one institution's curated investments rows, totals included.
+
+    Parameters
+    ----------
+    report : FCACallReport
+        A report covering a single period.
+    uninum : int
+        The institution to select.
+
+    Returns
+    -------
+    dict[int, dict[str, Any]]
+        Each curated code's row from `to_domain_dataset`.
+    """
+    return {
+        int(row["code_value"]): row
+        for row in rows_of(
+            report.to_domain_dataset(domain_dataset="investments", include_totals=True)
+        )
+        if row["UNINUM"] == uninum
+    }
+
+
+def test_to_domain_dataset_investments_curated_columns_and_grain() -> None:
+    """Rows are keyed by security type, with four named measures."""
+    investments = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="investments"
+    )
+    row = rows_of(investments)[0]
+    assert row["code_column"] == "INVESTMENT_TYPE"
+    assert set(_INVESTMENT_MEASURES) <= set(row)
+
+
+def test_to_domain_dataset_investments_total_sums_its_members() -> None:
+    """Code 98 equals the sum of every security type, for every institution.
+
+    Checked at 2026Q1, where the allowance exists, and at 2008Q4, where
+    diversified investment funds do. Neither is part of the sum.
+    """
+    for period in ("2026-03-31", "2008-12-31"):
+        rows = rows_of(
+            _archive_report(period, period).to_domain_dataset(
+                domain_dataset="investments", include_totals=True
+            )
+        )
+        totals = {row["UNINUM"]: row for row in rows if row["code_value"] == 98.0}
+        members: dict[int, float] = {}
+        for row in rows:
+            if row["code_value"] in (85.0, 98.0, 180.0):
+                continue
+            value = 0.0 if is_missing(row["amortized_cost"]) else row["amortized_cost"]
+            members[row["UNINUM"]] = members.get(row["UNINUM"], 0.0) + value
+        assert totals
+        for uninum, total in totals.items():
+            assert total["amortized_cost"] == members[uninum], (period, uninum)
+
+
+def test_to_domain_dataset_investments_total_backs_out_diversified_funds() -> None:
+    """Before 2015, RC-B's total included funds, and code 98 does not.
+
+    UNINUM 610000 is the one institution that reported diversified
+    investment funds (code 85). Its code 98 is its reported total 80 less
+    those funds, while code 85 stays in the result as its own row.
+    """
+    report = _archive_report("2008-12-31", "2008-12-31")
+    raw = _raw_investment_codes(report, 610000)
+    curated = _investments_by_code(report, 610000)
+    for measure, variable in (("amortized_cost", "BKVAL"), ("fair_value", "MKTVAL")):
+        reported = raw[80][f"RCB__{variable}"]
+        funds = raw[85][f"RCB__{variable}"]
+        assert funds > 0
+        assert curated[98][measure] == reported - funds
+        assert curated[85][measure] == funds
+
+
+def test_to_domain_dataset_investments_total_is_gross_of_the_allowance() -> None:
+    """From 2023Q1, RC-B's total 99 is net of the allowance, and code 98 is not.
+
+    UNINUM 722918 reported an allowance (code 180) at 2025Q3. Its code 98
+    is its reported total plus that allowance, which stays in the result
+    as its own row.
+    """
+    report = _archive_report("2025-09-30", "2025-09-30")
+    raw = _raw_investment_codes(report, 722918)
+    curated = _investments_by_code(report, 722918)
+    allowance = raw[180]["RCB__BKVAL"]
+    assert allowance > 0
+    assert curated[98]["amortized_cost"] == raw[99]["RCB__BKVAL"] + allowance
+    assert curated[180]["amortized_cost"] == allowance
+
+
+def test_to_domain_dataset_investments_crosswalks_code_11_to_17() -> None:
+    """A balance under retired code 11 continues as code 17 across 2015Q1."""
+    before = _archive_report("2014-12-31", "2014-12-31")
+    after = _archive_report("2015-03-31", "2015-03-31")
+    raw_before = _raw_investment_codes(before, 722502)
+    curated_before = _investments_by_code(before, 722502)
+    curated_after = _investments_by_code(after, 722502)
+    assert 11 not in curated_before
+    assert curated_before[17]["amortized_cost"] == raw_before[11]["RCB__BKVAL"]
+    assert curated_after[17]["amortized_cost"] > 0
+
+
+def test_to_domain_dataset_investments_never_reports_the_dropped_codes() -> None:
+    """RC-B's reported totals and summary codes never reach the curated frame.
+
+    2008Q4 carries codes 80, 100, 120, and 130, 2013Q4 carries the
+    150-157 summary codes, and 2026Q1 carries code 99.
+    """
+    dropped = {80, 99, 100, 120, 130, *range(150, 159), *range(171, 175)}
+    for period in ("2008-12-31", "2013-12-31", "2026-03-31"):
+        report = _archive_report(period, period)
+        raw = {
+            int(row["code_value"])
+            for row in rows_of(report.to_code_grain_format(schedules=["RCB"]))
+        }
+        curated = {
+            int(row["code_value"])
+            for row in rows_of(
+                report.to_domain_dataset(
+                    domain_dataset="investments", include_totals=True
+                )
+            )
+        }
+        assert raw & dropped, period
+        assert not curated & dropped, period
+
+
+def test_to_domain_dataset_investments_excludes_the_total_by_default() -> None:
+    """Code 98 is a subtotal, so it appears only with include_totals=True."""
+    report = _archive_report("2026-03-31", "2026-03-31")
+    default = {
+        row["code_value"]
+        for row in rows_of(report.to_domain_dataset(domain_dataset="investments"))
+    }
+    assert 98.0 not in default
+    assert 180.0 in default
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_to_domain_dataset_investments_every_backend(
+    dataframe_type: DataFrameType,
+) -> None:
+    """The remapped, dropped, and computed codes all work under every backend."""
+    result = _archive_report("2014-12-31", "2014-12-31").to_domain_dataset(
+        domain_dataset="investments",
+        include_totals=True,
+        dataframe_type=dataframe_type,
+    )
+    codes = {row["code_value"] for row in rows_of(result)}
+    assert {17.0, 98.0} <= codes
+    assert not codes & {11.0, 80.0}
+
+
 # ---------------------------------------------------------------------------
 # FCACallReport.available_domain_datasets
 # ---------------------------------------------------------------------------

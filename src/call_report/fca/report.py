@@ -713,7 +713,8 @@ class FCACallReport(BaseCallReport):
          <FCADomainDataset.LOAN_PERFORMANCE: 'loan_performance'>,
          <FCADomainDataset.ALLOWANCE_FOR_CREDIT_LOSSES: 'allowance_for_credit_losses'>,
          <FCADomainDataset.CAPITAL: 'capital'>,
-         <FCADomainDataset.ASSET_TRANSFERS: 'asset_transfers'>)
+         <FCADomainDataset.ASSET_TRANSFERS: 'asset_transfers'>,
+         <FCADomainDataset.INVESTMENTS: 'investments'>)
         """
         return tuple(FCADomainDataset)
 
