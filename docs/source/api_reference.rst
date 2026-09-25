@@ -102,6 +102,7 @@ The exception hierarchy shared across sources.
    call_report.exceptions.ScheduleNotFoundError
    call_report.exceptions.DomainDatasetNotFoundError
    call_report.exceptions.LayoutParseError
+   call_report.exceptions.InstitutionError
    call_report.exceptions.DownloadError
    call_report.exceptions.ReshapeError
 
@@ -122,6 +123,9 @@ parsing an individual layout or data file.
    call_report.fca.FCACallReport
    call_report.fca.FCASchedule
    call_report.fca.FCADomainDataset
+   call_report.fca.FCAInstitution
+   call_report.fca.FCAInstitutionSnapshot
+   call_report.fca.InstitutionAttributeVersion
    call_report.fca.DomainDataset
    call_report.fca.DomainDatasetSource
    call_report.fca.DomainDatasetColumn
