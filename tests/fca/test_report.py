@@ -2676,6 +2676,130 @@ def test_to_domain_dataset_allowance_no_declared_schedule_in_range_raises(
         report.to_domain_dataset(domain_dataset="allowance_for_credit_losses")
 
 
+_ASSET_TRANSFER_PAIRS = ((10, 20), (30, 40), (50, 60), (70, 80), (90, 100), (110, 120))
+"""tuple[tuple[int, int], ...]: RC-O's codes, paired as (purchased, sold)."""
+
+
+def test_to_domain_dataset_asset_transfers_curated_columns_and_grain() -> None:
+    """Rows are keyed by asset type and direction, with two named measures."""
+    transfers = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="asset_transfers"
+    )
+    row = rows_of(transfers)[0]
+    assert row["code_column"] == "ASSET_TYPE"
+    assert row["DIRECTION"] in {"Purchased", "Sold"}
+    assert "amortized_cost" in row
+    assert "fair_value" in row
+
+
+def test_to_domain_dataset_asset_transfers_keeps_every_code_pair_apart() -> None:
+    """Each RC-O code lands on its own asset type and direction, unsummed.
+
+    Two codes mapping to one curated code are summed everywhere else, so
+    the direction has to be part of the row key or a purchased balance
+    and a sold balance would be added together.
+    """
+    report = _archive_report("2025-03-31", "2025-03-31")
+    raw = {
+        int(row["code_value"]): row["RCO__TRANSWFCI"]
+        for row in rows_of(report.to_code_grain_format(schedules=["RCO"]))
+        if row["UNINUM"] == 620000
+    }
+    curated = {
+        (int(row["code_value"]), row["DIRECTION"]): row["amortized_cost"]
+        for row in rows_of(report.to_domain_dataset(domain_dataset="asset_transfers"))
+        if row["UNINUM"] == 620000
+    }
+    for purchased, sold in _ASSET_TRANSFER_PAIRS:
+        assert curated[(purchased, "Purchased")] == raw[purchased]
+        assert curated[(purchased, "Sold")] == raw[sold]
+
+
+def test_to_domain_dataset_asset_transfers_covers_every_institution() -> None:
+    """Every institution gets all six asset types in both directions.
+
+    A direction supplied per code rather than per row would leave some
+    institutions short a row, which one sampled institution would not
+    show.
+    """
+    rows = rows_of(
+        _archive_report("2025-03-31", "2025-03-31").to_domain_dataset(
+            domain_dataset="asset_transfers"
+        )
+    )
+    by_institution: dict[int, set[tuple[int, str]]] = {}
+    for row in rows:
+        key = (int(row["code_value"]), row["DIRECTION"])
+        by_institution.setdefault(int(row["UNINUM"]), set()).add(key)
+    expected = {
+        (code, direction)
+        for pair in _ASSET_TRANSFER_PAIRS
+        for code in (pair[0],)
+        for direction in ("Purchased", "Sold")
+    }
+    assert {frozenset(keys) for keys in by_institution.values()} == {
+        frozenset(expected)
+    }
+
+
+def test_to_domain_dataset_asset_transfers_later_codes_start_when_they_start() -> None:
+    """RC-O added code pairs over time, and the dataset does not invent them.
+
+    Codes 90 and 100 begin at 2007Q1 and 110 and 120 at 2013Q1, so an
+    earlier period carries only the asset types RC-O reported then.
+    """
+    early = rows_of(
+        _archive_report("2005-03-31", "2005-03-31").to_domain_dataset(
+            domain_dataset="asset_transfers"
+        )
+    )
+    assert {int(row["code_value"]) for row in early} == {10, 30, 50, 70}
+
+
+def test_to_domain_dataset_asset_transfers_wide_names_both_dimensions() -> None:
+    """The wide column key carries the direction as well as the asset type."""
+    report = _archive_report("2025-03-31", "2025-03-31")
+    narrow = rows_of(report.to_domain_dataset(domain_dataset="asset_transfers"))
+    wide = rows_of(
+        report.to_domain_dataset(domain_dataset="asset_transfers", wide=True)
+    )
+    by_uninum = {row["UNINUM"]: row for row in wide}
+    for row in narrow:
+        key = f"{int(row['code_value'])}_{row['DIRECTION']}__amortized_cost"
+        assert by_uninum[row["UNINUM"]][key] == row["amortized_cost"]
+
+
+@pytest.mark.parametrize(
+    "dataframe_type",
+    ["pandas", "pyarrow_table", "polars_dataframe", "polars_lazyframe"],
+)
+def test_to_domain_dataset_asset_transfers_honors_dataframe_type(
+    dataframe_type: DataFrameType,
+) -> None:
+    """A dataset with a second row key column converts under every backend."""
+    expected_type = {
+        "pandas": pd.DataFrame,
+        "pyarrow_table": pa.Table,
+        "polars_dataframe": pl.DataFrame,
+        "polars_lazyframe": pl.LazyFrame,
+    }[dataframe_type]
+    result = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="asset_transfers", dataframe_type=dataframe_type
+    )
+    assert isinstance(result, expected_type)
+
+
+def test_to_domain_dataset_asset_transfers_under_lazy_polars() -> None:
+    """The split join and the grouped merge both stay lazy until the pivot."""
+    with config_context(dataframe_backend="polars", lazy=True):
+        transfers = _archive_report("2025-03-31", "2025-03-31").to_domain_dataset(
+            domain_dataset="asset_transfers"
+        )
+    rows = [row for row in rows_of(transfers) if row["UNINUM"] == 620000]
+    assert len(rows) == 12
+    assert {row["DIRECTION"] for row in rows} == {"Purchased", "Sold"}
+
+
 # ---------------------------------------------------------------------------
 # FCACallReport.available_domain_datasets
 # ---------------------------------------------------------------------------

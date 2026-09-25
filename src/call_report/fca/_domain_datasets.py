@@ -161,6 +161,13 @@ class DomainDatasetSource:
         summed, which is how a schedule that later split one code into
         two stays comparable with its own earlier periods. Empty for a
         source whose codes mean the same thing in every period.
+    split_map : Mapping[int, str]
+        What each of the source's own code values contributes to the
+        dataset's `DomainDataset.split_column`, for a schedule whose one
+        code really encodes two dimensions. It is what keeps two codes
+        that `code_map` sends to one curated code as separate rows, since
+        the split value is part of the row key. Empty for a source whose
+        codes encode a single dimension.
 
     Examples
     --------
@@ -183,12 +190,13 @@ class DomainDatasetSource:
     columns: Mapping[str, DomainDatasetColumn]
     continues: frozenset[str] = frozenset()
     code_map: Mapping[int, int | None] = field(default_factory=dict)
+    split_map: Mapping[int, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Replace `columns` and `code_map` with read-only views of themselves.
+        """Replace the mapping attributes with read-only views of themselves.
 
-        After construction, mutating either raises rather than silently
-        changing this instance.
+        After construction, mutating `columns`, `code_map` or `split_map`
+        raises rather than silently changing this instance.
         """
         # dataclass(frozen=True) only stops `columns` from being rebound,
         # not the dict it holds from being mutated in place, which would
@@ -196,6 +204,7 @@ class DomainDatasetSource:
         # get_fca_domain_dataset cache.
         object.__setattr__(self, "columns", MappingProxyType(dict(self.columns)))
         object.__setattr__(self, "code_map", MappingProxyType(dict(self.code_map)))
+        object.__setattr__(self, "split_map", MappingProxyType(dict(self.split_map)))
 
     @property
     def output_columns(self) -> frozenset[str]:
@@ -270,6 +279,11 @@ class DomainDataset:
         The schedule groups contributing columns.
     derived : tuple[DomainDatasetDerived, ...]
         Output columns computed from other output columns.
+    split_column : str, optional
+        A second row key column, for a dataset whose source encodes two
+        dimensions in one code. Each contributing code supplies its value
+        through `DomainDatasetSource.split_map`. ``None`` for a dataset
+        whose rows are keyed by `code_column` alone.
 
     Examples
     --------
@@ -284,6 +298,7 @@ class DomainDataset:
     codes: tuple[DomainDatasetCode, ...]
     sources: tuple[DomainDatasetSource, ...]
     derived: tuple[DomainDatasetDerived, ...]
+    split_column: str | None = None
 
     @property
     def schedules(self) -> tuple[str, ...]:
@@ -397,18 +412,21 @@ class DomainDataset:
 
     @property
     def remaps_codes(self) -> bool:
-        """Return whether any source rewrites its schedule's own code values.
+        """Return whether any source rewrites its schedule's own row key.
 
         A dataset that remaps codes sums the rows that land on one
         curated code, since a renumbering that merges two codes into one
         would otherwise leave two rows where the reshape expects one.
         A dataset that does not keeps the stricter guarantee that the
-        code grain is already unique.
+        code grain is already unique. Summing groups by `split_column`
+        too where there is one, so codes that merge but differ in their
+        split value stay apart.
 
         Returns
         -------
         bool
-            True if at least one source declares a non-empty `code_map`.
+            True if at least one source declares a non-empty `code_map`
+            or `split_map`.
 
         Examples
         --------
@@ -419,7 +437,7 @@ class DomainDataset:
         >>> dataset.remaps_codes
         False
         """
-        return any(source.code_map for source in self.sources)
+        return any(source.code_map or source.split_map for source in self.sources)
 
     @cached_property
     def _code_remap_lookup(self) -> Mapping[str, tuple[Any, ...]]:
@@ -438,11 +456,15 @@ class DomainDataset:
         Plain Python rather than a dataframe, for the reason
         `_decoding_lookup` gives.
 
+        A code named only by `DomainDatasetSource.split_map` appears here
+        too, with a null `remapped_code`, so that it keeps the code it
+        already had while still picking up its split value.
+
         Returns
         -------
         Mapping[str, tuple[Any, ...]]
             Column-oriented rows, keyed ``"schedule"``, ``"code_value"``,
-            ``"remapped_code"``, and ``"dropped"``.
+            ``"remapped_code"``, ``"split_value"``, and ``"dropped"``.
 
         Examples
         --------
@@ -454,10 +476,19 @@ class DomainDataset:
         35.0
         """
         rows = [
-            (schedule, source_code, curated)
+            (
+                schedule,
+                source_code,
+                source.code_map.get(source_code),
+                source.split_map.get(source_code),
+                # Only a code the map names explicitly is dropped. One
+                # reached through split_map alone is absent from code_map,
+                # which is the pass-through case rather than the drop.
+                source_code in source.code_map and source.code_map[source_code] is None,
+            )
             for source in self.sources
             for schedule in source.schedules
-            for source_code, curated in sorted(source.code_map.items())
+            for source_code in sorted(set(source.code_map) | set(source.split_map))
         ]
         return MappingProxyType(
             {
@@ -466,7 +497,8 @@ class DomainDataset:
                 "remapped_code": tuple(
                     None if row[2] is None else float(row[2]) for row in rows
                 ),
-                "dropped": tuple(row[2] is None for row in rows),
+                "split_value": tuple(row[3] for row in rows),
+                "dropped": tuple(row[4] for row in rows),
             }
         )
 
@@ -624,9 +656,14 @@ class DomainDataset:
                         int(source_code): curated
                         for source_code, curated in source.get("code_map", {}).items()
                     },
+                    split_map={
+                        int(source_code): value
+                        for source_code, value in source.get("split_map", {}).items()
+                    },
                 )
                 for source in data["sources"]
             )
+            split_column = data.get("split_column")
 
             codes = tuple(
                 DomainDatasetCode(
@@ -745,6 +782,30 @@ class DomainDataset:
                         "dataset's own codes."
                     )
 
+                if source.split_map and not has_code_column:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares a split_map for a "
+                        "source with no code_column. A split value is keyed by "
+                        "the source's own code, which a name-encoded source "
+                        "does not report."
+                    )
+
+                if source.split_map and split_column is None:
+                    raise SchemaError(
+                        f"Domain dataset {name!r} declares a split_map without a "
+                        "split_column to put the values in. The dataset has to "
+                        "name the second row key column the map supplies."
+                    )
+
+            if split_column is not None and not any(
+                source.split_map for source in sources
+            ):
+                raise SchemaError(
+                    f"Domain dataset {name!r} declares split_column="
+                    f"{split_column!r}, but no source supplies a split_map for "
+                    "it. The column would be null on every row."
+                )
+
             valid_operations = get_args(DerivedOperation)
             derived = tuple(
                 DomainDatasetDerived(
@@ -785,6 +846,7 @@ class DomainDataset:
                 codes=codes,
                 sources=sources,
                 derived=derived,
+                split_column=split_column,
             )
         except (KeyError, TypeError) as error:
             raise SchemaError(

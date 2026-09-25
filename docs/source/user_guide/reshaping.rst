@@ -498,6 +498,62 @@ from a frame covering only later periods.
    >>> "surplus_reserve" in capital.columns
    False
 
+Asset transfers
+----------------
+
+``asset_transfers`` curates RC-O, the assets an institution has bought and
+sold. It is the one dataset whose rows are keyed by two things rather than
+one, because RC-O's single code really carries two: six asset types, each
+reported once as purchased and once as sold. The curated frame separates
+them, so ``DIRECTION`` joins the code in the row key:
+
+.. doctest::
+
+   >>> transfers = report.to_domain_dataset(domain_dataset="asset_transfers")
+   >>> list(transfers.columns)
+   ['UNINUM', 'period', 'code_column', 'code_value', 'DIRECTION', 'amortized_cost', 'fair_value']
+   >>> codes = get_domain_dataset_codes(domain_dataset="asset_transfers")
+   >>> codes[["code", "label"]]
+      code                               label
+   0    10                 Loan participations
+   1    30         Similar entity transactions
+   2    50                     Lease interests
+   3    70                        Other assets
+   4    90  Participations in notes receivable
+   5   110                  Certain pool items
+
+Each asset type therefore appears twice per institution and period:
+
+.. doctest::
+
+   >>> participations = transfers[
+   ...     (transfers["UNINUM"] == 620000) & (transfers["code_value"] == 10.0)
+   ... ]
+   >>> participations[["DIRECTION", "amortized_cost", "fair_value"]].reset_index(drop=True)
+      DIRECTION  amortized_cost  fair_value
+   0  Purchased       9050558.0     60352.0
+   1       Sold       2952766.0     46575.0
+
+The two measures are named for what they hold. RC-O calls them
+``TRANSWFCI`` and ``TRANSWNONFCI``, which read as transfers with FCI and
+non-FCI institutions, but their definitions are "Amortized cost" and "Fair
+Value".
+
+RC-O added asset types over its history and never retired one. Codes 90 and
+100 begin at 2007Q1 and 110 and 120 at 2013Q1, so an earlier period carries
+only the asset types reported then. RC-O reports no rows at all before
+2004Q1.
+
+Under ``wide=True`` both dimensions appear in the column name, as
+``{code}_{direction}__{measure}``:
+
+.. doctest::
+
+   >>> wide_transfers = report.to_domain_dataset(domain_dataset="asset_transfers", wide=True)
+   >>> row = wide_transfers[wide_transfers["UNINUM"] == 620000].iloc[0]
+   >>> float(row["10_Purchased__amortized_cost"])
+   9050558.0
+
 Converting between the shapes
 =============================
 

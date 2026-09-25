@@ -30,6 +30,7 @@ from call_report.fca._reshape import (
     _with_column_key,
     _with_is_multiple_flag,
     _with_plain_column_key,
+    add_derived_code_rows,
     add_derived_columns,
     apply_domain_dataset_decoding,
     assert_pivot_has_measurements,
@@ -1808,3 +1809,154 @@ def test_pivot_domain_dataset_wide_drops_code_column(backend: str) -> None:
     )
     wide = pivot_domain_dataset_wide(frame=narrow)
     assert set(wide.columns) == {"UNINUM", "period", "100__accruing"}
+
+
+# ---------------------------------------------------------------------------
+# add_derived_code_rows
+# ---------------------------------------------------------------------------
+
+
+def test_add_derived_code_rows_keeps_a_split_column_as_a_row_key() -> None:
+    """A computed code sums within each split value, never across them.
+
+    With a split column the row key is the code plus the split value, so
+    the computed total has one row per split value. Grouping on the code
+    grain alone treats the split column as a measure. Under pandas that
+    does not raise: it concatenates the split values into one nonsense
+    label and sums the measure across both directions.
+    """
+    dataset = DomainDataset.from_dict(
+        data={
+            "name": "example",
+            "code_column": "ASSET_TYPE",
+            "split_column": "DIRECTION",
+            "codes": [
+                {"code": 10, "label": "Ten", "is_total": False},
+                {"code": 30, "label": "Thirty", "is_total": False},
+                {
+                    "code": 99,
+                    "label": "Both",
+                    "is_total": True,
+                    "components": [10, 30],
+                },
+            ],
+            "sources": [
+                {
+                    "schedules": ["RCO"],
+                    "code_column": "ASSET_CODE",
+                    "split_map": {"10": "Purchased", "30": "Purchased"},
+                    "columns": {"TRANSWFCI": {"column": "amortized_cost"}},
+                }
+            ],
+            "derived": [],
+        }
+    )
+    frame = build_frame(
+        data={
+            "UNINUM": [1, 1, 1, 1],
+            "period": [date(2025, 3, 31)] * 4,
+            "code_column": ["ASSET_TYPE"] * 4,
+            "code_value": [10.0, 10.0, 30.0, 30.0],
+            "DIRECTION": ["Purchased", "Sold", "Purchased", "Sold"],
+            "amortized_cost": [1.0, 2.0, 10.0, 20.0],
+        }
+    )
+    result = add_derived_code_rows(frame=frame, dataset=dataset, include_totals=True)
+    totals = {
+        row["DIRECTION"]: row["amortized_cost"]
+        for row in rows_of(result)
+        if row["code_value"] == 99.0
+    }
+    assert totals == {"Purchased": 11.0, "Sold": 22.0}
+
+
+def test_add_derived_code_rows_skips_a_subtotal_unless_totals_are_kept() -> None:
+    """A computed subtotal is not built at all when include_totals is False.
+
+    The frame comes back unchanged rather than built and then filtered.
+    """
+    dataset = DomainDataset.from_dict(
+        data={
+            "name": "example",
+            "code_column": "STATUS",
+            "codes": [
+                {"code": 54, "label": "Cash", "is_total": False},
+                {"code": 57, "label": "All", "is_total": True, "components": [54]},
+            ],
+            "sources": [
+                {
+                    "schedules": ["RCF"],
+                    "code_column": "LOANSTATUS",
+                    "columns": {"TOTPDUE": {"column": "total"}},
+                }
+            ],
+            "derived": [],
+        }
+    )
+    frame = build_frame(
+        data={
+            "UNINUM": [1],
+            "period": [date(2025, 3, 31)],
+            "code_column": ["STATUS"],
+            "code_value": [54.0],
+            "total": [5.0],
+        }
+    )
+    result = add_derived_code_rows(frame=frame, dataset=dataset, include_totals=False)
+    assert result is frame
+
+
+def test_add_derived_code_rows_keeps_an_unreported_measure_null() -> None:
+    """A measure no member row reported stays null on the computed row.
+
+    A measure of zero and a measure nobody reported say different things.
+    """
+    dataset = DomainDataset.from_dict(
+        data={
+            "name": "example",
+            "code_column": "STATUS",
+            "codes": [
+                {"code": 54, "label": "Cash", "is_total": False},
+                {"code": 56, "label": "Other", "is_total": False},
+                {
+                    "code": 57,
+                    "label": "All",
+                    "is_total": False,
+                    "components": [54, 56],
+                },
+            ],
+            "sources": [
+                {
+                    "schedules": ["RCF"],
+                    "code_column": "LOANSTATUS",
+                    "columns": {
+                        "TOTPDUE": {"column": "total"},
+                        "PDUE30": {"column": "past_due_30"},
+                    },
+                }
+            ],
+            "derived": [],
+        }
+    )
+    frame = build_frame(
+        data={
+            "UNINUM": [1, 1],
+            "period": [date(2025, 3, 31)] * 2,
+            "code_column": ["STATUS"] * 2,
+            "code_value": [54.0, 56.0],
+            "total": [5.0, 7.0],
+            "past_due_30": [None, None],
+        },
+        schema={
+            "UNINUM": nw.Int64(),
+            "period": nw.Date(),
+            "code_column": nw.String(),
+            "code_value": nw.Float64(),
+            "total": nw.Float64(),
+            "past_due_30": nw.Float64(),
+        },
+    )
+    result = add_derived_code_rows(frame=frame, dataset=dataset, include_totals=False)
+    (computed,) = [row for row in rows_of(result) if row["code_value"] == 57.0]
+    assert computed["total"] == 12.0
+    assert is_missing(computed["past_due_30"])

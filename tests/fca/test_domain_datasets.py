@@ -358,6 +358,49 @@ def test_capital_declares_no_subtotal_codes() -> None:
     assert dataset.total_codes == frozenset()
 
 
+def test_asset_transfers_bundle_loads() -> None:
+    """The shipped asset transfers bundle parses into the expected shape."""
+    dataset = get_fca_domain_dataset(domain_dataset="asset_transfers")
+    assert dataset.name == "asset_transfers"
+    assert dataset.code_column == "ASSET_TYPE"
+    assert dataset.split_column == "DIRECTION"
+    assert dataset.schedules == ("RCO",)
+    assert len(dataset.codes) == 6
+
+
+def test_asset_transfers_splits_one_code_into_two_dimensions() -> None:
+    """RC-O's 12 codes are 6 asset types crossed with purchased and sold.
+
+    Each pair of RC-O codes is one asset type, so the pair maps to one
+    curated code and is told apart by its direction instead.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="asset_transfers")
+    source = dataset.sources[0]
+    assert source.code_column == "ASSET_CODE"
+    assert source.code_map == {20: 10, 40: 30, 60: 50, 80: 70, 100: 90, 120: 110}
+    assert {code: source.split_map[code] for code in (10, 20, 30, 40)} == {
+        10: "Purchased",
+        20: "Sold",
+        30: "Purchased",
+        40: "Sold",
+    }
+    assert set(source.split_map) == {10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120}
+
+
+def test_asset_transfers_names_its_measures_from_their_definitions() -> None:
+    """The two measures are named for what they hold, not what RC-O calls them.
+
+    RC-O's `TRANSWFCI` and `TRANSWNONFCI` read as transfers with FCI and
+    non-FCI institutions. Their shipped definitions are "Amortized cost"
+    and "Fair Value", so selecting either by its source name gets a
+    reader the opposite of what they expect.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="asset_transfers")
+    columns = dataset.sources[0].columns
+    assert columns["TRANSWFCI"].column == "amortized_cost"
+    assert columns["TRANSWNONFCI"].column == "fair_value"
+
+
 def test_get_fca_domain_dataset_is_cached() -> None:
     """A second request returns the same parsed object rather than re-reading."""
     first = get_fca_domain_dataset(domain_dataset="loan_portfolio")
@@ -607,6 +650,86 @@ def test_a_source_code_map_is_read_only() -> None:
     dataset = get_fca_domain_dataset(domain_dataset="capital")
     with pytest.raises(TypeError):
         dataset.sources[0].code_map[10] = 999  # type: ignore[index]
+
+
+# ---------------------------------------------------------------------------
+# split_map / split_column validation
+# ---------------------------------------------------------------------------
+
+
+def _split_definition(**source_overrides: Any) -> dict[str, Any]:
+    """Return a valid two-dimension definition, with the source overridden.
+
+    Parameters
+    ----------
+    **source_overrides : Any
+        Keys to replace on the single source group.
+
+    Returns
+    -------
+    dict[str, Any]
+        A definition ready for `DomainDataset.from_dict`.
+    """
+    source: dict[str, Any] = {
+        "schedules": ["RCO"],
+        "code_column": "ASSET_CODE",
+        "code_map": {"20": 10},
+        "split_map": {"10": "Purchased", "20": "Sold"},
+        "columns": {"TRANSWFCI": {"column": "amortized_cost"}},
+    }
+    source.update(source_overrides)
+    return {
+        "name": "example",
+        "code_column": "ASSET_TYPE",
+        "split_column": "DIRECTION",
+        "codes": [{"code": 10, "label": "Loan participations", "is_total": False}],
+        "sources": [source],
+        "derived": [],
+    }
+
+
+def test_a_name_encoded_source_declaring_a_split_map_raises() -> None:
+    """A split value is keyed by a code, which a name-encoded source lacks."""
+    data = _split_definition(
+        code_column=None,
+        code_map={},
+        columns={"TRANSWFCI": {"column": "amortized_cost", "code": 10}},
+    )
+    with pytest.raises(SchemaError, match="split_map for a source with no code_column"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_a_split_map_without_a_split_column_raises() -> None:
+    """The dataset has to name the column the split values land in.
+
+    Without one the values have nowhere to go, and the second dimension
+    would vanish silently rather than failing.
+    """
+    data = _split_definition()
+    del data["split_column"]
+    with pytest.raises(SchemaError, match="split_map without a split_column"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_a_split_column_no_source_supplies_raises() -> None:
+    """A declared split column with no split_map would be null on every row."""
+    data = _split_definition(split_map={})
+    with pytest.raises(SchemaError, match="no source supplies a split_map"):
+        DomainDataset.from_dict(data=data)
+
+
+def test_a_source_split_map_is_read_only() -> None:
+    """Mutating a parsed split_map raises rather than corrupting the cache."""
+    dataset = get_fca_domain_dataset(domain_dataset="asset_transfers")
+    with pytest.raises(TypeError):
+        dataset.sources[0].split_map[10] = "Other"  # type: ignore[index]
+
+
+def test_a_dataset_without_a_split_column_reports_none() -> None:
+    """A dataset keyed by code alone leaves split_column unset."""
+    dataset = get_fca_domain_dataset(domain_dataset="loan_portfolio")
+    assert dataset.split_column is None
+    assert all(not source.split_map for source in dataset.sources)
 
 
 # ---------------------------------------------------------------------------

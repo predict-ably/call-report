@@ -1030,6 +1030,7 @@ _CODE_REMAP_SCHEMA: dict[str, nw.dtypes.DType] = {
     "schedule": nw.String(),
     "code_value": nw.Float64(),
     "remapped_code": nw.Float64(),
+    "split_value": nw.String(),
     "dropped": nw.Boolean(),
 }
 """dict[str, narwhals.dtypes.DType]: Declared dtypes for the code remap lookup.
@@ -1157,18 +1158,25 @@ def _apply_code_remap(*, frame: FrameOrLazy, dataset: DomainDataset) -> FrameOrL
     instead, which is what excludes a code that carries no information of
     its own.
 
+    A dataset with a `DomainDataset.split_column` also gains that column
+    here, from the same join. The split value is part of the row key, so
+    two codes that `code_map` sends to one curated code stay on separate
+    rows when their split values differ.
+
     Parameters
     ----------
     frame : narwhals.DataFrame or narwhals.LazyFrame
         The decoded frame, still carrying each row's own `code_value`.
     dataset : DomainDataset
-        The curated dataset whose `code_map` declarations are applied.
+        The curated dataset whose `code_map` and `split_map` declarations
+        are applied.
 
     Returns
     -------
     narwhals.DataFrame or narwhals.LazyFrame
-        `frame` with every remapped code rewritten and every dropped code
-        removed. Lazy if `frame` was lazy.
+        `frame` with every remapped code rewritten, every dropped code
+        removed, and `split_column` added where the dataset declares one.
+        Lazy if `frame` was lazy.
     """
     remap = _matched_lookup_frame(
         frame=frame,
@@ -1182,18 +1190,40 @@ def _apply_code_remap(*, frame: FrameOrLazy, dataset: DomainDataset) -> FrameOrL
     )
     # A row that matched no remap row has a null `dropped`, which is the
     # pass-through case rather than the drop.
-    return (
-        remapped.filter(~nw.col("dropped").fill_null(value=False))
-        .with_columns(
-            nw.coalesce(nw.col("remapped_code"), nw.col("code_value")).alias(
-                "code_value"
-            )
-        )
-        .drop("remapped_code", "dropped")
+    remapped = remapped.filter(~nw.col("dropped").fill_null(value=False)).with_columns(
+        nw.coalesce(nw.col("remapped_code"), nw.col("code_value")).alias("code_value")
     )
+    if dataset.split_column is not None:
+        remapped = remapped.rename({"split_value": dataset.split_column})
+        return remapped.drop("remapped_code", "dropped")
+    return remapped.drop("remapped_code", "dropped", "split_value")
 
 
-def aggregate_remapped_codes(*, frame: FrameOrLazy) -> FrameOrLazy:
+def domain_grain_columns(*, dataset: DomainDataset) -> tuple[str, ...]:
+    """Return the row key columns one curated dataset's narrow frame uses.
+
+    `CODE_GRAIN_INDEX` for most datasets, plus
+    `DomainDataset.split_column` for one whose source encodes two
+    dimensions in a single code.
+
+    Parameters
+    ----------
+    dataset : DomainDataset
+        The curated dataset to describe.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The row key columns, in order.
+    """
+    if dataset.split_column is None:
+        return CODE_GRAIN_INDEX
+    return (*CODE_GRAIN_INDEX, dataset.split_column)
+
+
+def aggregate_remapped_codes(
+    *, frame: FrameOrLazy, grain: Sequence[str]
+) -> FrameOrLazy:
     """Sum the decoded rows that a code remap put on one curated code.
 
     Runs only for a dataset whose `DomainDataset.remaps_codes` is True.
@@ -1206,18 +1236,24 @@ def aggregate_remapped_codes(*, frame: FrameOrLazy) -> FrameOrLazy:
     a measure of zero and a measure the source did not report say
     different things. `_derived_expression` draws the same distinction.
 
+    Grouping is on `grain`, so a dataset with a
+    `DomainDataset.split_column` keeps two codes that merged onto one
+    curated code apart when their split values differ.
+
     Parameters
     ----------
     frame : narwhals.DataFrame or narwhals.LazyFrame
         The decoded frame, in the dataset's own terms.
+    grain : Sequence[str]
+        The row key columns to group by, from `domain_grain_columns`.
 
     Returns
     -------
     narwhals.DataFrame or narwhals.LazyFrame
-        `frame` grouped down to one row per code grain and output column.
+        `frame` grouped down to one row per grain and output column.
         Lazy if `frame` was lazy.
     """
-    grouped = frame.group_by(*CODE_GRAIN_INDEX, "variable_name").agg(
+    grouped = frame.group_by(*grain, "variable_name").agg(
         nw.col("value").sum().alias("_total"),
         nw.col("value").count().alias("_reported"),
     )
@@ -1385,8 +1421,11 @@ def add_derived_code_rows(
     if not wanted:
         return frame
 
-    index = [name for name in CODE_GRAIN_INDEX if name != "code_value"]
-    measures = [name for name in frame.columns if name not in CODE_GRAIN_INDEX]
+    # The dataset's own grain rather than CODE_GRAIN_INDEX, so a split
+    # column stays a row key to group on instead of a measure to sum.
+    grain = domain_grain_columns(dataset=dataset)
+    index = [name for name in grain if name != "code_value"]
+    measures = [name for name in frame.columns if name not in grain]
     pieces = [frame]
     for item in wanted:
         members = frame.filter(
@@ -1466,7 +1505,9 @@ def assert_pivot_has_measurements(*, pivoted: nw.DataFrame[Any], message: str) -
         raise ReshapeError(message)
 
 
-def pivot_domain_dataset_wide(*, frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
+def pivot_domain_dataset_wide(
+    *, frame: nw.DataFrame[Any], split_column: str | None = None
+) -> nw.DataFrame[Any]:
     """Pivot a curated domain dataset frame wider, one column per code and measure.
 
     Takes the code-grain-shaped frame `FCACallReport._to_domain_dataset`
@@ -1484,10 +1525,18 @@ def pivot_domain_dataset_wide(*, frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
     null in practice, so this only guards a row that reached here some
     other way.
 
+    A dataset with a second row key column folds that into the name too,
+    as ``{code_value}_{split_value}__{measure}``, since the code alone no
+    longer identifies a row.
+
     Parameters
     ----------
     frame : narwhals.DataFrame
         The narrow, code-grain-shaped curated frame.
+    split_column : str, optional
+        The dataset's `DomainDataset.split_column`, for one that keys its
+        rows by a second dimension. ``None`` for a dataset keyed by code
+        alone.
 
     Returns
     -------
@@ -1501,14 +1550,21 @@ def pivot_domain_dataset_wide(*, frame: nw.DataFrame[Any]) -> nw.DataFrame[Any]:
         If `RESHAPE_INDEX` plus ``{code_value}__{measure}`` is not a
         unique grain.
     """
-    measures = [column for column in frame.columns if column not in CODE_GRAIN_INDEX]
+    grain = (
+        CODE_GRAIN_INDEX if split_column is None else (*CODE_GRAIN_INDEX, split_column)
+    )
+    measures = [column for column in frame.columns if column not in grain]
     melted = frame.unpivot(
         on=measures,
-        index=list(CODE_GRAIN_INDEX),
+        index=list(grain),
         variable_name="measure",
         value_name="value",
     )
     code_value_text = nw.col("code_value").fill_null(0).cast(nw.Int64).cast(nw.String)
+    if split_column is not None:
+        code_value_text = nw.concat_str(
+            [code_value_text, nw.col(split_column)], separator="_"
+        )
     melted = melted.with_columns(
         nw.concat_str([code_value_text, nw.col("measure")], separator="__").alias(
             "column_key"

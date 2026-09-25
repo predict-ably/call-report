@@ -712,7 +712,8 @@ class FCACallReport(BaseCallReport):
         (<FCADomainDataset.LOAN_PORTFOLIO: 'loan_portfolio'>,
          <FCADomainDataset.LOAN_PERFORMANCE: 'loan_performance'>,
          <FCADomainDataset.ALLOWANCE_FOR_CREDIT_LOSSES: 'allowance_for_credit_losses'>,
-         <FCADomainDataset.CAPITAL: 'capital'>)
+         <FCADomainDataset.CAPITAL: 'capital'>,
+         <FCADomainDataset.ASSET_TRANSFERS: 'asset_transfers'>)
         """
         return tuple(FCADomainDataset)
 
@@ -1531,12 +1532,13 @@ class FCACallReport(BaseCallReport):
             combined = _reshape.exclude_reported_totals(
                 frame=combined, total_codes=dataset.total_codes
             )
+        grain = _reshape.domain_grain_columns(dataset=dataset)
         if dataset.remaps_codes:
-            combined = _reshape.aggregate_remapped_codes(frame=combined)
+            combined = _reshape.aggregate_remapped_codes(frame=combined, grain=grain)
         pivoted = pivot(
             frame=combined,
             on="variable_name",
-            index=list(_reshape.CODE_GRAIN_INDEX),
+            index=list(grain),
             values="value",
         )
         _reshape.assert_pivot_has_measurements(
@@ -1547,7 +1549,9 @@ class FCACallReport(BaseCallReport):
         )
         result = _reshape.add_derived_columns(frame=with_codes, derived=dataset.derived)
         if wide:
-            return _reshape.pivot_domain_dataset_wide(frame=result)
+            return _reshape.pivot_domain_dataset_wide(
+                frame=result, split_column=dataset.split_column
+            )
         return result
 
     def _load_reshape_inputs(
