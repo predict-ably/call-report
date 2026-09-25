@@ -618,16 +618,46 @@ liquidity). None of them is part of the reported total.
 :meth:`~call_report.fca.FCACallReport.to_code_grain_format` still returns
 them.
 
-Some codes change content without changing number. Keep these in mind when
-reading a code's series across a boundary:
+The total is consistent across periods, but some individual codes are not.
+At three points, institutions moved holdings from one code to another. Read
+a single code's series across these quarters with care.
 
-* From 2012Q1, the Farm Credit banks report almost none of their
-  investments in RC-B, although their balance sheets (schedule RC) still
-  carry them. From that quarter the dataset mostly describes association
-  holdings.
-* Codes 15, 71 to 73, and 86 to 88 have no rows before 2019Q1. At 2019Q1,
-  Farmer Mac farm and ranch securities moved from code 66 to code 86, and
-  SBA securities moved from code 17 to code 15.
+**2012Q1: the banks leave, and associations reclassify.** From 2012Q1, the
+Farm Credit banks report almost none of their investments in RC-B, although
+their balance sheets (schedule RC) still carry them. From that quarter the
+dataset mostly describes association holdings. In the same quarter,
+associations moved holdings between codes, and not all of them moved the
+same way:
+
+* Of the 15 associations holding code 20 (U.S. government agency
+  securities) at 2011Q4, 11 reported those holdings under code 11 at 2012Q1,
+  and 3 kept them under code 20.
+* Of the 10 holding code 70 (other), 6 reported those holdings under code
+  81 (domestic debt securities), and 2 kept them under code 70.
+* Of the 7 holding code 62 (government guaranteed mortgage securities), 2
+  reported those holdings under code 65 and 1 under code 11. The other 4
+  kept them under code 62.
+
+Because each old code went to more than one place, the dataset maps none
+of them. Codes 63 and 75 end at 2011Q4. Only banks held them, so no
+association series shows where they went.
+
+**2015Q1: the code rewrite.** Code 11 continues as 17 and code 20 as 25, as
+described above.
+
+**2019Q1: Farmer Mac, SBA, and CMBS detail.** Codes 15, 71 to 73, and 86 to
+88 have no rows before 2019Q1. In that quarter, holdings moved into them from
+older codes:
+
+* All 7 institutions holding code 66 (other Farmer Mac securities) at
+  2018Q4 reported those holdings under code 86 (Farmer Mac farm and ranch
+  securities) at 2019Q1. Before 2019Q1, code 66 therefore holds farm and
+  ranch securities.
+* Of the 9 institutions holding code 17 (other U.S. government and agency
+  securities), 7 reported those holdings under code 15 (SBA securities).
+  Before 2019Q1, code 17 therefore includes SBA securities.
+* Codes 71 to 73 split commercial mortgage-backed securities by guarantor.
+  Before 2019Q1, those securities are reported under code 65.
 
 Converting between the shapes
 =============================

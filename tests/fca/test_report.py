@@ -2939,6 +2939,33 @@ def test_to_domain_dataset_investments_crosswalks_code_11_to_17() -> None:
     assert curated_after[17]["amortized_cost"] > 0
 
 
+def test_to_domain_dataset_investments_farmer_mac_moves_from_66_to_86() -> None:
+    """At 2019Q1 every holder of code 66 moved those holdings to code 86.
+
+    The user guide tells a reader that code 66 holds farm and ranch
+    securities before 2019Q1. The dataset maps neither code, so this pins
+    the archive fact that statement rests on.
+    """
+
+    def holders(period: str) -> dict[int, set[int]]:
+        rows = rows_of(
+            _archive_report(period, period).to_domain_dataset(
+                domain_dataset="investments"
+            )
+        )
+        found: dict[int, set[int]] = {}
+        for row in rows:
+            if not is_missing(row["amortized_cost"]) and row["amortized_cost"] != 0:
+                found.setdefault(int(row["code_value"]), set()).add(row["UNINUM"])
+        return found
+
+    before, after = holders("2018-12-31"), holders("2019-03-31")
+    assert len(before[66]) == 7
+    assert 66 not in after
+    assert before[66] <= after[86]
+    assert 86 not in before
+
+
 def test_to_domain_dataset_investments_never_reports_the_dropped_codes() -> None:
     """RC-B's reported totals and summary codes never reach the curated frame.
 
