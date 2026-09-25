@@ -50,6 +50,24 @@
     {"code": 146, "label": "ABS: Manufactured housing loans", "is_total": false},
     {"code": 180, "label": "Allowance for credit losses on debt securities", "is_total": false},
     {
+      "code": 16,
+      "label": "U.S. government and agency securities including SBA (excluding MBS)",
+      "is_total": true,
+      "components": [15, 17]
+    },
+    {
+      "code": 74,
+      "label": "CMBS: Total",
+      "is_total": true,
+      "components": [65, 71, 72, 73]
+    },
+    {
+      "code": 89,
+      "label": "Farmer Mac guaranteed securities: Total",
+      "is_total": true,
+      "components": [66, 86, 87, 88]
+    },
+    {
       "code": 98,
       "label": "Total debt securities (gross of the allowance, excluding diversified investment funds)",
       "is_total": true,

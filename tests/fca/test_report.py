@@ -2884,7 +2884,7 @@ def test_to_domain_dataset_investments_total_sums_its_members() -> None:
         totals = {row["UNINUM"]: row for row in rows if row["code_value"] == 98.0}
         members: dict[int, float] = {}
         for row in rows:
-            if row["code_value"] in (85.0, 98.0, 180.0):
+            if row["code_value"] in (16.0, 74.0, 85.0, 89.0, 98.0, 180.0):
                 continue
             value = 0.0 if is_missing(row["amortized_cost"]) else row["amortized_cost"]
             members[row["UNINUM"]] = members.get(row["UNINUM"], 0.0) + value
@@ -2964,6 +2964,56 @@ def test_to_domain_dataset_investments_farmer_mac_moves_from_66_to_86() -> None:
     assert 66 not in after
     assert before[66] <= after[86]
     assert 86 not in before
+
+
+@pytest.mark.parametrize("period", ["2018-12-31", "2019-03-31"])
+def test_to_domain_dataset_investments_subtotals_sum_their_members(
+    period: str,
+) -> None:
+    """Codes 16, 74, and 89 equal their members, for every institution.
+
+    Checked on both sides of the 2019Q1 split, where the members change
+    from the old code alone to the old code plus its new detail codes.
+    """
+    rows = rows_of(
+        _archive_report(period, period).to_domain_dataset(
+            domain_dataset="investments", include_totals=True
+        )
+    )
+    by_key = {(row["UNINUM"], int(row["code_value"])): row for row in rows}
+    subtotals = {16: (15, 17), 74: (65, 71, 72, 73), 89: (66, 86, 87, 88)}
+    checked = 0
+    for (uninum, code), row in by_key.items():
+        if code not in subtotals:
+            continue
+        members = [
+            by_key[(uninum, member)]["amortized_cost"]
+            for member in subtotals[code]
+            if (uninum, member) in by_key
+        ]
+        expected = sum(value for value in members if not is_missing(value))
+        assert row["amortized_cost"] == expected, (period, uninum, code)
+        checked += 1
+    assert checked
+
+
+def test_to_domain_dataset_investments_farmer_mac_total_spans_2019() -> None:
+    """Code 89 carries one Farmer Mac series across the 2019Q1 split.
+
+    UNINUM 722918 reported its Farmer Mac securities under code 66 at
+    2018Q4, then split them between codes 86 and 88 at 2019Q1. Neither
+    single code continues, but their subtotal does.
+    """
+    report = _archive_report("2018-12-31", "2019-03-31")
+    rows = rows_of(
+        report.to_domain_dataset(domain_dataset="investments", include_totals=True)
+    )
+    farmer_mac = {
+        as_date(row["period"]).year: row["amortized_cost"]
+        for row in rows
+        if row["UNINUM"] == 722918 and row["code_value"] == 89.0
+    }
+    assert farmer_mac == {2018: 877938.0, 2019: 884443.0}
 
 
 def test_to_domain_dataset_investments_never_reports_the_dropped_codes() -> None:

@@ -646,18 +646,58 @@ association series shows where they went.
 described above.
 
 **2019Q1: Farmer Mac, SBA, and CMBS detail.** Codes 15, 71 to 73, and 86 to
-88 have no rows before 2019Q1. In that quarter, holdings moved into them from
-older codes:
+88 have no rows before 2019Q1. Until then, the holdings they describe were
+reported under a broader code, and in that quarter institutions moved them
+into the new detail codes:
 
-* All 7 institutions holding code 66 (other Farmer Mac securities) at
-  2018Q4 reported those holdings under code 86 (Farmer Mac farm and ranch
-  securities) at 2019Q1. Before 2019Q1, code 66 therefore holds farm and
-  ranch securities.
-* Of the 9 institutions holding code 17 (other U.S. government and agency
-  securities), 7 reported those holdings under code 15 (SBA securities).
-  Before 2019Q1, code 17 therefore includes SBA securities.
-* Codes 71 to 73 split commercial mortgage-backed securities by guarantor.
-  Before 2019Q1, those securities are reported under code 65.
+* Code 66 held all Farmer Mac guaranteed securities. All 7 institutions
+  holding it at 2018Q4 moved those holdings to code 86 (farm and ranch
+  securities) or code 88 (USDA securities) at 2019Q1.
+* Code 17 held SBA securities. Of the 9 institutions holding it at 2018Q4,
+  7 moved those holdings to code 15 (SBA securities) at 2019Q1. The other 2
+  kept theirs under code 17.
+* Code 65 held all commercial mortgage-backed securities. Codes 71 to 73
+  split them by guarantor from 2019Q1.
+
+Three subtotals add each old code to the codes split out of it, so each one
+means the same thing before and after 2019Q1:
+
+* Code 16 is codes 15 and 17, U.S. government and agency securities
+  including SBA. Because code 11 continues as 17, this series starts in
+  2000.
+* Code 74 is codes 65 and 71 to 73, all CMBS.
+* Code 89 is codes 66 and 86 to 88, all Farmer Mac guaranteed securities.
+
+Like code 98, they appear only with ``include_totals=True``, and code 98
+never counts them. Their members stay in the result. UNINUM 722918 split its
+Farmer Mac holdings between codes 86 and 88, so neither code continues from
+code 66, but code 89 does:
+
+.. doctest::
+
+   >>> split = FCACallReport(
+   ...     start="2018-12-31", end="2019-03-31", transport=PackagedArchiveTransport()
+   ... )
+   >>> farmer_mac = split.to_domain_dataset(domain_dataset="investments", include_totals=True)
+   >>> farmer_mac = farmer_mac[
+   ...     (farmer_mac["UNINUM"] == 722918)
+   ...     & farmer_mac["code_value"].isin([66.0, 86.0, 88.0, 89.0])
+   ... ]
+   >>> farmer_mac[["period", "code_value", "amortized_cost"]].reset_index(drop=True)
+         period  code_value  amortized_cost
+   0 2018-12-31        66.0        877938.0
+   1 2019-03-31        66.0             0.0
+   2 2019-03-31        86.0        514533.0
+   3 2019-03-31        88.0        369910.0
+   4 2018-12-31        89.0        877938.0
+   5 2019-03-31        89.0        884443.0
+
+Codes 16 and 74 carry one caveat. At 2019Q1, UNINUM 722825 and 722918 each
+reported more under code 15 than they had held under code 17, while their
+CMBS under code 65 fell. Some of what they reported as CMBS before 2019Q1
+may be SBA securities. If so, code 74 is overstated and code 16 understated
+for those two institutions before 2019Q1. Code 98 is unaffected, since the
+question is only which code the securities were reported under.
 
 Converting between the shapes
 =============================

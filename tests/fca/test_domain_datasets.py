@@ -408,7 +408,7 @@ def test_investments_bundle_loads() -> None:
     assert dataset.code_column == "INVESTMENT_TYPE"
     assert dataset.schedules == ("RCB",)
     assert dataset.split_column is None
-    assert len(dataset.codes) == 48
+    assert len(dataset.codes) == 51
 
 
 def test_investments_crosswalks_only_the_codes_that_tie() -> None:
@@ -446,12 +446,28 @@ def test_investments_total_excludes_funds_and_the_allowance() -> None:
     including either would change the total's meaning across periods.
     """
     dataset = get_fca_domain_dataset(domain_dataset="investments")
-    (total,) = dataset.derived_codes
-    assert total.code == 98
-    assert total.is_total
-    declared = {item.code for item in dataset.codes}
-    assert set(total.components) == declared - {85, 98, 180}
-    assert dataset.total_codes == frozenset({98})
+    total = next(item for item in dataset.derived_codes if item.code == 98)
+    reported = {item.code for item in dataset.codes if not item.components}
+    assert set(total.components) == reported - {85, 180}
+
+
+def test_investments_subtotals_carry_codes_split_at_2019() -> None:
+    """Three computed subtotals continue a code FCA split at 2019Q1.
+
+    Before 2019Q1, SBA securities were reported under code 17, all CMBS
+    under 65, and all Farmer Mac securities under 66. Each subtotal adds
+    the old code to the codes split out of it, so the sum means the same
+    thing on both sides of the split.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="investments")
+    subtotals = {item.code: item.components for item in dataset.derived_codes}
+    assert subtotals == {
+        16: (15, 17),
+        74: (65, 71, 72, 73),
+        89: (66, 86, 87, 88),
+        98: subtotals[98],
+    }
+    assert dataset.total_codes == frozenset({16, 74, 89, 98})
 
 
 def test_investments_names_its_measures_from_their_definitions() -> None:
