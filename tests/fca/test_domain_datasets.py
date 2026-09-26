@@ -401,6 +401,86 @@ def test_asset_transfers_names_its_measures_from_their_definitions() -> None:
     assert columns["TRANSWNONFCI"].column == "fair_value"
 
 
+def test_investments_bundle_loads() -> None:
+    """The shipped investments bundle parses into the expected shape."""
+    dataset = get_fca_domain_dataset(domain_dataset="investments")
+    assert dataset.name == "investments"
+    assert dataset.code_column == "INVESTMENT_TYPE"
+    assert dataset.schedules == ("RCB",)
+    assert dataset.split_column is None
+    assert len(dataset.codes) == 51
+
+
+def test_investments_crosswalks_only_the_codes_that_tie() -> None:
+    """Only the two retired codes whose balances carry over are remapped.
+
+    At 2015Q1, code 11 became 17 and code 20 became 25, each held by the
+    same institutions on both sides. Codes 31 and 32 are left apart from
+    their successor 29, since the balances do not reconcile.
+    """
+    source = get_fca_domain_dataset(domain_dataset="investments").sources[0]
+    assert source.code_column == "INV_CODE"
+    remapped = {raw: curated for raw, curated in source.code_map.items() if curated}
+    assert remapped == {11: 17, 20: 25}
+
+
+def test_investments_drops_the_reported_totals_and_summary_codes() -> None:
+    """RC-B's own totals and its non-security summary codes are dropped.
+
+    The reported totals 80 and 99 differ in definition (80 includes
+    diversified investment funds, 99 is net of the allowance), so the
+    dataset computes its own. Codes 100, 120, 130, 150-158 and 171-174
+    are summary lines rather than security types, and none is part of
+    the reported total.
+    """
+    source = get_fca_domain_dataset(domain_dataset="investments").sources[0]
+    dropped = {raw for raw, curated in source.code_map.items() if curated is None}
+    assert dropped == {80, 99, 100, 120, 130, *range(150, 159), *range(171, 175)}
+
+
+def test_investments_total_excludes_funds_and_the_allowance() -> None:
+    """Code 98 sums every security type except funds and the allowance.
+
+    Diversified investment funds (85) are not debt securities, and the
+    allowance (180) offsets the balance rather than adding to it, so
+    including either would change the total's meaning across periods.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="investments")
+    total = next(item for item in dataset.derived_codes if item.code == 98)
+    reported = {item.code for item in dataset.codes if not item.components}
+    assert set(total.components) == reported - {85, 180}
+
+
+def test_investments_subtotals_carry_codes_split_at_2019() -> None:
+    """Three computed subtotals continue a code FCA split at 2019Q1.
+
+    Before 2019Q1, SBA securities were reported under code 17, all CMBS
+    under 65, and all Farmer Mac securities under 66. Each subtotal adds
+    the old code to the codes split out of it, so the sum means the same
+    thing on both sides of the split.
+    """
+    dataset = get_fca_domain_dataset(domain_dataset="investments")
+    subtotals = {item.code: item.components for item in dataset.derived_codes}
+    assert subtotals == {
+        16: (15, 17),
+        74: (65, 71, 72, 73),
+        89: (66, 86, 87, 88),
+        98: subtotals[98],
+    }
+    assert dataset.total_codes == frozenset({16, 74, 89, 98})
+
+
+def test_investments_names_its_measures_from_their_definitions() -> None:
+    """RC-B's four value fields are renamed to what their definitions say."""
+    columns = get_fca_domain_dataset(domain_dataset="investments").sources[0].columns
+    assert {variable: item.column for variable, item in columns.items()} == {
+        "BKVAL": "amortized_cost",
+        "MKTVAL": "fair_value",
+        "BKVALFORSALE": "available_for_sale_amortized_cost",
+        "MKTVALFORSALE": "available_for_sale_fair_value",
+    }
+
+
 def test_get_fca_domain_dataset_is_cached() -> None:
     """A second request returns the same parsed object rather than re-reading."""
     first = get_fca_domain_dataset(domain_dataset="loan_portfolio")

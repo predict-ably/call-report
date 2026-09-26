@@ -1,0 +1,116 @@
+{
+  "name": "investments",
+  "code_column": "INVESTMENT_TYPE",
+  "codes": [
+    {"code": 10, "label": "U.S. Treasury securities", "is_total": false},
+    {"code": 12, "label": "Other partially insured or guaranteed obligations", "is_total": false},
+    {"code": 15, "label": "SBA securities", "is_total": false},
+    {"code": 17, "label": "Other U.S. government and agency securities (excluding MBS)", "is_total": false},
+    {"code": 22, "label": "Other partially insured or guaranteed obligations (agency)", "is_total": false},
+    {"code": 25, "label": "Securities fully and unconditionally guaranteed by a GSE (excluding MBS and Farmer Mac securities)", "is_total": false},
+    {"code": 29, "label": "Municipal securities", "is_total": false},
+    {"code": 31, "label": "General municipal obligations", "is_total": false},
+    {"code": 32, "label": "Municipal revenue bonds", "is_total": false},
+    {"code": 33, "label": "Industrial development revenue bonds", "is_total": false},
+    {"code": 34, "label": "Other municipal obligations", "is_total": false},
+    {"code": 35, "label": "International and multilateral development bank obligations", "is_total": false},
+    {"code": 40, "label": "Money market instruments: Federal funds sold", "is_total": false},
+    {"code": 41, "label": "Money market instruments: Negotiable certificates of deposit", "is_total": false},
+    {"code": 43, "label": "Non-callable term Federal funds and Eurodollar time deposits", "is_total": false},
+    {"code": 50, "label": "Money market instruments: Reverse repurchase agreements", "is_total": false},
+    {"code": 51, "label": "Money market instruments: Other", "is_total": false},
+    {"code": 52, "label": "Money market instruments: Commercial paper", "is_total": false},
+    {"code": 60, "label": "Money market instruments: Bankers acceptances", "is_total": false},
+    {"code": 62, "label": "RMBS fully and unconditionally guaranteed by the U.S. government or its agencies", "is_total": false},
+    {"code": 63, "label": "Mortgage securities issued or guaranteed by FNMA, FHLMC, or another U.S. agency", "is_total": false},
+    {"code": 64, "label": "Non-agency RMBS", "is_total": false},
+    {"code": 65, "label": "CMBS: Other CMBS", "is_total": false},
+    {"code": 66, "label": "Farmer Mac guaranteed securities: Other Farmer Mac debt securities", "is_total": false},
+    {"code": 68, "label": "RMBS fully and unconditionally guaranteed by a GSE", "is_total": false},
+    {"code": 69, "label": "Other RMBS", "is_total": false},
+    {"code": 70, "label": "Other", "is_total": false},
+    {"code": 71, "label": "CMBS: Fully and unconditionally guaranteed by the U.S. government", "is_total": false},
+    {"code": 72, "label": "CMBS: Fully and unconditionally guaranteed by a GSE", "is_total": false},
+    {"code": 73, "label": "CMBS: Non-agency CMBS", "is_total": false},
+    {"code": 75, "label": "Corporate debt securities", "is_total": false},
+    {"code": 81, "label": "Other debt securities: Domestic", "is_total": false},
+    {"code": 82, "label": "Other debt securities: Foreign", "is_total": false},
+    {"code": 85, "label": "Diversified investment funds", "is_total": false},
+    {"code": 86, "label": "Farmer Mac guaranteed securities: Farm and ranch securities (AMBS)", "is_total": false},
+    {"code": 87, "label": "Farmer Mac guaranteed securities: Rural utility securities", "is_total": false},
+    {"code": 88, "label": "Farmer Mac guaranteed securities: USDA securities", "is_total": false},
+    {"code": 90, "label": "Master notes", "is_total": false},
+    {"code": 95, "label": "ABS: Other ABS", "is_total": false},
+    {"code": 110, "label": "Structured notes", "is_total": false},
+    {"code": 141, "label": "ABS: Credit card receivables", "is_total": false},
+    {"code": 142, "label": "ABS: Home equity loans", "is_total": false},
+    {"code": 143, "label": "ABS: Auto loans", "is_total": false},
+    {"code": 144, "label": "ABS: Student loans", "is_total": false},
+    {"code": 145, "label": "ABS: Equipment loans", "is_total": false},
+    {"code": 146, "label": "ABS: Manufactured housing loans", "is_total": false},
+    {"code": 180, "label": "Allowance for credit losses on debt securities", "is_total": false},
+    {
+      "code": 16,
+      "label": "U.S. government and agency securities including SBA (excluding MBS)",
+      "is_total": true,
+      "components": [15, 17]
+    },
+    {
+      "code": 74,
+      "label": "CMBS: Total",
+      "is_total": true,
+      "components": [65, 71, 72, 73]
+    },
+    {
+      "code": 89,
+      "label": "Farmer Mac guaranteed securities: Total",
+      "is_total": true,
+      "components": [66, 86, 87, 88]
+    },
+    {
+      "code": 98,
+      "label": "Total debt securities (gross of the allowance, excluding diversified investment funds)",
+      "is_total": true,
+      "components": [
+        10, 12, 15, 17, 22, 25, 29, 31, 32, 33, 34, 35, 40, 41, 43, 50, 51, 52,
+        60, 62, 63, 64, 65, 66, 68, 69, 70, 71, 72, 73, 75, 81, 82, 86, 87, 88,
+        90, 95, 110, 141, 142, 143, 144, 145, 146
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "schedules": ["RCB"],
+      "code_column": "INV_CODE",
+      "code_map": {
+        "11": 17,
+        "20": 25,
+        "80": null,
+        "99": null,
+        "100": null,
+        "120": null,
+        "130": null,
+        "150": null,
+        "151": null,
+        "152": null,
+        "153": null,
+        "154": null,
+        "155": null,
+        "156": null,
+        "157": null,
+        "158": null,
+        "171": null,
+        "172": null,
+        "173": null,
+        "174": null
+      },
+      "columns": {
+        "BKVAL": {"column": "amortized_cost"},
+        "MKTVAL": {"column": "fair_value"},
+        "BKVALFORSALE": {"column": "available_for_sale_amortized_cost"},
+        "MKTVALFORSALE": {"column": "available_for_sale_fair_value"}
+      }
+    }
+  ],
+  "derived": []
+}

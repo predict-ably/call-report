@@ -554,6 +554,151 @@ Under ``wide=True`` both dimensions appear in the column name, as
    >>> float(row["10_Purchased__amortized_cost"])
    9050558.0
 
+Investments
+-----------
+
+``investments`` curates RC-B, an institution's securities and other
+marketable investments. Rows are keyed by security type:
+
+.. doctest::
+
+   >>> investments = report.to_domain_dataset(domain_dataset="investments")
+   >>> list(investments.columns)  # doctest: +NORMALIZE_WHITESPACE
+   ['UNINUM', 'period', 'code_column', 'code_value', 'amortized_cost',
+    'available_for_sale_amortized_cost', 'available_for_sale_fair_value',
+    'fair_value']
+   >>> codes = get_domain_dataset_codes(domain_dataset="investments")
+   >>> codes[codes["code"].isin([17, 98])]["label"].tolist()  # doctest: +NORMALIZE_WHITESPACE
+   ['Other U.S. government and agency securities (excluding MBS)',
+    'Total debt securities (gross of the allowance, excluding diversified investment funds)']
+
+FCA rewrote RC-B's codes at 2015Q1. Most codes kept their number. Two
+retired codes carry over to a new one: code 11 continues as 17, and code 20
+continues as 25. Other retired codes end where FCA ended them. Codes 31 and
+32 stay separate from their successor, code 29, because their balances do
+not carry over. A balance reported under code 11 in 2014 therefore appears
+under code 17 on both sides of the rewrite:
+
+.. doctest::
+
+   >>> rewrite = FCACallReport(
+   ...     start="2014-12-31", end="2015-03-31", transport=PackagedArchiveTransport()
+   ... )
+   >>> across = rewrite.to_domain_dataset(domain_dataset="investments")
+   >>> other_government = across[(across["UNINUM"] == 722502) & (across["code_value"] == 17.0)]
+   >>> other_government[["period", "amortized_cost"]].reset_index(drop=True)
+         period  amortized_cost
+   0 2014-12-31        171793.0
+   1 2015-03-31        162593.0
+
+Code 98 is the total. It is the sum of every security type, and it is not
+a code FCA reports. RC-B's own totals do not mean the same thing in every
+period. Code 80, reported until 2014Q4, includes diversified investment
+funds. Code 99, reported from 2015Q1, is net of the allowance for credit
+losses from 2023Q1. Code 98 includes neither the funds (code 85) nor the
+allowance (code 180), and both stay in the result as their own rows. Like
+every total, code 98 appears only with ``include_totals=True``:
+
+.. doctest::
+
+   >>> funds_era = FCACallReport(
+   ...     start="2008-12-31", end="2008-12-31", transport=PackagedArchiveTransport()
+   ... )
+   >>> with_total = funds_era.to_domain_dataset(
+   ...     domain_dataset="investments", include_totals=True
+   ... )
+   >>> bank = with_total[with_total["UNINUM"] == 610000].set_index("code_value")
+   >>> float(bank.loc[98.0, "amortized_cost"]), float(bank.loc[85.0, "amortized_cost"])
+   (3166940.0, 59254.0)
+
+The dataset leaves out RC-B's summary lines, which are not security types.
+These are code 100 (pledged securities), codes 120 and 130, codes 150 to 158
+(regulatory limits and the liquidity reserve), and codes 171 to 174 (days of
+liquidity). None of them is part of the reported total.
+:meth:`~call_report.fca.FCACallReport.to_code_grain_format` still returns
+them.
+
+The total is consistent across periods, but some individual codes are not.
+At three points, institutions moved holdings from one code to another. Read
+a single code's series across these quarters with care.
+
+**2012Q1: the banks leave, and associations reclassify.** From 2012Q1, the
+Farm Credit banks report almost none of their investments in RC-B, although
+their balance sheets (schedule RC) still carry them. From that quarter the
+dataset mostly describes association holdings. In the same quarter,
+associations moved holdings between codes, and not all of them moved the
+same way:
+
+* Of the 15 associations holding code 20 (U.S. government agency
+  securities) at 2011Q4, 11 reported those holdings under code 11 at 2012Q1,
+  and 3 kept them under code 20.
+* Of the 10 holding code 70 (other), 6 reported those holdings under code
+  81 (domestic debt securities), and 2 kept them under code 70.
+* Of the 7 holding code 62 (government guaranteed mortgage securities), 2
+  reported those holdings under code 65 and 1 under code 11. The other 4
+  kept them under code 62.
+
+Because each old code went to more than one place, the dataset maps none
+of them. Codes 63 and 75 end at 2011Q4. Only banks held them, so no
+association series shows where they went.
+
+**2015Q1: the code rewrite.** Code 11 continues as 17 and code 20 as 25, as
+described above.
+
+**2019Q1: Farmer Mac, SBA, and CMBS detail.** Codes 15, 71 to 73, and 86 to
+88 have no rows before 2019Q1. Until then, the holdings they describe were
+reported under a broader code, and in that quarter institutions moved them
+into the new detail codes:
+
+* Code 66 held all Farmer Mac guaranteed securities. All 7 institutions
+  holding it at 2018Q4 moved those holdings to code 86 (farm and ranch
+  securities) or code 88 (USDA securities) at 2019Q1.
+* Code 17 held SBA securities. Of the 9 institutions holding it at 2018Q4,
+  7 moved those holdings to code 15 (SBA securities) at 2019Q1. The other 2
+  kept theirs under code 17.
+* Code 65 held all commercial mortgage-backed securities. Codes 71 to 73
+  split them by guarantor from 2019Q1.
+
+Three subtotals add each old code to the codes split out of it, so each one
+means the same thing before and after 2019Q1:
+
+* Code 16 is codes 15 and 17, U.S. government and agency securities
+  including SBA. Because code 11 continues as 17, this series starts in
+  2000.
+* Code 74 is codes 65 and 71 to 73, all CMBS.
+* Code 89 is codes 66 and 86 to 88, all Farmer Mac guaranteed securities.
+
+Like code 98, they appear only with ``include_totals=True``, and code 98
+never counts them. Their members stay in the result. UNINUM 722918 split its
+Farmer Mac holdings between codes 86 and 88, so neither code continues from
+code 66, but code 89 does:
+
+.. doctest::
+
+   >>> split = FCACallReport(
+   ...     start="2018-12-31", end="2019-03-31", transport=PackagedArchiveTransport()
+   ... )
+   >>> farmer_mac = split.to_domain_dataset(domain_dataset="investments", include_totals=True)
+   >>> farmer_mac = farmer_mac[
+   ...     (farmer_mac["UNINUM"] == 722918)
+   ...     & farmer_mac["code_value"].isin([66.0, 86.0, 88.0, 89.0])
+   ... ]
+   >>> farmer_mac[["period", "code_value", "amortized_cost"]].reset_index(drop=True)
+         period  code_value  amortized_cost
+   0 2018-12-31        66.0        877938.0
+   1 2019-03-31        66.0             0.0
+   2 2019-03-31        86.0        514533.0
+   3 2019-03-31        88.0        369910.0
+   4 2018-12-31        89.0        877938.0
+   5 2019-03-31        89.0        884443.0
+
+Codes 16 and 74 carry one caveat. At 2019Q1, UNINUM 722825 and 722918 each
+reported more under code 15 than they had held under code 17, while their
+CMBS under code 65 fell. Some of what they reported as CMBS before 2019Q1
+may be SBA securities. If so, code 74 is overstated and code 16 understated
+for those two institutions before 2019Q1. Code 98 is unaffected, since the
+question is only which code the securities were reported under.
+
 Converting between the shapes
 =============================
 
