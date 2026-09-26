@@ -11,6 +11,11 @@ from call_report.fca._domain_datasets import (
     get_domain_dataset_codes,
     get_fca_domain_dataset,
 )
+from call_report.fca._institution import (
+    FCAInstitution,
+    FCAInstitutionSnapshot,
+    InstitutionAttributeVersion,
+)
 from call_report.fca._reshape import (
     convert_long_format_to_code_grain_format,
     convert_long_format_to_wide_format,
@@ -32,7 +37,10 @@ __all__ = [
     "DomainDatasetSource",
     "FCACallReport",
     "FCADomainDataset",
+    "FCAInstitution",
+    "FCAInstitutionSnapshot",
     "FCASchedule",
+    "InstitutionAttributeVersion",
     "all_fca_file_metadata",
     "convert_long_format_to_code_grain_format",
     "convert_long_format_to_wide_format",

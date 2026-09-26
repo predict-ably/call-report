@@ -8,6 +8,7 @@ from call_report.exceptions import (
     CallReportError,
     DomainDatasetNotFoundError,
     DownloadError,
+    InstitutionError,
     InvalidPeriodError,
     LayoutParseError,
     PeriodNotAvailableError,
@@ -27,6 +28,7 @@ from call_report.exceptions import (
         LayoutParseError,
         SchemaError,
         DownloadError,
+        InstitutionError,
         ReshapeError,
     ],
 )

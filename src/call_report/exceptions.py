@@ -69,6 +69,16 @@ class SchemaError(CallReportError):
     """
 
 
+class InstitutionError(CallReportError):
+    """An institution history was constructed from invalid input.
+
+    Raised for roster rows that cannot describe one charter (no rows, a
+    repeated quarter, a missing column, or more than one UNINUM), for
+    histories that do not cover the quarters the charter filed, and for
+    malformed institution JSON.
+    """
+
+
 class DownloadError(CallReportError):
     """A release's files could not be resolved or retrieved.
 
