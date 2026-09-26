@@ -292,6 +292,9 @@ class FCAInstitution:
     def _history(self, column: str) -> tuple[InstitutionAttributeVersion, ...]:
         """Return the history for one versioned roster column.
 
+        Lets code that loops over roster columns reach the matching
+        ``*_history`` attribute by column name.
+
         Parameters
         ----------
         column : str
@@ -892,6 +895,9 @@ class FCAInstitution:
     def _codes(self) -> tuple[int, int, int]:
         """Return the system, district, and association codes, in that order.
 
+        The order matches the roster's own column order, so the codes can be
+        zipped against those column names.
+
         Returns
         -------
         tuple[int, int, int]
@@ -995,6 +1001,9 @@ class FCAInstitution:
     def __repr__(self) -> str:
         """Return a compact summary naming the charter and its span.
 
+        The full histories are left out, since they can run to dozens of
+        versions.
+
         Returns
         -------
         str
@@ -1029,6 +1038,8 @@ def _frame_schema() -> dict[str, nw.dtypes.DType]:
 
 def _validate_presence(periods: tuple[PeriodRange, ...], label: str) -> None:
     """Validate that presence spans are non-empty, ordered, and non-touching.
+
+    Two spans with no quarter between them should have been one span.
 
     Parameters
     ----------
@@ -1101,6 +1112,9 @@ def _validate_history(
 def _spans(quarters: list[ReportingPeriod]) -> tuple[PeriodRange, ...]:
     """Merge ordered, distinct quarters into contiguous spans.
 
+    A new span starts wherever a quarter does not directly follow the
+    previous one.
+
     Parameters
     ----------
     quarters : list[ReportingPeriod]
@@ -1164,6 +1178,9 @@ def _build_history(
 def _check_row(period: ReportingPeriod, row: Mapping[str, Any]) -> None:
     """Validate one roster row's columns and its ``YEAR``/``MONTH`` values.
 
+    The ``YEAR``/``MONTH`` check is skipped when either value is missing,
+    since a row built by hand need not carry them.
+
     Parameters
     ----------
     period : ReportingPeriod
@@ -1197,6 +1214,9 @@ def _check_row(period: ReportingPeriod, row: Mapping[str, Any]) -> None:
 def _code(row: Mapping[str, Any], column: str, period: ReportingPeriod) -> int:
     """Return one of a row's integer codes, rejecting a missing value.
 
+    A code arriving as a float, as a pandas row can, is converted to an
+    ``int``.
+
     Parameters
     ----------
     row : Mapping[str, Any]
@@ -1225,6 +1245,9 @@ def _code(row: Mapping[str, Any], column: str, period: ReportingPeriod) -> int:
 
 def _text(value: Any) -> str | None:
     """Return a roster text value as a ``str``, or ``None`` when missing.
+
+    This keeps a pandas NaN and a ``None`` from counting as two different
+    values.
 
     Parameters
     ----------
@@ -1261,6 +1284,9 @@ def _is_missing(value: Any) -> bool:
 def _institution_to_dict(institution: FCAInstitution) -> dict[str, Any]:
     """Return a charter's history as a JSON-ready dict.
 
+    Each attribute is stored under its roster column name as a list of
+    versions.
+
     Parameters
     ----------
     institution : FCAInstitution
@@ -1290,6 +1316,9 @@ def _institution_to_dict(institution: FCAInstitution) -> dict[str, Any]:
 def _span_to_dict(span: PeriodRange) -> dict[str, str]:
     """Return a span as ISO ``start`` and ``end`` dates.
 
+    Used for both presence spans and attribute versions in the JSON
+    payload.
+
     Parameters
     ----------
     span : PeriodRange
@@ -1308,6 +1337,8 @@ def _span_to_dict(span: PeriodRange) -> dict[str, str]:
 
 def _institution_from_dict(data: Any) -> FCAInstitution:
     """Reconstruct a charter's history from `_institution_to_dict` output.
+
+    The result is validated exactly as direct construction validates it.
 
     Parameters
     ----------
