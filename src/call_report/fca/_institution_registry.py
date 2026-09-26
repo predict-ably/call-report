@@ -609,6 +609,8 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
     def __getitem__(self, uninum: int) -> FCAInstitution:
         """Return the charter with the given UNINUM.
 
+        Implements ``registry[uninum]`` lookup.
+
         Parameters
         ----------
         uninum : int
@@ -635,6 +637,8 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
     def __iter__(self) -> Iterator[int]:
         """Iterate over UNINUMs in ascending order.
 
+        The order does not depend on the order charters were supplied in.
+
         Returns
         -------
         Iterator[int]
@@ -645,6 +649,8 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
     def __len__(self) -> int:
         """Return the number of charters in the registry.
 
+        Implements ``len(registry)``.
+
         Returns
         -------
         int
@@ -654,6 +660,9 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
 
     def __repr__(self) -> str:
         """Return a compact summary of the registry's size and span.
+
+        The charters themselves are left out, since a registry can hold
+        hundreds.
 
         Returns
         -------
@@ -669,6 +678,8 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
 
 def _roster_rows(roster: Any) -> Iterable[Mapping[str, Any]]:
     """Return one roster's rows, whether it is a dataframe or rows already.
+
+    A dataframe is read through narwhals, so any backend is accepted.
 
     Parameters
     ----------
