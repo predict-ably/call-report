@@ -1,20 +1,13 @@
-"""The cross-period history of one FCA charter, keyed by its UNINUM.
+"""Name and address history for one UNINUM in FCA's institution roster.
 
-FCA publishes one institution roster (``INST``) per quarter. Each row names
-one charter by its UNINUM, the concatenation of its system, district, and
-association codes, alongside its short name and address. A charter's name
-and address change over time, and a charter can be absent from some
-quarters and return in a later one.
+FCA publishes an institution roster (``INST``) with each quarterly release.
+It has one row per institution, identified by its UNINUM, with the
+institution's short name and address.
 
-:class:`FCAInstitution` gathers every quarter one UNINUM filed into a single
-object. Each name and address attribute is held as a tuple of
-:class:`InstitutionAttributeVersion`, one per span of quarters over which
-the value held. A new version starts when the value changes, or when the
-charter returns after a gap. :class:`FCAInstitutionSnapshot` is the same
-charter as it stood in one quarter.
-
-A UNINUM identifies a charter, not a continuing business. When a charter is
-renumbered, the new UNINUM is a separate :class:`FCAInstitution`.
+:class:`FCAInstitution` collects every quarter a UNINUM appears in the
+roster. For each name and address field it records each value and the
+quarters that value was reported. :class:`FCAInstitutionSnapshot` gives the
+values for a single quarter.
 """
 
 from __future__ import annotations
@@ -82,18 +75,18 @@ _FRAME_COLUMNS = (
 
 @dataclass(frozen=True, kw_only=True)
 class InstitutionAttributeVersion:
-    """One span of quarters over which a charter attribute held one value.
+    """One value of a name or address field, and the quarters it was reported.
 
-    `FCAInstitution` holds each name and address attribute as a tuple of
-    these, oldest first.
+    `FCAInstitution` holds each name and address field as a tuple of these,
+    oldest first.
 
     Attributes
     ----------
     value : str or None
-        The attribute's value over `periods`, exactly as FCA published it.
-        ``None`` means the roster left the attribute blank.
+        The value exactly as FCA published it. ``None`` means the roster
+        left the field blank.
     periods : PeriodRange
-        The contiguous span of quarters this version covers.
+        The consecutive quarters in which this value was reported.
 
     Examples
     --------
@@ -113,22 +106,22 @@ class InstitutionAttributeVersion:
 
 @dataclass(frozen=True, kw_only=True)
 class FCAInstitutionSnapshot:
-    """One FCA charter as it stood in a single quarter.
+    """The roster values for one UNINUM in a single quarter.
 
     Returned by `FCAInstitution.as_of`.
 
     Attributes
     ----------
     uninum : int
-        The charter's UNINUM.
+        The UNINUM.
     period : ReportingPeriod
         The quarter this snapshot describes.
     system : int
-        The charter's system code (``SYSTEM``).
+        The system code (``SYSTEM``).
     district : int
-        The charter's district code (``DIST``).
+        The district code (``DIST``).
     association : int
-        The charter's association code (``ASSOC``).
+        The association code (``ASSOC``).
     short_name : str or None
         The short name (``SHORTNAME``) in effect in `period`.
     mail_addr : str or None
@@ -181,34 +174,35 @@ class FCAInstitutionSnapshot:
 
 @dataclass(frozen=True, kw_only=True, repr=False)
 class FCAInstitution:
-    """The history of one FCA charter across every quarter it filed.
+    """The name and address history of one UNINUM in FCA's institution roster.
 
-    One instance covers one UNINUM. The system, district, and association
-    codes are fixed for a UNINUM, because the UNINUM is built from them.
-    The short name and the address attributes are each a tuple of
-    `InstitutionAttributeVersion`, oldest first. A new version starts when
-    the value changes, or when the charter returns after a gap. A value can
-    recur later in the history, for example an address that changes and
+    The short name and each address field are held as a tuple of
+    `InstitutionAttributeVersion`, oldest first. A new entry starts when the
+    value changes, or when the UNINUM reappears after missing some quarters.
+    A value can come back later, for example an address that changes and
     then changes back.
 
-    Build one from roster rows with `from_roster_rows`. Constructing one
-    directly validates that every history covers exactly the quarters in
+    The ``SYSTEM``, ``DIST``, and ``ASSOC`` values must be the same in every
+    quarter for a UNINUM.
+
+    Build one from roster rows with `from_roster_rows`. Building one
+    directly checks that every history covers exactly the quarters in
     `periods`.
 
     Attributes
     ----------
     uninum : int
-        The charter's UNINUM.
+        The UNINUM.
     system : int
-        The charter's system code (``SYSTEM``).
+        The system code (``SYSTEM``).
     district : int
-        The charter's district code (``DIST``).
+        The district code (``DIST``).
     association : int
-        The charter's association code (``ASSOC``).
+        The association code (``ASSOC``).
     periods : tuple[PeriodRange, ...]
-        One or more chronologically ordered, non-overlapping, non-adjacent
-        spans of the quarters this charter filed. More than one span means
-        the charter was absent for a stretch and later returned.
+        The quarters in which this UNINUM appears in the roster, as runs of
+        consecutive quarters, oldest first. More than one run means the
+        UNINUM is missing from the roster for some quarters in between.
     short_name_history : tuple[InstitutionAttributeVersion, ...]
         The versions of the short name (``SHORTNAME``).
     mail_addr_history : tuple[InstitutionAttributeVersion, ...]
@@ -225,10 +219,10 @@ class FCAInstitution:
     Raises
     ------
     InstitutionError
-        If `periods` is empty or its spans are out of order, overlapping,
-        or adjacent. Also if any history does not cover exactly the
-        quarters in `periods`, in order, or has two adjacent versions with
-        the same value.
+        If `periods` is empty, or its runs are out of order, overlap, or
+        touch. Also if any history does not cover exactly the quarters in
+        `periods`, in order, or has two back-to-back entries with the same
+        value.
 
     See Also
     --------
@@ -270,7 +264,7 @@ class FCAInstitution:
     zip_history: tuple[InstitutionAttributeVersion, ...]
 
     def __post_init__(self) -> None:
-        """Validate the presence spans and every attribute history.
+        """Validate `periods` and every name and address history.
 
         Runs automatically after construction, since this dataclass is
         frozen and cannot be validated any other way.
@@ -316,10 +310,10 @@ class FCAInstitution:
         *,
         rows: Iterable[tuple[str | date | ReportingPeriod, Mapping[str, Any]]],
     ) -> FCAInstitution:
-        """Build a charter's history from its roster rows, one per quarter.
+        """Build a UNINUM's history from its roster rows, one per quarter.
 
         Each item pairs a quarter with that quarter's roster row for this
-        charter. The rows can arrive in any order. Values are kept exactly
+        UNINUM. The rows can arrive in any order. Values are kept exactly
         as FCA published them, except that a missing value (``None`` or a
         float NaN, as pandas spells it) becomes ``None``.
 
@@ -337,15 +331,16 @@ class FCAInstitution:
         Returns
         -------
         FCAInstitution
-            The charter's history across every quarter in `rows`.
+            The UNINUM's history across every quarter in `rows`.
 
         Raises
         ------
         InstitutionError
-            If `rows` is empty, names the same quarter twice, has a row
-            missing a required column or a required code, or mixes more
-            than one UNINUM or code set. Also if a row's ``YEAR`` and
-            ``MONTH`` do not match its quarter.
+            If `rows` is empty, names the same quarter twice, or has a row
+            missing a required column or a ``UNINUM``, ``SYSTEM``, ``DIST``,
+            or ``ASSOC`` value. Also if the rows hold more than one UNINUM,
+            if ``SYSTEM``, ``DIST``, or ``ASSOC`` differ between rows, or if
+            a row's ``YEAR`` and ``MONTH`` do not match its quarter.
 
         Examples
         --------
@@ -420,9 +415,9 @@ class FCAInstitution:
 
     @property
     def first_period(self) -> ReportingPeriod:
-        """Return the earliest quarter this charter filed.
+        """Return the earliest quarter this UNINUM was reported.
 
-        This is the start of the earliest of this charter's `periods` spans.
+        This is the start of the earliest of `periods`.
 
         Returns
         -------
@@ -452,9 +447,9 @@ class FCAInstitution:
 
     @property
     def last_period(self) -> ReportingPeriod:
-        """Return the latest quarter this charter filed.
+        """Return the latest quarter this UNINUM was reported.
 
-        This is the end of the latest of this charter's `periods` spans.
+        This is the end of the latest of `periods`.
 
         Returns
         -------
@@ -486,9 +481,9 @@ class FCAInstitution:
 
     @property
     def most_recent_short_name(self) -> str | None:
-        """Return the short name from the last quarter this charter filed.
+        """Return the short name from the last quarter this UNINUM was reported.
 
-        This is the value a time series of this charter can carry as one
+        This is the value a time series for this UNINUM can carry as one
         stable label, whatever the short name was in earlier quarters.
 
         Returns
@@ -522,9 +517,9 @@ class FCAInstitution:
 
     @property
     def most_recent_mail_addr(self) -> str | None:
-        """Return the mailing address from the last quarter this charter filed.
+        """Return the mailing address from the last quarter this UNINUM was reported.
 
-        This is the value a time series of this charter can carry as one
+        This is the value a time series for this UNINUM can carry as one
         stable label, whatever the mailing address was in earlier quarters.
 
         Returns
@@ -555,9 +550,9 @@ class FCAInstitution:
 
     @property
     def most_recent_street_addr(self) -> str | None:
-        """Return the street address from the last quarter this charter filed.
+        """Return the street address from the last quarter this UNINUM was reported.
 
-        This is the value a time series of this charter can carry as one
+        This is the value a time series for this UNINUM can carry as one
         stable label, whatever the street address was in earlier quarters.
 
         Returns
@@ -591,9 +586,9 @@ class FCAInstitution:
 
     @property
     def most_recent_city(self) -> str | None:
-        """Return the city from the last quarter this charter filed.
+        """Return the city from the last quarter this UNINUM was reported.
 
-        This is the value a time series of this charter can carry as one
+        This is the value a time series for this UNINUM can carry as one
         stable label, whatever the city was in earlier quarters.
 
         Returns
@@ -624,9 +619,9 @@ class FCAInstitution:
 
     @property
     def most_recent_state(self) -> str | None:
-        """Return the state from the last quarter this charter filed.
+        """Return the state from the last quarter this UNINUM was reported.
 
-        This is the value a time series of this charter can carry as one
+        This is the value a time series for this UNINUM can carry as one
         stable label, whatever the state was in earlier quarters.
 
         Returns
@@ -657,9 +652,9 @@ class FCAInstitution:
 
     @property
     def most_recent_zip(self) -> str | None:
-        """Return the ZIP code from the last quarter this charter filed.
+        """Return the ZIP code from the last quarter this UNINUM was reported.
 
-        This is the value a time series of this charter can carry as one
+        This is the value a time series for this UNINUM can carry as one
         stable label, whatever the ZIP code was in earlier quarters.
 
         Returns
@@ -692,7 +687,7 @@ class FCAInstitution:
         return self.zip_history[-1].value
 
     def as_of(self, *, period: str | date | ReportingPeriod) -> FCAInstitutionSnapshot:
-        """Return this charter as it stood in one quarter.
+        """Return this UNINUM's roster values for one quarter.
 
         Each name and address attribute takes the value of the version
         covering `period`.
@@ -711,7 +706,7 @@ class FCAInstitution:
         Raises
         ------
         PeriodNotAvailableError
-            If this charter did not file in `period`.
+            If this UNINUM is not in the roster for `period`.
 
         Examples
         --------
@@ -738,8 +733,8 @@ class FCAInstitution:
         resolved = _coerce_period(period)
         if not any(resolved in span for span in self.periods):
             raise PeriodNotAvailableError(
-                f"UNINUM {self.uninum} did not file in {resolved.label}. It "
-                f"filed from {self.first_period.label} to {self.last_period.label}"
+                f"UNINUM {self.uninum} is not in the roster for {resolved.label}. It "
+                f"appears from {self.first_period.label} to {self.last_period.label}"
                 f" in {len(self.periods)} span(s)."
             )
         values = {
@@ -805,12 +800,12 @@ class FCAInstitution:
         backend: DataFrameBackend | None = None,
         dataframe_type: DataFrameType | None = None,
     ) -> NativeDataFrame:
-        """Return this charter's history as a dataframe, one row per quarter filed.
+        """Return this UNINUM's history as a dataframe, one row per quarter.
 
         Each row holds the codes and the name and address values in effect
         in that quarter, under FCA's own roster column names. The
         ``most_recent_*`` columns repeat the value from the last quarter
-        this charter filed on every row, so a time series can carry one
+        this UNINUM was reported on every row, so a time series can carry one
         stable label. ``UNINUM`` and ``period`` match the key columns of
         `FCACallReport.to_long_format` and `FCACallReport.to_wide_format`,
         so the result joins onto call report data directly.
@@ -876,18 +871,18 @@ class FCAInstitution:
         )
 
     def _append_rows(self, columns: dict[str, list[Any]], *, latest_only: bool) -> None:
-        """Append this charter's `to_dataframe` rows to columnar data.
+        """Append this UNINUM's `to_dataframe` rows to columnar data.
 
         Shared with `FCAInstitutionRegistry.to_dataframe`, which stacks
-        every charter's rows into one frame.
+        every UNINUM's rows into one frame.
 
         Parameters
         ----------
         columns : dict[str, list[Any]]
             Column name to column values, extended in place.
         latest_only : bool
-            Append only the row for the last quarter filed, rather than
-            one row per quarter filed.
+            Append only the row for the last quarter reported, rather
+            than one row per quarter.
         """
         most_recent = {
             name: self._history(column)[-1].value
@@ -929,7 +924,7 @@ class FCAInstitution:
         return (self.system, self.district, self.association)
 
     def to_json(self, *, indent: int | None = 2) -> str:
-        """Return this charter's history as a JSON string.
+        """Return this UNINUM's history as a JSON string.
 
         Each attribute is stored as its list of versions rather than one
         entry per quarter, which keeps the output compact and diffable.
@@ -972,9 +967,9 @@ class FCAInstitution:
 
     @classmethod
     def from_json(cls, *, text: str) -> FCAInstitution:
-        """Reconstruct a charter's history from JSON built by `to_json`.
+        """Reconstruct a UNINUM's history from JSON built by `to_json`.
 
-        The inverse of `to_json`. Round-tripping a charter through both
+        The inverse of `to_json`. Passing a history through both
         reconstructs an equal `FCAInstitution`, and the result is validated
         the same way direct construction is.
 
@@ -986,7 +981,7 @@ class FCAInstitution:
         Returns
         -------
         FCAInstitution
-            The reconstructed charter.
+            The reconstructed history.
 
         Raises
         ------
@@ -1022,7 +1017,7 @@ class FCAInstitution:
         return _institution_from_dict(data)
 
     def __repr__(self) -> str:
-        """Return a compact summary naming the charter and its span.
+        """Return a compact summary naming the UNINUM and its quarters.
 
         The full histories are left out, since they can run to dozens of
         versions.
@@ -1031,7 +1026,7 @@ class FCAInstitution:
         -------
         str
             The UNINUM, most recent short name, and first and last
-            quarters filed.
+            quarters reported.
         """
         return (
             f"FCAInstitution(uninum={self.uninum}, "
@@ -1044,7 +1039,7 @@ class FCAInstitution:
 def _empty_columns() -> dict[str, list[Any]]:
     """Return empty columnar data with every `to_dataframe` column.
 
-    `FCAInstitution._append_rows` fills it, one charter at a time.
+    `FCAInstitution._append_rows` fills it, one UNINUM at a time.
 
     Returns
     -------
@@ -1106,7 +1101,7 @@ def _frame_schema() -> dict[str, nw.dtypes.DType]:
 
 
 def _validate_presence(periods: tuple[PeriodRange, ...], label: str) -> None:
-    """Validate that presence spans are non-empty, ordered, and non-touching.
+    """Validate that `periods` is non-empty, ordered, and non-touching.
 
     Two spans with no quarter between them should have been one span.
 
@@ -1115,7 +1110,7 @@ def _validate_presence(periods: tuple[PeriodRange, ...], label: str) -> None:
     periods : tuple[PeriodRange, ...]
         The spans to validate, in the order they were supplied.
     label : str
-        Names the charter in the error message.
+        Names the UNINUM in the error message.
 
     Raises
     ------
@@ -1140,10 +1135,10 @@ def _validate_history(
     quarters: list[ReportingPeriod],
     label: str,
 ) -> None:
-    """Validate that a history covers exactly the charter's quarters, in order.
+    """Validate that a history covers exactly the UNINUM's quarters, in order.
 
     Comparing the history's quarters, flattened in order, against the
-    charter's own quarters catches an empty history, versions out of
+    UNINUM's own quarters catches an empty history, versions out of
     order, overlapping versions, and a version that spans a gap, all at
     once.
 
@@ -1152,9 +1147,9 @@ def _validate_history(
     history : tuple[InstitutionAttributeVersion, ...]
         The versions to validate.
     quarters : list[ReportingPeriod]
-        Every quarter the charter filed, in order.
+        Every quarter the UNINUM was reported, in order.
     label : str
-        Names the charter and attribute in the error message.
+        Names the UNINUM and field in the error message.
 
     Raises
     ------
@@ -1165,7 +1160,7 @@ def _validate_history(
     covered = [quarter for version in history for quarter in version.periods]
     if covered != quarters:
         raise InstitutionError(
-            f"{label} must cover exactly the quarters the institution filed, "
+            f"{label} must cover exactly the quarters the UNINUM was reported, "
             f"in order, with one version per quarter."
         )
     for previous, version in pairwise(history):
@@ -1351,7 +1346,7 @@ def _is_missing(value: Any) -> bool:
 
 
 def _institution_to_dict(institution: FCAInstitution) -> dict[str, Any]:
-    """Return a charter's history as a JSON-ready dict.
+    """Return a UNINUM's history as a JSON-ready dict.
 
     Each attribute is stored under its roster column name as a list of
     versions.
@@ -1359,7 +1354,7 @@ def _institution_to_dict(institution: FCAInstitution) -> dict[str, Any]:
     Parameters
     ----------
     institution : FCAInstitution
-        The charter to serialize.
+        The history to serialize.
 
     Returns
     -------
@@ -1385,7 +1380,7 @@ def _institution_to_dict(institution: FCAInstitution) -> dict[str, Any]:
 def _span_to_dict(span: PeriodRange) -> dict[str, str]:
     """Return a span as ISO ``start`` and ``end`` dates.
 
-    Used for both presence spans and attribute versions in the JSON
+    Used for both `periods` runs and history entries in the JSON
     payload.
 
     Parameters
@@ -1405,7 +1400,7 @@ def _span_to_dict(span: PeriodRange) -> dict[str, str]:
 
 
 def _institution_from_dict(data: Any) -> FCAInstitution:
-    """Reconstruct a charter's history from `_institution_to_dict` output.
+    """Reconstruct a UNINUM's history from `_institution_to_dict` output.
 
     The result is validated exactly as direct construction validates it.
 
@@ -1418,7 +1413,7 @@ def _institution_from_dict(data: Any) -> FCAInstitution:
     Returns
     -------
     FCAInstitution
-        The reconstructed, validated charter.
+        The reconstructed, validated history.
 
     Raises
     ------

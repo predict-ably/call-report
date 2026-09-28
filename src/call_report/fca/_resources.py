@@ -1,11 +1,11 @@
 """Reading the JSON data files shipped inside the ``call_report.fca`` package.
 
-Two kinds of generated metadata ship with the package: the canonical
-schedule metadata under ``call_report/fca/data/schedules/`` and the
-curated domain dataset definitions under
-``call_report/fca/data/domain_datasets/``. Both are located and read the
-same way, so that step lives here once. Each caller still parses what it
-gets back into its own type.
+Three kinds of generated data ship with the package: the canonical
+schedule metadata under ``call_report/fca/data/schedules/``, the curated
+domain dataset definitions under ``call_report/fca/data/domain_datasets/``,
+and the institution registry under ``call_report/fca/data/institutions/``.
+All three are located and read the same way, so that step lives here
+once. Each caller still parses what it gets back into its own type.
 """
 
 from __future__ import annotations

@@ -16,7 +16,10 @@ from call_report.fca._institution import (
     FCAInstitutionSnapshot,
     InstitutionAttributeVersion,
 )
-from call_report.fca._institution_registry import FCAInstitutionRegistry
+from call_report.fca._institution_registry import (
+    FCAInstitutionRegistry,
+    get_fca_institution_registry,
+)
 from call_report.fca._reshape import (
     convert_long_format_to_code_grain_format,
     convert_long_format_to_wide_format,
@@ -50,5 +53,6 @@ __all__ = [
     "get_domain_dataset_codes",
     "get_fca_domain_dataset",
     "get_fca_file_metadata",
+    "get_fca_institution_registry",
     "get_institutions_file_metadata",
 ]

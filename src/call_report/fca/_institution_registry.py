@@ -1,13 +1,14 @@
-"""Every FCA charter's history, held as one collection keyed by UNINUM.
+"""Name and address history for every UNINUM in FCA's institution roster.
 
 :class:`FCAInstitutionRegistry` is built from FCA's quarterly institution
-rosters (``INST``). Each roster lists one row per charter that filed that
-quarter. The registry groups every row across every quarter by UNINUM and
+rosters (``INST``). Each roster has one row per institution reported that
+quarter. The registry groups the rows from every quarter by UNINUM and
 builds one :class:`~call_report.fca.FCAInstitution` per UNINUM.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import date
@@ -31,6 +32,7 @@ from call_report.fca._institution import (
     _institution_from_dict,
     _institution_to_dict,
 )
+from call_report.fca._resources import read_packaged_json_text
 
 if TYPE_CHECKING:
     import pandas
@@ -41,7 +43,7 @@ if TYPE_CHECKING:
 
 
 class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
-    """An immutable mapping of UNINUM to that charter's `FCAInstitution`.
+    """A read-only mapping of each UNINUM to its `FCAInstitution`.
 
     Iterating yields UNINUMs in ascending order. Most callers build a
     registry with `from_dataframe` or `from_rosters` rather than from
@@ -50,7 +52,7 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
     Parameters
     ----------
     institutions : Iterable[FCAInstitution]
-        The charters making up the registry, in any order.
+        The histories making up the registry, in any order.
 
     Raises
     ------
@@ -59,7 +61,7 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
 
     See Also
     --------
-    FCAInstitution : One charter's history.
+    FCAInstitution : One UNINUM's name and address history.
 
     Examples
     --------
@@ -197,7 +199,7 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
     def from_dataframe(cls, *, data: Any) -> FCAInstitutionRegistry:
         """Build a registry from rosters stacked into one frame.
 
-        `data` is one row per charter per quarter, with a ``period``
+        `data` is one row per UNINUM per quarter, with a ``period``
         column naming each row's quarter. That is the shape
         `FCACallReport.load_institutions` returns, and the shape
         `to_dataframe` returns, so a registry round-trips through its own
@@ -254,14 +256,14 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
 
     @property
     def first_period(self) -> ReportingPeriod:
-        """Return the earliest quarter any charter in the registry filed.
+        """Return the earliest quarter any UNINUM in the registry was reported.
 
         This is the smallest `FCAInstitution.first_period` in the registry.
 
         Returns
         -------
         ReportingPeriod
-            The earliest quarter filed.
+            The earliest quarter reported.
 
         Examples
         --------
@@ -288,14 +290,14 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
 
     @property
     def last_period(self) -> ReportingPeriod:
-        """Return the latest quarter any charter in the registry filed.
+        """Return the latest quarter any UNINUM in the registry was reported.
 
         This is the largest `FCAInstitution.last_period` in the registry.
 
         Returns
         -------
         ReportingPeriod
-            The latest quarter filed.
+            The latest quarter reported.
 
         Examples
         --------
@@ -323,7 +325,7 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
     def as_of(
         self, *, period: str | date | ReportingPeriod
     ) -> Mapping[int, FCAInstitutionSnapshot]:
-        """Return every charter that filed in one quarter, as it stood then.
+        """Return the roster values for every UNINUM reported in one quarter.
 
         Charters that did not file in `period` are left out.
 
@@ -335,13 +337,13 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
         Returns
         -------
         Mapping[int, FCAInstitutionSnapshot]
-            A read-only mapping of UNINUM to that charter's snapshot, in
+            A read-only mapping of UNINUM to its snapshot for `period`, in
             ascending UNINUM order.
 
         Raises
         ------
         PeriodNotAvailableError
-            If no charter in the registry filed in `period`.
+            If no UNINUM in the registry was reported in `period`.
 
         Examples
         --------
@@ -373,7 +375,7 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
         }
         if not snapshots:
             raise PeriodNotAvailableError(
-                f"no institution in the registry filed in {resolved.label}. The "
+                f"no UNINUM in the registry was reported in {resolved.label}. The "
                 f"registry spans {self.first_period.label} to "
                 f"{self.last_period.label}."
             )
@@ -431,10 +433,10 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
         backend: DataFrameBackend | None = None,
         dataframe_type: DataFrameType | None = None,
     ) -> NativeDataFrame:
-        """Return every charter's history as one dataframe.
+        """Return every UNINUM's history as one dataframe.
 
         By default this stacks `FCAInstitution.to_dataframe` for every
-        charter, giving one row per charter per quarter filed. Join it onto
+        UNINUM, giving one row per UNINUM per quarter. Join it onto
         `FCACallReport.to_long_format` or `FCACallReport.to_wide_format`
         output on ``UNINUM`` and ``period`` to label each row with the name
         and address in effect that quarter.
@@ -442,8 +444,8 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
         Parameters
         ----------
         latest_only : bool, default False
-            Keep only each charter's last filed quarter, giving one row per
-            charter. The ``period`` column then holds that last quarter.
+            Keep only each UNINUM's last reported quarter, giving one row
+            per UNINUM. The ``period`` column then holds that last quarter.
         backend : {"pandas", "polars", "pyarrow"}, optional
             The dataframe library used to build the frame. If omitted, uses
             whatever backend is currently configured via
@@ -503,7 +505,7 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
     def to_json(self, *, indent: int | None = 2) -> str:
         """Return the registry as a JSON string.
 
-        Each charter is stored in the shape `FCAInstitution.to_json`
+        Each UNINUM's history is stored in the shape `FCAInstitution.to_json`
         produces, in ascending UNINUM order.
 
         Parameters
@@ -517,7 +519,7 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
         -------
         str
             A JSON object with one key, ``institutions``, holding a list
-            of charters.
+            of histories.
 
         Examples
         --------
@@ -551,7 +553,7 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
     def from_json(cls, *, text: str) -> FCAInstitutionRegistry:
         """Reconstruct a registry from JSON built by `to_json`.
 
-        The inverse of `to_json`. Every charter is validated the same way
+        The inverse of `to_json`. Every history is validated the same way
         direct construction validates it.
 
         Parameters
@@ -607,7 +609,7 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
         return cls(institutions=[_institution_from_dict(item) for item in institutions])
 
     def __getitem__(self, uninum: int) -> FCAInstitution:
-        """Return the charter with the given UNINUM.
+        """Return the history for the given UNINUM.
 
         Implements ``registry[uninum]`` lookup.
 
@@ -619,12 +621,12 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
         Returns
         -------
         FCAInstitution
-            That charter's history.
+            That UNINUM's name and address history.
 
         Raises
         ------
         KeyError
-            If no charter in the registry has `uninum`.
+            If `uninum` is not in the registry.
         """
         try:
             return self._by_uninum[uninum]
@@ -637,7 +639,7 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
     def __iter__(self) -> Iterator[int]:
         """Iterate over UNINUMs in ascending order.
 
-        The order does not depend on the order charters were supplied in.
+        The order does not depend on the order the histories were supplied in.
 
         Returns
         -------
@@ -647,7 +649,7 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
         return iter(self._by_uninum)
 
     def __len__(self) -> int:
-        """Return the number of charters in the registry.
+        """Return the number of UNINUMs in the registry.
 
         Implements ``len(registry)``.
 
@@ -661,13 +663,13 @@ class FCAInstitutionRegistry(Mapping[int, FCAInstitution]):
     def __repr__(self) -> str:
         """Return a compact summary of the registry's size and span.
 
-        The charters themselves are left out, since a registry can hold
+        The histories themselves are left out, since a registry can hold
         hundreds.
 
         Returns
         -------
         str
-            The number of charters and the first and last quarters filed.
+            The number of UNINUMs and the first and last quarters reported.
         """
         return (
             f"FCAInstitutionRegistry(institutions={len(self)}, "
@@ -697,3 +699,34 @@ def _roster_rows(roster: Any) -> Iterable[Mapping[str, Any]]:
         return _rows(roster)
     rows: Iterable[Mapping[str, Any]] = roster
     return rows
+
+
+@functools.cache
+def get_fca_institution_registry() -> FCAInstitutionRegistry:
+    """Return the name and address history of every UNINUM FCA has reported.
+
+    The registry ships with the package. It is built from the institution
+    roster in every FCA release from 2000 onward, so no download is needed.
+    It is read on the first call and reused for the rest of the session.
+
+    To build a registry from other releases, such as your own directory of
+    FCA files, use `FCAInstitutionRegistry.from_dataframe` with the roster
+    from `FCACallReport.load_institutions`.
+
+    Returns
+    -------
+    FCAInstitutionRegistry
+        One `FCAInstitution` per UNINUM in the shipped releases.
+
+    Examples
+    --------
+    >>> from call_report.fca import get_fca_institution_registry
+    >>> registry = get_fca_institution_registry()
+    >>> registry.first_period.label
+    '2000Q1'
+    >>> history = registry[722825].short_name_history
+    >>> [(entry.value, entry.periods[0].label) for entry in history]
+    [('Mid-America ACA', '2000Q1'), ('Farm Credit Mid-America ACA', '2011Q4')]
+    """
+    text = read_packaged_json_text(subdirectory="institutions", name="registry")
+    return FCAInstitutionRegistry.from_json(text=text)

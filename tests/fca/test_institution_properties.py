@@ -40,7 +40,7 @@ START = ReportingPeriod.from_period_end(value="2000-03-31")
 
 @st.composite
 def rosters(draw: st.DrawFn) -> list[tuple[ReportingPeriod, dict[str, Any]]]:
-    """Draw one charter's roster rows over a random set of quarters."""
+    """Draw one UNINUM's roster rows over a random set of quarters."""
     rows = []
     for offset in sorted(draw(offsets)):
         row: dict[str, Any] = {"UNINUM": 722825, "SYSTEM": 7, "DIST": 22, "ASSOC": 825}
@@ -99,7 +99,7 @@ def test_versions_are_minimal(
 
 @st.composite
 def many_rosters(draw: st.DrawFn) -> list[tuple[ReportingPeriod, list[dict[str, Any]]]]:
-    """Draw quarterly rosters listing a random subset of three charters."""
+    """Draw quarterly rosters listing a random subset of three UNINUMs."""
     rosters = []
     for offset in sorted(draw(offsets)):
         uninums = draw(st.sets(st.sampled_from([610000, 620000, 722825]), min_size=1))
