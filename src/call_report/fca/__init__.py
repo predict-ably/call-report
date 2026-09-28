@@ -16,6 +16,7 @@ from call_report.fca._institution import (
     FCAInstitutionSnapshot,
     InstitutionAttributeVersion,
 )
+from call_report.fca._institution_registry import FCAInstitutionRegistry
 from call_report.fca._reshape import (
     convert_long_format_to_code_grain_format,
     convert_long_format_to_wide_format,
@@ -38,6 +39,7 @@ __all__ = [
     "FCACallReport",
     "FCADomainDataset",
     "FCAInstitution",
+    "FCAInstitutionRegistry",
     "FCAInstitutionSnapshot",
     "FCASchedule",
     "InstitutionAttributeVersion",

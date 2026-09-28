@@ -18,40 +18,8 @@ from call_report.fca import (
     FCAInstitutionSnapshot,
     InstitutionAttributeVersion,
 )
+from tests.fca.institution_rows import FRAME_COLUMNS, ROW
 from tests.helpers import as_date, rows_of
-
-ROW: dict[str, Any] = {
-    "UNINUM": 722825,
-    "SYSTEM": 7,
-    "DIST": 22,
-    "ASSOC": 825,
-    "SHORTNAME": "Mid-America ACA",
-    "MAIL_ADDR": "P.O. Box 34390",
-    "STREET_ADDR": "1601 UPS Drive",
-    "CITY": "Louisville",
-    "STATE": "KY",
-    "ZIP": "40223-4390",
-}
-
-FRAME_COLUMNS = [
-    "UNINUM",
-    "period",
-    "SYSTEM",
-    "DIST",
-    "ASSOC",
-    "SHORTNAME",
-    "MAIL_ADDR",
-    "STREET_ADDR",
-    "CITY",
-    "STATE",
-    "ZIP",
-    "most_recent_short_name",
-    "most_recent_mail_addr",
-    "most_recent_street_addr",
-    "most_recent_city",
-    "most_recent_state",
-    "most_recent_zip",
-]
 
 
 def period(value: str) -> ReportingPeriod:

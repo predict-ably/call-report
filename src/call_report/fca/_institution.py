@@ -869,28 +869,51 @@ class FCAInstitution:
          (datetime.date(2011, 12, 31), 'Farm Credit Mid-America ACA',
           'Farm Credit Mid-America ACA')]
         """
-        columns: dict[str, list[Any]] = {column: [] for column in _FRAME_COLUMNS}
+        columns = _empty_columns()
+        self._append_rows(columns, latest_only=False)
+        return _columns_to_native(
+            columns, backend=backend, dataframe_type=dataframe_type
+        )
+
+    def _append_rows(self, columns: dict[str, list[Any]], *, latest_only: bool) -> None:
+        """Append this charter's `to_dataframe` rows to columnar data.
+
+        Shared with `FCAInstitutionRegistry.to_dataframe`, which stacks
+        every charter's rows into one frame.
+
+        Parameters
+        ----------
+        columns : dict[str, list[Any]]
+            Column name to column values, extended in place.
+        latest_only : bool
+            Append only the row for the last quarter filed, rather than
+            one row per quarter filed.
+        """
         most_recent = {
             name: self._history(column)[-1].value
             for name, column in zip(
                 _MOST_RECENT_COLUMNS, _VERSIONED_COLUMNS, strict=True
             )
         }
+        quarters = (
+            [self.last_period]
+            if latest_only
+            else [quarter for span in self.periods for quarter in span]
+        )
         codes = dict(zip(_CODE_COLUMNS, self._codes(), strict=True))
-        for span in self.periods:
-            for quarter in span:
-                columns["UNINUM"].append(self.uninum)
-                columns["period"].append(quarter.period_end)
-                for column, code in codes.items():
-                    columns[column].append(code)
-                for name, value in most_recent.items():
-                    columns[name].append(value)
-        for column in _VERSIONED_COLUMNS:
-            for version in self._history(column):
-                columns[column].extend(version.value for _ in version.periods)
-        with _backend_context(backend):
-            native = finalize(frame=build_frame(data=columns, schema=_frame_schema()))
-        return convert_dataframe_type(data=native, dataframe_type=dataframe_type)
+        for quarter in quarters:
+            columns["UNINUM"].append(self.uninum)
+            columns["period"].append(quarter.period_end)
+            for column, code in codes.items():
+                columns[column].append(code)
+            for name, value in most_recent.items():
+                columns[name].append(value)
+        for column, name in zip(_VERSIONED_COLUMNS, _MOST_RECENT_COLUMNS, strict=True):
+            if latest_only:
+                columns[column].append(most_recent[name])
+            else:
+                for version in self._history(column):
+                    columns[column].extend(version.value for _ in version.periods)
 
     def _codes(self) -> tuple[int, int, int]:
         """Return the system, district, and association codes, in that order.
@@ -1016,6 +1039,52 @@ class FCAInstitution:
             f"first_period={self.first_period.label}, "
             f"last_period={self.last_period.label})"
         )
+
+
+def _empty_columns() -> dict[str, list[Any]]:
+    """Return empty columnar data with every `to_dataframe` column.
+
+    `FCAInstitution._append_rows` fills it, one charter at a time.
+
+    Returns
+    -------
+    dict[str, list[Any]]
+        One empty list per column, in frame column order.
+    """
+    return {column: [] for column in _FRAME_COLUMNS}
+
+
+def _columns_to_native(
+    columns: dict[str, list[Any]],
+    *,
+    backend: DataFrameBackend | None,
+    dataframe_type: DataFrameType | None,
+) -> NativeDataFrame:
+    """Build the native frame `to_dataframe` returns from columnar data.
+
+    Shared by `FCAInstitution.to_dataframe` and
+    `FCAInstitutionRegistry.to_dataframe`, so both return the same dtypes.
+
+    Parameters
+    ----------
+    columns : dict[str, list[Any]]
+        Column name to column values, for every column in `_FRAME_COLUMNS`.
+    backend : {"pandas", "polars", "pyarrow"} or None
+        The dataframe library to build with, or ``None`` for the
+        configured one.
+    dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
+"polars_dataframe"} or None
+        The type to convert the result to, or ``None`` to keep what
+        `backend` produced.
+
+    Returns
+    -------
+    NativeDataFrame
+        The frame, with the dtypes `_frame_schema` declares.
+    """
+    with _backend_context(backend):
+        native = finalize(frame=build_frame(data=columns, schema=_frame_schema()))
+    return convert_dataframe_type(data=native, dataframe_type=dataframe_type)
 
 
 def _frame_schema() -> dict[str, nw.dtypes.DType]:

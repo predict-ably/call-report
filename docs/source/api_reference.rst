@@ -124,6 +124,7 @@ parsing an individual layout or data file.
    call_report.fca.FCASchedule
    call_report.fca.FCADomainDataset
    call_report.fca.FCAInstitution
+   call_report.fca.FCAInstitutionRegistry
    call_report.fca.FCAInstitutionSnapshot
    call_report.fca.InstitutionAttributeVersion
    call_report.fca.DomainDataset

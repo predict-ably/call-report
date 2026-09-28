@@ -1,4 +1,4 @@
-"""Property-based tests for FCAInstitution's history building.
+"""Property-based tests for FCAInstitution and FCAInstitutionRegistry.
 
 ``tests/fca/test_institution.py`` covers hand-picked histories: a gap, a
 value that changes and changes back, a missing value. The laws here must
@@ -10,6 +10,8 @@ searches for a counterexample:
 - ``as_of`` gives back each quarter's own roster values.
 - ``to_json`` and ``from_json`` are inverses.
 - Versions are minimal. Two adjacent versions never share a value.
+- A registry's frame holds every roster row it was built from, and
+  rebuilds an equal registry, as does its JSON.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from call_report.core import ReportingPeriod
-from call_report.fca import FCAInstitution
+from call_report.fca import FCAInstitution, FCAInstitutionRegistry
 from tests.helpers import as_date, rows_of
 
 COLUMNS = ("SHORTNAME", "MAIL_ADDR", "STREET_ADDR", "CITY", "STATE", "ZIP")
@@ -93,3 +95,49 @@ def test_versions_are_minimal(
         for previous, version in pairwise(history):
             adjacent = version.periods[0] == previous.periods[-1].next()
             assert not (adjacent and version.value == previous.value)
+
+
+@st.composite
+def many_rosters(draw: st.DrawFn) -> list[tuple[ReportingPeriod, list[dict[str, Any]]]]:
+    """Draw quarterly rosters listing a random subset of three charters."""
+    rosters = []
+    for offset in sorted(draw(offsets)):
+        uninums = draw(st.sets(st.sampled_from([610000, 620000, 722825]), min_size=1))
+        roster = []
+        for uninum in sorted(uninums):
+            row: dict[str, Any] = {
+                "UNINUM": uninum,
+                "SYSTEM": uninum // 100000,
+                "DIST": uninum // 1000 % 100,
+                "ASSOC": uninum % 1000,
+            }
+            row.update({column: draw(values) for column in COLUMNS})
+            roster.append(row)
+        rosters.append((START.next(n=offset), roster))
+    return rosters
+
+
+@given(rosters=many_rosters())
+def test_registry_frame_reproduces_rosters(
+    rosters: list[tuple[ReportingPeriod, list[dict[str, Any]]]],
+) -> None:
+    """The registry frame holds every roster row, and rebuilds an equal registry."""
+    registry = FCAInstitutionRegistry.from_rosters(rosters=rosters)
+    frame = registry.to_dataframe()
+    expected = [
+        (quarter.period_end, *(row[column] for column in ("UNINUM", *COLUMNS)))
+        for quarter, roster in rosters
+        for row in roster
+    ]
+    actual = [
+        (as_date(row["period"]), *(row[column] for column in ("UNINUM", *COLUMNS)))
+        for row in rows_of(frame)
+    ]
+
+    def key(item: tuple[Any, ...]) -> tuple[Any, ...]:
+        """Sort by quarter and UNINUM, which together are unique."""
+        return item[:2]
+
+    assert sorted(actual, key=key) == sorted(expected, key=key)
+    assert FCAInstitutionRegistry.from_dataframe(data=frame) == registry
+    assert FCAInstitutionRegistry.from_json(text=registry.to_json()) == registry
