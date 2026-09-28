@@ -95,6 +95,9 @@ RosterReader = Callable[[ReportingPeriod], Iterable[Mapping[str, Any]]]
 def _load_base() -> FCAInstitutionRegistry | None:
     """Load the previously generated base registry, if there is one.
 
+    An incremental run extends this registry with the quarters after its
+    last one.
+
     Returns
     -------
     FCAInstitutionRegistry or None
@@ -153,6 +156,9 @@ def _generate_base(
 ) -> FCAInstitutionRegistry:
     """Build a registry from a seed registry plus new quarters' rosters.
 
+    The seed is unpacked into its roster rows, the new quarters' rows are
+    added, and the registry is built again from all of them.
+
     Parameters
     ----------
     seed : FCAInstitutionRegistry or None
@@ -191,6 +197,9 @@ def _read_archived_roster(
 ) -> RosterReader:
     """Return a roster reader backed by the checked-in release archive.
 
+    Each row keeps the roster's ``YEAR`` and ``MONTH`` values, so building
+    the registry checks that every roster is labeled with the right quarter.
+
     Parameters
     ----------
     transport : PackagedArchiveTransport
@@ -203,6 +212,20 @@ def _read_archived_roster(
     """
 
     def read(period: ReportingPeriod) -> list[dict[str, Any]]:
+        """Return one quarter's roster rows.
+
+        Only the columns the registry needs are kept.
+
+        Parameters
+        ----------
+        period : ReportingPeriod
+            The quarter to read.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            The quarter's roster rows.
+        """
         frame = _read_institutions_frame(release_dir=transport.resolve(period=period))
         return [
             {column: row[column] for column in (*_ROSTER_COLUMNS, "YEAR", "MONTH")}
@@ -214,6 +237,8 @@ def _read_archived_roster(
 
 def _load_overrides() -> dict[str, Any] | None:
     """Load the hand-maintained override file, if there is one.
+
+    Most runs have no override file, and the base ships unchanged.
 
     Returns
     -------
@@ -284,6 +309,9 @@ def _apply_institution_overrides(
 ) -> FCAInstitution:
     """Apply one UNINUM's corrections.
 
+    Each correction replaces the value of the entry that starts at the
+    named quarter. Back-to-back entries left with the same value are merged.
+
     Parameters
     ----------
     institution : FCAInstitution
@@ -341,6 +369,9 @@ def _apply_institution_overrides(
 def _write_json(path: Path, registry: FCAInstitutionRegistry) -> None:
     """Write a registry as JSON, creating parent directories as needed.
 
+    Used for both the base and the shipped file, so the two are formatted
+    the same way.
+
     Parameters
     ----------
     path : pathlib.Path
@@ -354,6 +385,9 @@ def _write_json(path: Path, registry: FCAInstitutionRegistry) -> None:
 
 def _audit(rebuilt: FCAInstitutionRegistry, previous: FCAInstitutionRegistry) -> bool:
     """Compare a full rebuild with the previously generated base.
+
+    On a difference, the UNINUMs involved are logged so the change can be
+    reviewed before committing.
 
     Parameters
     ----------
@@ -389,6 +423,8 @@ def _audit(rebuilt: FCAInstitutionRegistry, previous: FCAInstitutionRegistry) ->
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse this script's command-line arguments.
 
+    The only option is ``--full``.
+
     Parameters
     ----------
     argv : list[str], optional
@@ -413,6 +449,9 @@ def main(
     argv: list[str] | None = None, *, read_roster: RosterReader | None = None
 ) -> int:
     """Run the three-stage pipeline described in the module docstring.
+
+    Both the base and the shipped file are written, unless the ``--full``
+    check finds a difference.
 
     Parameters
     ----------
