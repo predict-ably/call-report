@@ -29,22 +29,40 @@ import narwhals as nw
 
 ENCODING = "windows-1252"
 
-_GENERATION_SCRIPT = (
-    Path(__file__).resolve().parents[1]
-    / "scripts"
-    / "generate_fca_schedule_metadata.py"
-)
+_SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+
+
+def _load_script(name: str) -> ModuleType:
+    """Load one maintainer script from ``scripts/`` as a module.
+
+    ``scripts/`` is not a Python package, so a script is loaded from its
+    file path rather than imported. It is registered in `sys.modules`
+    before execution, because `dataclasses.dataclass` resolves postponed
+    annotations by looking the defining module up there, which a bare
+    ``module_from_spec``/``exec_module`` never populates on its own.
+
+    Parameters
+    ----------
+    name : str
+        The script's file name without ``.py``.
+
+    Returns
+    -------
+    types.ModuleType
+        The executed script module.
+    """
+    spec = importlib.util.spec_from_file_location(name, _SCRIPTS_DIR / f"{name}.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 @functools.cache
 def load_generation_script() -> ModuleType:
     """Load the FCA schedule metadata generation script as a module.
-
-    ``scripts/`` is not a Python package, so the script is loaded from its
-    file path rather than imported. It is registered in `sys.modules`
-    before execution, because `dataclasses.dataclass` resolves postponed
-    annotations by looking the defining module up there, which a bare
-    ``module_from_spec``/``exec_module`` never populates on its own.
 
     Cached, so every caller shares one module object rather than
     re-executing the script and replacing the `sys.modules` entry.
@@ -52,17 +70,23 @@ def load_generation_script() -> ModuleType:
     Returns
     -------
     types.ModuleType
-        The executed script module.
+        The executed ``generate_fca_schedule_metadata`` script.
     """
-    spec = importlib.util.spec_from_file_location(
-        "generate_fca_schedule_metadata", _GENERATION_SCRIPT
-    )
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return _load_script("generate_fca_schedule_metadata")
+
+
+@functools.cache
+def load_institution_registry_script() -> ModuleType:
+    """Load the FCA institution registry generation script as a module.
+
+    Cached for the same reason as `load_generation_script`.
+
+    Returns
+    -------
+    types.ModuleType
+        The executed ``generate_fca_institution_registry`` script.
+    """
+    return _load_script("generate_fca_institution_registry")
 
 
 ALL_BACKENDS = ("pandas", "polars", "pyarrow")

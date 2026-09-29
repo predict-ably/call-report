@@ -1,4 +1,4 @@
-"""Tests for one FCA charter's cross-period history (FCAInstitution)."""
+"""Tests for one FCA UNINUM's cross-period history (FCAInstitution)."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ def histories(value: str | None, start: str, end: str) -> dict[str, Any]:
 
 
 def gapped() -> FCAInstitution:
-    """Return a charter that files 2004Q1-2004Q2, skips 2004Q3, and returns.
+    """Return a UNINUM that files 2004Q1-2004Q2, skips 2004Q3, and returns.
 
     The street address changes and then changes back, and the name is the
     same on both sides of the gap.
@@ -60,7 +60,7 @@ def gapped() -> FCAInstitution:
 
 
 class TestFromRosterRows:
-    """Building a charter's history from per-quarter roster rows."""
+    """Building a UNINUM's history from per-quarter roster rows."""
 
     def test_single_row(self) -> None:
         """One row gives one span and one version per attribute."""
@@ -198,7 +198,7 @@ class TestFromRosterRows:
             FCAInstitution.from_roster_rows(rows=[])
 
     def test_duplicate_quarter_rejected(self) -> None:
-        """Two rows for the same quarter cannot both describe the charter."""
+        """Two rows for the same quarter cannot both describe the UNINUM."""
         with pytest.raises(InstitutionError, match=r"more than one roster row.*2011Q3"):
             FCAInstitution.from_roster_rows(
                 rows=[("2011-09-30", ROW), (period("2011-09-30"), ROW)]
@@ -219,7 +219,7 @@ class TestFromRosterRows:
             )
 
     def test_mixed_uninum_rejected(self) -> None:
-        """Rows for two UNINUMs are two charters, not one."""
+        """Rows for two UNINUMs are two UNINUMs, not one."""
         with pytest.raises(
             InstitutionError, match="mix UNINUM 722825 and UNINUM 722233"
         ):
@@ -271,7 +271,7 @@ class TestConstruction:
         assert len(institution.periods) == 2
 
     def test_empty_periods_rejected(self) -> None:
-        """A charter must have filed at least once."""
+        """A UNINUM must have filed at least once."""
         with pytest.raises(InstitutionError, match="at least one period span"):
             FCAInstitution(
                 uninum=1,
@@ -415,11 +415,11 @@ class TestAccessors:
     @pytest.mark.parametrize("value", ["2004-09-30", "2003-12-31", "2005-06-30"])
     def test_as_of_unfiled_quarter_rejected(self, value: str) -> None:
         """A quarter in a gap or outside the history was not filed."""
-        with pytest.raises(PeriodNotAvailableError, match="did not file"):
+        with pytest.raises(PeriodNotAvailableError, match="is not in the roster for"):
             gapped().as_of(period=value)
 
     def test_repr(self) -> None:
-        """The repr names the charter, its latest name, and its span."""
+        """The repr names the UNINUM, its latest name, and its span."""
         assert repr(gapped()) == (
             "FCAInstitution(uninum=722825, "
             "most_recent_short_name='Farm Credit Mid-America ACA', "
@@ -496,7 +496,7 @@ class TestJson:
     """The JSON round trip."""
 
     def test_round_trip(self) -> None:
-        """to_json then from_json gives back an equal charter."""
+        """to_json then from_json gives back an equal UNINUM."""
         institution = gapped()
         assert FCAInstitution.from_json(text=institution.to_json()) == institution
 

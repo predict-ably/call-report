@@ -139,6 +139,7 @@ parsing an individual layout or data file.
    call_report.fca.get_domain_dataset_codes
    call_report.fca.get_fca_file_metadata
    call_report.fca.get_institutions_file_metadata
+   call_report.fca.get_fca_institution_registry
    call_report.fca.all_fca_file_metadata
    call_report.fca.catalog.construct_fca_download_url
    call_report.fca.layout.parse_layout

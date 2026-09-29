@@ -1,4 +1,4 @@
-"""Tests for the collection of FCA charters (FCAInstitutionRegistry)."""
+"""Tests for the collection of FCA UNINUMs (FCAInstitutionRegistry)."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ RENAMED = {**ROW, "SHORTNAME": "Farm Credit Mid-America ACA"}
 
 
 def registry() -> FCAInstitutionRegistry:
-    """Return a two-charter registry over three quarters.
+    """Return a two-UNINUM registry over three quarters.
 
     Mid-America ACA (722825) files all three quarters and is renamed in the
     last. FCB of Texas (610000) skips the middle quarter.
@@ -43,10 +43,10 @@ def registry() -> FCAInstitutionRegistry:
 
 
 class TestConstruction:
-    """Building a registry from charters and from rosters."""
+    """Building a registry from UNINUMs and from rosters."""
 
     def test_from_institutions(self) -> None:
-        """The constructor takes charters in any order and sorts by UNINUM."""
+        """The constructor takes UNINUMs in any order and sorts by UNINUM."""
         mid = FCAInstitution.from_roster_rows(rows=[("2011-06-30", ROW)])
         texas = FCAInstitution.from_roster_rows(rows=[("2011-06-30", TEXAS)])
         built = FCAInstitutionRegistry(institutions=[mid, texas])
@@ -54,13 +54,13 @@ class TestConstruction:
         assert built[722825] is mid
 
     def test_duplicate_uninum_rejected(self) -> None:
-        """Two charters with one UNINUM cannot share a registry."""
+        """Two UNINUMs with one UNINUM cannot share a registry."""
         mid = FCAInstitution.from_roster_rows(rows=[("2011-06-30", ROW)])
         with pytest.raises(InstitutionError, match="UNINUM 722825 appears more"):
             FCAInstitutionRegistry(institutions=[mid, mid])
 
     def test_empty_rejected(self) -> None:
-        """A registry holds at least one charter."""
+        """A registry holds at least one UNINUM."""
         with pytest.raises(InstitutionError, match="at least one institution"):
             FCAInstitutionRegistry(institutions=[])
 
@@ -168,7 +168,7 @@ class TestAccessors:
     """Mapping behaviour, period bounds, and quarter snapshots."""
 
     def test_mapping(self) -> None:
-        """The registry behaves as a read-only mapping of UNINUM to charter."""
+        """The registry behaves as a read-only mapping of UNINUM to UNINUM."""
         built = registry()
         assert len(built) == 2
         assert 722825 in built
@@ -181,13 +181,13 @@ class TestAccessors:
             registry()[999999]
 
     def test_period_bounds(self) -> None:
-        """The bounds cover every charter's quarters."""
+        """The bounds cover every UNINUM's quarters."""
         built = registry()
         assert built.first_period == ReportingPeriod.from_period_end(value="2011-06-30")
         assert built.last_period == ReportingPeriod.from_period_end(value="2011-12-31")
 
     def test_as_of(self) -> None:
-        """A quarter's snapshot holds only charters that filed that quarter."""
+        """A quarter's snapshot holds only UNINUMs that filed that quarter."""
         snapshots = registry().as_of(period="2011-09-30")
         assert list(snapshots) == [722825]
         assert snapshots[722825].short_name == "Mid-America ACA"
@@ -199,8 +199,8 @@ class TestAccessors:
             snapshots[1] = None
 
     def test_as_of_unfiled_quarter_rejected(self) -> None:
-        """A quarter no charter filed raises PeriodNotAvailableError."""
-        with pytest.raises(PeriodNotAvailableError, match=r"no institution.*2012Q1"):
+        """A quarter no UNINUM filed raises PeriodNotAvailableError."""
+        with pytest.raises(PeriodNotAvailableError, match=r"no UNINUM.*2012Q1"):
             registry().as_of(period="2012-03-31")
 
     def test_repr(self) -> None:
@@ -212,10 +212,10 @@ class TestAccessors:
 
 
 class TestToDataframe:
-    """The stacked frame and its one-row-per-charter form."""
+    """The stacked frame and its one-row-per-UNINUM form."""
 
     def test_rows(self, backend: str) -> None:
-        """One row per charter per quarter filed, ordered by UNINUM then period."""
+        """One row per UNINUM per quarter filed, ordered by UNINUM then period."""
         rows = rows_of(registry().to_dataframe())
         assert list(rows[0]) == FRAME_COLUMNS
         assert [(row["UNINUM"], as_date(row["period"])) for row in rows] == [
@@ -232,7 +232,7 @@ class TestToDataframe:
         ]
 
     def test_latest_only(self, backend: str) -> None:
-        """latest_only keeps each charter's last quarter, one row per charter."""
+        """latest_only keeps each UNINUM's last quarter, one row per UNINUM."""
         rows = rows_of(registry().to_dataframe(latest_only=True))
         assert [
             (row["UNINUM"], as_date(row["period"]), row["SHORTNAME"]) for row in rows

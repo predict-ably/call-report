@@ -3,8 +3,8 @@
 Synthetic rosters in ``test_institution_registry.py`` cover each rule on its
 own. This module builds the registry from the real ``INST`` roster in every
 release in ``data/fca-call-report/`` and checks it against known facts about
-the archive, including the district-25 charters that were recoded to
-districts 23 and 24 in 2004 and from 2006Q1 to 2008Q2.
+the archive, including district-25 institutions that the roster lists under
+district 23 and 24 UNINUMs in 2004 and from 2006Q1 to 2008Q2.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ def archive_registry(stacked_roster: Any) -> FCAInstitutionRegistry:
 
 
 def test_counts(archive_registry: FCAInstitutionRegistry) -> None:
-    """The archive holds 344 charters across 2000Q1 to the latest release."""
+    """The archive holds 344 UNINUMs across 2000Q1 to the latest release."""
     assert len(archive_registry) == 344
     assert archive_registry.first_period == EARLIEST_PERIOD
     assert archive_registry.last_period == LATEST_KNOWN_PERIOD
@@ -82,8 +82,8 @@ def test_frame_reproduces_roster(
     assert keyed(rebuilt) == keyed(stacked_roster)
 
 
-def test_recoded_charter_has_gaps(archive_registry: FCAInstitutionRegistry) -> None:
-    """Maine ACA files as 725008 except while recoded to 723008."""
+def test_recoded_uninum_has_gaps(archive_registry: FCAInstitutionRegistry) -> None:
+    """Maine ACA appears as 725008 except while listed as 723008."""
     assert archive_registry[725008].periods == (
         PeriodRange(start="2000-03-31", end="2003-12-31"),
         PeriodRange(start="2005-03-31", end="2005-12-31"),

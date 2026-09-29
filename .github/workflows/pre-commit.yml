@@ -97,8 +97,10 @@ jobs:
           # matches skip patterns against each directory's full accumulated
           # path (as its own walk constructs it, with a leading "./"), not
           # just the pattern's own basename -- so this skips exactly these
-          # two directories of FCA-sourced text that isn't ours to fix: the
-          # raw data/fca-schedule-metadata/base/ archive, and
+          # four directories of FCA-sourced text that isn't ours to fix: the
+          # raw data/fca-schedule-metadata/base/ archive and
           # src/call_report/fca/data/schedules/, the shipped schedule
-          # metadata generated from it.
-          skip: "./data/fca-schedule-metadata/base,./src/call_report/fca/data/schedules"
+          # metadata generated from it, and data/fca-institutions/base/ and
+          # src/call_report/fca/data/institutions/, the institution names
+          # and addresses copied from FCA's rosters.
+          skip: "./data/fca-schedule-metadata/base,./src/call_report/fca/data/schedules,./data/fca-institutions/base,./src/call_report/fca/data/institutions"

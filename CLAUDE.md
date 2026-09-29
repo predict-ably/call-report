@@ -372,6 +372,11 @@ synthetic data cannot reproduce.
   `FileMetadata` per schedule root, produced by
   `scripts/generate_fca_schedule_metadata.py`), loaded lazily at runtime
   by `call_report.fca.get_fca_file_metadata`.
+  `src/call_report/fca/data/institutions/registry.json` holds the FCA
+  institution registry (the name and address history of every UNINUM in
+  the archived rosters, produced by
+  `scripts/generate_fca_institution_registry.py`), loaded lazily by
+  `call_report.fca.get_fca_institution_registry`.
 - `tests/` — pytest suite.
 - `data/` — real, source-published regulatory archives checked into the
   repo, one subfolder per source (e.g. `data/fca-call-report/`, so it
@@ -385,11 +390,15 @@ synthetic data cannot reproduce.
   and `data/fca-schedule-metadata/overrides/` are the same kind of
   not-shipped, checked-in working data, specific to the schedule-metadata
   generation pipeline above -- see that script's module docstring.
+  `data/fca-institutions/base/` and `data/fca-institutions/overrides/`
+  play the same role for the institution registry.
 - `docs/` — Sphinx documentation.
 - `scripts/` — maintenance/release helpers, including
-  `generate_fca_schedule_metadata.py`, the FCA schedule-metadata
-  generation pipeline (run by a maintainer, not part of CI or the
-  package's own runtime).
+  `generate_fca_schedule_metadata.py` and
+  `generate_fca_institution_registry.py`, the pipelines that produce the
+  shipped schedule metadata and institution registry (run by a
+  maintainer, not part of CI or the package's own runtime). Re-run both
+  after adding a quarter's zip to `data/fca-call-report/`.
 - `pyproject.toml` — build, dependencies, and all tool configuration.
 - `.pre-commit-config.yaml` — lint/format/type/docstring hooks.
 
