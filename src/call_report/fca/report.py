@@ -36,6 +36,8 @@ from call_report.exceptions import (
 from call_report.fca import _reshape
 from call_report.fca._discovery import ReleaseFiles, scan_release
 from call_report.fca._domain_datasets import get_fca_domain_dataset
+from call_report.fca._institution import FCAInstitution
+from call_report.fca._institution_registry import FCAInstitutionRegistry
 from call_report.fca._schedule_metadata import get_fca_file_metadata
 from call_report.fca.catalog import construct_fca_download_url
 from call_report.fca.enums import FCADomainDataset, FCASchedule
@@ -229,6 +231,9 @@ class FCACallReport(BaseCallReport):
         self.releases_ = releases
         self.schedules_ = _build_schedule_presence_map(releases=releases)
         self.errors_: tuple[FCAIssue, ...] = tuple(errors)
+        # Cleared on every fetch so a re-fetch never serves a registry built
+        # from the previous run's releases.
+        self._institution_registry: FCAInstitutionRegistry | None = None
         return self
 
     def _ensure_fetched(self) -> None:
@@ -381,6 +386,95 @@ class FCACallReport(BaseCallReport):
                 "see errors_ for details."
             )
         return finalize(frame=concat(frames=frames, how=self.schema_policy))
+
+    def institutions(self) -> FCAInstitutionRegistry:
+        """Return the name and address history of every UNINUM in this report.
+
+        The registry is built from the institution roster of each quarter
+        this report fetched, so it covers exactly this report's quarters and
+        releases. Use it when working with your own directory of FCA
+        releases, or with a quarter newer than the registry that ships with
+        the package. Otherwise, `call_report.fca.get_fca_institution_registry`
+        returns the same kind of object for every quarter from 2000 onward.
+
+        Calls `fetch` first if it has not run yet. The registry is built on
+        the first call and reused after that, until `fetch` runs again.
+
+        Returns
+        -------
+        FCAInstitutionRegistry
+            One `FCAInstitution` per UNINUM in this report's rosters.
+
+        Raises
+        ------
+        DownloadError
+            If no fetched quarter has an institution roster.
+
+        See Also
+        --------
+        get_institution : One UNINUM's history from this registry.
+        call_report.fca.get_fca_institution_registry : The registry that ships
+            with the package.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2011-09-30",
+        ...     end="2011-12-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> registry = report.institutions()
+        >>> registry.first_period.label, registry.last_period.label
+        ('2011Q3', '2011Q4')
+        >>> len(registry)
+        93
+        """
+        self._ensure_fetched()
+        if self._institution_registry is None:
+            self._institution_registry = FCAInstitutionRegistry.from_dataframe(
+                data=self._load_institutions()
+            )
+        return self._institution_registry
+
+    def get_institution(self, *, uninum: int) -> FCAInstitution:
+        """Return the name and address history of one UNINUM in this report.
+
+        A shortcut for ``report.institutions()[uninum]``. Calls `fetch` first
+        if it has not run yet.
+
+        Parameters
+        ----------
+        uninum : int
+            The UNINUM to look up.
+
+        Returns
+        -------
+        FCAInstitution
+            That UNINUM's history across this report's quarters.
+
+        Raises
+        ------
+        KeyError
+            If `uninum` is not in any of this report's rosters.
+
+        See Also
+        --------
+        institutions : Every UNINUM in this report.
+
+        Examples
+        --------
+        >>> from call_report.fca.transport import PackagedArchiveTransport
+        >>> report = FCACallReport(
+        ...     start="2011-09-30",
+        ...     end="2011-12-31",
+        ...     transport=PackagedArchiveTransport(),
+        ... )
+        >>> history = report.get_institution(uninum=722825).short_name_history
+        >>> [(entry.value, entry.periods[0].label) for entry in history]
+        [('Mid-America ACA', '2011Q3'), ('Farm Credit Mid-America ACA', '2011Q4')]
+        """
+        return self.institutions()[uninum]
 
     def get_layout(
         self,
