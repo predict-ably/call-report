@@ -33,46 +33,24 @@ The goal is to proceed toward the first release of the package and then add subs
 ### Version 0.1 Release Goals
 Status: released as v0.1.0.
 
-Analyze the sources to determine a relatively standardized interface for working with the Call Report data. Then implement an initial "standard" object-oriented interface and other high-level package details.
-
-This should include a package level configuration functionality to choose the dataframe backend to use (and later anything else necessary), the standard object-oriented interface.
-
-Determination of any common objects that will be needed, including enumeration, objects that indicate the range of quarters to request data for (that can be passed to the standard interface), etc.
-
-Context on data from different sources to achieve this:
-
-[FCA Call Report Landing Page](https://www.fca.gov/bank-oversight/fcs-call-reports)
-
-[FDIC API](https://api.fdic.gov/banks/docs/)
-
-[FFIEC Data](https://cdr.ffiec.gov/public/PWS/PWSPage.aspx)
-
-[NCUA Natural Person Credit Union & Corporate Credit Union Call Report Data](https://ncua.gov/analysis/credit-union-corporate-call-report-data/quarterly-data)
+Established the standard object-oriented interface (`FCACallReport`), package-level configuration of the dataframe backend, and shared types such as `ReportingPeriod`, `PeriodRange`, and `FCASchedule`.
 
 ### Version 0.2 Release Goals: Process, Load, and Download FCA Call Reports
-Finish the interface for the **FCA call report source**. This covers processing release metadata and data, the institution API, and loading release files either from a local directory or by downloading them.
-
 Status: goals 1 to 4 are complete. Goal 5 is the remaining work.
 
-Version 0.2.0 is cut (issue #64) only after the download work in goal 5 is complete. Merger adjustment is not part of this release. It moved to version 0.3.
+Finish the interface for the **FCA call report source**. Version 0.2.0 is cut (issue #64) only after goal 5 is complete. Merger adjustment is not part of this release. It is version 0.3.
 
-This release will include several related processing capabilities for creating a standardized dataset from the FCA call report data.
-
-1. We need to reason about and design an API for call report schedule APIs. This may be a further refinement of FCALayout or an update. Think of a schema like object (e.g., like PyArrow or Polars schema) that provides a mapping of column names to column metadata (including definition, first and last period), etc. I will provide some ideas in the references section. We'll need some concept of schema drift over time. This includes comparing differences in schemas, but also being able to request schemas for a given schedule as of a given date. Do we have a master schema for each schedule that is cross-time, and it can return the schema present on a given date as a schema object? The schema should be dataframe agnostic at its core -- but have a method like to_dataframe(dataframe_type) that returns a dataframe with the schema information.
-
-2. We can then inspect all the files from 2000 onwards to define schedule specific metadata schemas for each schedule and ship them with the project for user ease.
-
-3. Institution API (issues #57, #58, #59). Extract the distinct UNINUM values in the data from 2000 onwards and provide an API for the name and address attributes reported for each UNINUM. This includes the most recent name, the history of names and addresses with the quarters each value was reported, and a point-in-time view for any quarter. Users can get one UNINUM's history or convert every UNINUM into a dataframe. The package ships this history as a registry built from the archived rosters. The API tracks changed name and address attributes for each UNINUM. It does not link one UNINUM to another, and it does not merger adjust. That work is version 0.3.
-
-4. This release will also include functionality to process the FCA data supported in the Version 0.1 release download into several common architectures. This includes a long dataframe that has the UNINUM, Release_Date, Schedule, Variable_Name, and Value stored (long-format). The ability to pivot to wide-format (note we'll have to handle variables that appear in multiple schedules when we do this). Finally, we want to make it easy to create sub-architecture related to specific call-report schedules. For example, a dataset at the level of the "loan portfolio" that includes the dollars of exposure, charge-offs, non-performing loans, etc that are reported across multiple portfolios. We can provide a function that takes in the schedules and provides a Dataframe with institutions, loan portfolio, and release dates defining the rows and each variable measured for that combination parsed into a column.
-
+1. Schedule schemas that track changes over time. `FieldSchema` maps column names to their metadata and the quarters each version applied. It supports `as_of`, `compare`, and `to_dataframe`.
+2. Shipped schedule metadata for every schedule from 2000 onwards, loaded by `get_fca_file_metadata`.
+3. Institution API (issues #57, #58, #59). `FCAInstitution` and `FCAInstitutionRegistry` give each UNINUM's name and address history, with a point-in-time view for any quarter. The registry ships with the package and is loaded by `get_fca_institution_registry`. The API tracks changed name and address attributes for each UNINUM. It does not link one UNINUM to another, and it does not merger adjust.
+4. Reshaped datasets. `FCACallReport` returns long, wide, and code-grain formats, and curated domain datasets (for example a loan portfolio dataset) through `to_domain_dataset`.
 5. Load and download release files. Release files reach `FCACallReport` through a transport. `LocalDirectoryTransport` reads extracted releases from a directory, and `PackagedArchiveTransport` reads the zips checked into `data/fca-call-report/`. This goal adds a transport that downloads releases.
 
    FCA's site uses Cloudflare, which may block automated downloads. First find out whether it does. If it does, find a Python approach that downloads the files reliably. If no reliable approach exists, suggest a source we control instead, such as data shipped with the package or hosted in an Azure BLOB.
 
    Each FCA release includes metadata and the files with the actual data. We need to be able to process both. Users should be able to specify a range of FCA call report releases and have the object oriented interface provide them with all of that data, whichever transport supplies it.
 
-   The files for quarterly FCA call reports from 2000 onwards are available on the [FCA call report download page](https://www.fca.gov/bank-oversight/call-report-data-for-download).
+   The files for quarterly FCA call reports from 2000 onwards are available on the [FCA call report download page](https://www.fca.gov/bank-oversight/call-report-data-for-download). The [FCA call report landing page](https://www.fca.gov/bank-oversight/fcs-call-reports) describes the reports.
 
    FCA makes the current Call Report instructions available here [online](https://www.fca.gov/template-fca/bank/UCRCallRptInstructionsJune2026.pdf).
 
@@ -98,7 +76,11 @@ When an institution merges, its UNINUM usually stops reporting and the surviving
 
 ### Version 0.4+ Release Goals
 After the completion of the releases to support the FCA call report, the project's releases will move on to generalize the patterns to support the FFIEC, FDIC
-and NCUA call report and related regulatory data.
+and NCUA call report and related regulatory data. Sources:
+
+- [FDIC API](https://api.fdic.gov/banks/docs/)
+- [FFIEC Data](https://cdr.ffiec.gov/public/PWS/PWSPage.aspx)
+- [NCUA Natural Person Credit Union & Corporate Credit Union Call Report Data](https://ncua.gov/analysis/credit-union-corporate-call-report-data/quarterly-data)
 
 ## Architecture
 
@@ -389,39 +371,24 @@ synthetic data cannot reproduce.
 
 ## Repo layout
 
-- `src/call_report/` — the package (src layout). Includes generated,
-  shipped data alongside the code: `src/call_report/fca/data/schedules/`
-  holds the canonical, authoritative FCA schedule metadata (one JSON
-  `FileMetadata` per schedule root, produced by
-  `scripts/generate_fca_schedule_metadata.py`), loaded lazily at runtime
-  by `call_report.fca.get_fca_file_metadata`.
-  `src/call_report/fca/data/institutions/registry.json` holds the FCA
-  institution registry (the name and address history of every UNINUM in
-  the archived rosters, produced by
-  `scripts/generate_fca_institution_registry.py`), loaded lazily by
-  `call_report.fca.get_fca_institution_registry`.
+- `src/call_report/` — the package (src layout). It also holds generated
+  data that ships in the wheel and is loaded lazily:
+  - `fca/data/schedules/`: one JSON `FileMetadata` per schedule root,
+    loaded by `call_report.fca.get_fca_file_metadata`.
+  - `fca/data/institutions/registry.json`: the name and address history
+    of every UNINUM, loaded by `call_report.fca.get_fca_institution_registry`.
 - `tests/` — pytest suite.
-- `data/` — real, source-published regulatory archives checked into the
-  repo, one subfolder per source (e.g. `data/fca-call-report/`, so it
-  stays unambiguous once FFIEC/FDIC/NCUA equivalents are added). Not
-  shipped in the built wheel (`[tool.hatch.build.targets.wheel] packages`
-  only includes `src/call_report`); it exists so the repo itself ships
-  ready-to-use historical data (no live/Cloudflare-protected download
-  needed) and so `tests/fca/test_release_archive.py` can regression-test
-  every real archived release. Update it by dropping in each new
-  quarter's zip as FCA publishes it. `data/fca-schedule-metadata/base/`
-  and `data/fca-schedule-metadata/overrides/` are the same kind of
-  not-shipped, checked-in working data, specific to the schedule-metadata
-  generation pipeline above -- see that script's module docstring.
-  `data/fca-institutions/base/` and `data/fca-institutions/overrides/`
-  play the same role for the institution registry.
+- `data/` — source-published archives checked into the repo, one folder per
+  source (`data/fca-call-report/` holds every FCA release zip). Not shipped
+  in the wheel. The test suite regression-tests against it. Add each new
+  quarter's zip as FCA publishes it. `data/fca-schedule-metadata/` and
+  `data/fca-institutions/` hold the `base/` and `overrides/` inputs of the
+  two generation scripts.
 - `docs/` — Sphinx documentation.
-- `scripts/` — maintenance/release helpers, including
+- `scripts/` — maintainer scripts, including
   `generate_fca_schedule_metadata.py` and
-  `generate_fca_institution_registry.py`, the pipelines that produce the
-  shipped schedule metadata and institution registry (run by a
-  maintainer, not part of CI or the package's own runtime). Re-run both
-  after adding a quarter's zip to `data/fca-call-report/`.
+  `generate_fca_institution_registry.py`, which produce the shipped data
+  above. Re-run both after adding a quarter's zip to `data/fca-call-report/`.
 - `plans/` — one `plan_issue_<N>.md` per planned issue (see "Workflow"
   below). Not shipped in the built wheel.
 - `pyproject.toml` — build, dependencies, and all tool configuration.
@@ -431,7 +398,7 @@ synthetic data cannot reproduce.
 
 Every change follows this workflow, however small. Work on an issue runs in three steps. Each step is a separate session, and each hands off through a file or a pull request rather than through conversation history.
 
-1. **Plan.** Write the plan for issue N to `plans/plan_issue_<N>.md` on its own branch and open a pull request holding only that file. The plan is reviewed and merged to `main` before any implementation starts. `plans/` sits at the repo root and is not shipped in the wheel.
+1. **Plan.** Write the plan for issue N to `plans/plan_issue_<N>.md` on its own branch and open a pull request holding only that file (see "Git and pull requests" for branch and title names). The plan is reviewed and merged to `main` before any implementation starts. `plans/` sits at the repo root and is not shipped in the wheel.
 2. **Implement.** A new session starts from the latest `main`, reads the merged plan, and implements it on a new branch. It opens a pull request that links the issue and the plan. In the same pull request, it changes the plan's status line to `Status: implemented in #NNN`. When the implementation has to depart from the plan, the pull request description says where and why.
 3. **Review.** A review agent reviews the implementation pull request. It does not open a pull request of its own. It checks the change against its plan and against this file, and posts a GitHub review on the pull request. The review reports anything the plan asked for that is missing, anything added that the plan did not ask for, and any breach of the conventions above. When it finds problems, the review requests changes, and they are fixed on the same branch before the pull request merges.
 
@@ -460,15 +427,44 @@ Show code wherever it makes the plan clearer. This is strongly encouraged. Write
 
 A plan is a Markdown file in the repo, so it must pass `pre-commit` like any other file (codespell, trailing whitespace, and the other hooks). A plan is not edited after it merges, except for the status line.
 
+## Git and pull requests
+
+**Branches.** Every pull request has its own branch.
+
+- A plan goes on `plan/issue-<N>`.
+- An implementation goes on `issue-<N>-<short-slug>`, for example `issue-60-successor-api`.
+- When a session is given a branch name, it uses that name instead.
+- A branch whose pull request has merged is not reused for new work. Start again from the latest `main`.
+
+**Commits.** The subject line is `[TAG] Imperative summary (#N)`, about 72 characters or fewer, where `#N` is the issue. The tags are:
+
+| Tag    | Use for                     |
+|--------|-----------------------------|
+| `ENH`  | new features                |
+| `BUG`  | bug fixes                   |
+| `DOC`  | documentation               |
+| `TST`  | tests only                  |
+| `MNT`  | maintenance, CI, tooling    |
+| `PLAN` | a plan in `plans/`          |
+
+The body explains why the change was made, not only what changed. Generated files are never edited by hand. Regenerate them with their script in `scripts/`.
+
+**Pull requests.**
+
+- The title follows the commit format. A plan pull request is titled `[PLAN] Issue #<N>: <issue title>`.
+- The description links the issue (`Closes #N`, or `Part of #N` when the plan splits the work) and the plan. It summarizes the change, lists any departures from the plan with the reason for each, and ends with a test plan checklist.
+- One issue per pull request, unless the plan divides the work differently.
+- Once review has started, do not rebase or force-push. Merge `main` into the branch to bring it up to date.
+- Add the `run-exhaustive` label when the change affects what the FCA archive contains or how it is parsed. Add `no-changelog` to maintenance-only changes.
+- Pull requests are squash merged, so each one becomes a single commit on `main`.
+
 ## Working style
-- Always run the package's pre-commit routine and tests on proposed code changes to ensure they pass. Run `ruff`, `mypy`, and `pytest` before considering any change done.
-- Fix the underlying issue rather than suppressing a check. Don't reach for `# noqa`, `# type: ignore`, or `# numpydoc ignore` to make a lint/type/docstring failure go away unless the check is genuinely wrong for that line — e.g. two hooks make contradictory demands on the same object (such as ruff's `D418` forbidding docstrings on `@typing.overload` stubs while numpydoc-validation requires one). In that narrow case, prefer the most targeted available suppression (a specific `# numpydoc ignore=<CODE>` over a blanket `# noqa`), and only for the exact object in conflict — not the surrounding code.
-- Use type hints everywhere, and make them precise and well-defined rather than reaching for `Any`. Prefer specific types, generics (`list[str]`, `Mapping[str, int]`), protocols, unions (`X | None`), and type variables that capture the real contract. Only use `Any` when it is genuinely the right choice for that context (e.g. bridging truly dynamic data), and prefer narrowing it as soon as the type is known. The package ships a `py.typed` marker, so its annotations are part of the public contract downstream users type-check against.
-- Prefer small, well-tested increments. You should plan your implementation, then develop basic tests that can be used to check your implementation as it is being created. Then add the implementation and add any advanced testing.
-- Aim for 100% test coverage (branch coverage included); the coverage gate is set to 100%. This is the starting goal for every change: cover the edge cases, error branches, and fallbacks, not just the happy path. Only fall back from 100% when a line is genuinely not meaningfully testable — and in that case exclude it explicitly and narrowly (e.g. `# pragma: no cover` on an `@overload`/`Protocol` stub's `...` body) rather than lowering the gate or leaving real code untested.
-- Keep runtime dependencies minimal and deliberate, and **ask before adding any new dependency** (runtime, optional, or dev). `narwhals` is the one hard runtime third-party dependency currently and the **only** third-party library that may be hard-imported at module scope anywhere in `src/` at this time; any updates must be approved.
-- Every third-party dependency other than `narwhals` must stay optional and must never be hard-imported at module scope in `src/` (test files may import them freely):
-  - **Dataframe backends** (`pandas`, `polars`, `pyarrow`) are reached only through `narwhals` (e.g. `nw.from_dict(data, backend=...)` and `frame.to_native()` in `src/call_report/core/_backend.py`), which imports the selected backend lazily. They therefore stay optional install extras and are only ever test/dev dependencies.
-  - **Any optional dependency narwhals does not front**  must be loaded lazily via the helpers in `src/call_report/core/_dependencies.py` — use `import_optional(...)` for an eager, checked import that raises a clear `pip install ...` error when the module is missing or older than a required `min_version`, and `_lazy_import`/`_LazyModule` for a deferred proxy. Reach for these instead of a bare `import`; the module follows polars' `_dependencies.py` pattern (https://github.com/pola-rs/polars/blob/main/py-polars/src/polars/_dependencies.py).
-- The goal is to support multiple Python dataframe libraries via a package-level configuration that lets users choose the dataframe backend; prefer `narwhals` for this wherever possible, and keep any manual multi-library support behind optional ("soft") dependencies required only when that backend is configured.
+- Run `pre-commit`, `ruff`, `mypy`, and `pytest` before considering any change done.
+- Fix the underlying issue rather than suppressing a check. Use `# noqa`, `# type: ignore`, or `# numpydoc ignore` only when the check is genuinely wrong for that line, for example when two hooks make contradictory demands on the same object (ruff's `D418` forbids docstrings on `@typing.overload` stubs while numpydoc requires one). Then use the narrowest suppression available (`# numpydoc ignore=<CODE>` over a blanket `# noqa`), on that object only.
+- Make type hints precise. Prefer specific types, generics (`list[str]`, `Mapping[str, int]`), protocols, unions, and type variables over `Any`. Use `Any` only for genuinely dynamic data, and narrow it as soon as the type is known. The package ships `py.typed`, so its annotations are part of the public contract.
+- Work in small, well-tested increments. Write basic tests first, then the implementation, then the advanced tests.
+- Keep coverage at 100%, branches included. Cover edge cases, error branches, and fallbacks. Exclude a line only when it is genuinely not testable, and do it narrowly (`# pragma: no cover` on an `@overload` or `Protocol` stub's `...` body).
+- **Ask before adding any dependency** (runtime, optional, or dev). `narwhals` is the only hard runtime dependency and the only third-party library that may be imported at module scope in `src/`. Test files may import anything.
+  - The dataframe backends (`pandas`, `polars`, `pyarrow`) are reached only through narwhals (see `src/call_report/core/_backend.py`), which imports the configured backend lazily. They stay optional extras.
+  - Any other optional dependency is loaded through `src/call_report/core/_dependencies.py`. Use `import_optional(...)` for a checked import that raises a clear `pip install ...` error, and `_lazy_import` for a deferred proxy. The module follows [polars' `_dependencies.py`](https://github.com/pola-rs/polars/blob/main/py-polars/src/polars/_dependencies.py).
 - Match existing patterns in the FCA sub-module when extending to other sources.
