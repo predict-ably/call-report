@@ -439,7 +439,7 @@ A plan covers these points.
 
 A plan is a Markdown file in the repo, so it must pass `pre-commit` like any other file (codespell, trailing whitespace, and the other hooks). It is working material, not user documentation, so the voice rules for docstrings and the user guide do not apply to it. A plan is not edited after it merges, except for the status line.
 
-A small change, such as a typo or a one-line fix, can skip the plan file. Its pull request description holds a short plan instead.
+Every change follows this workflow, however small. A small change gets a short plan.
 
 ## Working style
 - Always run the package's pre-commit routine and tests on proposed code changes to ensure they pass. Run `ruff`, `mypy`, and `pytest` before considering any change done.
