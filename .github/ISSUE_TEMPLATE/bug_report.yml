@@ -1,0 +1,89 @@
+name: Bug report
+description: Report code in call-report that raises an error or behaves incorrectly.
+title: "[BUG] "
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Thanks for taking the time to report a bug. Please search the
+        [existing issues](https://github.com/predict-ably/call-report/issues)
+        first to see if it has already been reported. If the problem is with
+        the values in an FCA release rather than with the code, use the
+        "Data problem" form instead.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: What went wrong, and how does it affect your work?
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Minimal reproducible example
+      description: >
+        Paste the shortest code that shows the problem. We should be able to
+        copy and run it without changes. Use the release archive that ships
+        with the repository, or a local release directory, rather than files
+        only you have.
+      render: python
+      placeholder: |
+        from call_report.fca import FCACallReport
+        from call_report.fca.transport import LocalDirectoryTransport
+
+        report = FCACallReport(
+            start="2025-09-30",
+            end="2025-12-31",
+            transport=LocalDirectoryTransport(data_dir="path/to/releases"),
+        )
+        report.to_long_format()
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: >
+        What happened instead? If an error was raised, paste the full
+        traceback.
+      render: python traceback
+    validations:
+      required: true
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: >
+        Paste the output of `python --version` and of
+        `pip show call-report narwhals pandas polars pyarrow`.
+        It is fine if pip reports that some backends are not installed.
+      render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Dataframe backend
+      description: Which dataframe backend was configured when the bug happened?
+      options:
+        - pandas
+        - polars
+        - pyarrow
+        - Not sure, or not relevant
+    validations:
+      required: true

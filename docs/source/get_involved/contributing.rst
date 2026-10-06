@@ -37,6 +37,8 @@ Opening a pull request
 ========================
 
 - Push your branch and open a pull request against ``main``.
+- Fill in the pull request template that GitHub shows when you open the
+  pull request. Delete any section that does not apply.
 - Describe *why* the change is needed, not just what it does -- link the
   issue it addresses if there is one.
 - Keep pull requests focused: prefer several small, reviewable PRs over one
@@ -58,8 +60,9 @@ Reporting bugs and requesting features
 ========================================
 
 Please use `GitHub issues <https://github.com/predict-ably/call-report/issues>`_
-for both. For bug reports, a minimal, reproducible example is the single
-most helpful thing you can include.
+for both, and choose the form that fits: a bug report, a data problem, a
+feature request, or a documentation improvement. For bug reports, a minimal,
+reproducible example is the single most helpful thing you can include.
 
 Reporting a security vulnerability
 =====================================
