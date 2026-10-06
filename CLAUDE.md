@@ -47,8 +47,10 @@ Context on data from different sources to achieve this:
 
 [NCUA Natural Person Credit Union & Corporate Credit Union Call Report Data](https://ncua.gov/ana)(lysis/credit-union-corporate-call-report-data/quarterly-data)
 
-### Version 0.2 Release Goals: Functionality to Process Metadata and Data
-Finish creating the interface for the **FCA call report source** that does not require network access to download files. We will work toward handling the ability to download the files from FCA as a follow-on segment of work in release version 0.3.
+### Version 0.2 Release Goals: Process, Load, and Download FCA Call Reports
+Finish the interface for the **FCA call report source**. This covers processing release metadata and data, the institution API, and loading release files either from a local directory or by downloading them.
+
+Version 0.2.0 is cut (issue #64) only after the download work in goal 5 is complete. Merger adjustment is not part of this release. It moved to version 0.3.
 
 This release will include several related processing capabilities for creating a standardized dataset from the FCA call report data.
 
@@ -56,23 +58,37 @@ This release will include several related processing capabilities for creating a
 
 2. We can then inspect all the files from 2000 onwards to define schedule specific metadata schemas for each schedule and ship them with the project for user ease.
 
-3. We need to extract the distinct UNINUM values that represent distinct institutions in the data from 2000 onwards. We need to create an API for getting information about the institution. It's most recent name, the lineage of names, addresses and other metadata stored as of the dates they changed. This will let us inspect that information at a point-in-time (quarter). We also will build toward the ability to know the current UNINUM post-merger of institutions so we can merger adjust. But that relies on other information. So it might come later. We just need the API for now. We should be able to get information on a single instution or convert all the institutions into a dataframe of information.
-
-When we handle mergers and other Farm Credit System institution combinations, we'll need to do so based on the information published on the FCA website from 2003 onwards: [mergers are on archive report page](https://www.fca.gov/about/report-archives).
+3. Institution API (issues #57, #58, #59). Extract the distinct UNINUM values in the data from 2000 onwards and provide an API for the name and address attributes reported for each UNINUM. This includes the most recent name, the history of names and addresses with the quarters each value was reported, and a point-in-time view for any quarter. Users can get one UNINUM's history or convert every UNINUM into a dataframe. The package ships this history as a registry built from the archived rosters. The API tracks changed name and address attributes for each UNINUM. It does not link one UNINUM to another, and it does not merger adjust. That work is version 0.3.
 
 4. This release will also include functioanlity to process the FCA data supported in the Version 0.1 release download into several common architectures. This includes a long dataframe that has the UNINUM, Release_Date, Schedule, Variable_Name, and Value stored (long-format). The ability to pivot to wide-format (note we'll have to handle variables that appear in multiple schedules when we do this). Finally, we want to make it easy to create sub-architecture related to specific call-report schedules. For example, a dataset at the level of the "loan portfolio" that includes the dollars of exposure, charge-offs, non-performing loans, etc that are reported across multiple portfolios. We can provide a function that takes in the schedules and provides a Dataframe with institutions, loan portfolio, and release dates defining the rows and each variable measured for that combination parsed into a column.
 
-### Version 0.3 Release Goals: Download FCA Call Reports
-One difficulty when we proceed to downloading the files will be that when downloading the data the FCA uses cloudfare. Consider Python solutions for being able to download the data despite this. Otherwise, suggest that the package includes support for downloading the data from the package itself (e.g., ships with the data) or we host the data in an Azure BLOB.
+5. Load and download release files. Release files reach `FCACallReport` through a transport. `LocalDirectoryTransport` reads extracted releases from a directory, and `PackagedArchiveTransport` reads the zips checked into `data/fca-call-report/`. This goal adds a transport that downloads releases.
 
-Note that each FCA release includes metadata and the files with the actual data. We need to be able to process both. Users should also be able to specify a range of FCA call report release and have the object oriented interface provide them with all of that data.
+   FCA serves its files behind Cloudflare. Consider Python solutions for downloading the data despite this. Otherwise, suggest that the package downloads the data from a source we control instead, such as data shipped with the package or hosted in an Azure BLOB.
 
-The files for quarterly FCA call reports from 2000 onwards are available on the [FCA call report download page](https://www.fca.gov/bank-oversight/call-report-data-for-download).
+   Each FCA release includes metadata and the files with the actual data. We need to be able to process both. Users should be able to specify a range of FCA call report releases and have the object oriented interface provide them with all of that data, whichever transport supplies it.
 
-FCA makes the current Call Report instructions available here [online](https://www.fca.gov/template-fca/bank/UCRCallRptInstructionsJune2026.pdf).
+   The files for quarterly FCA call reports from 2000 onwards are available on the [FCA call report download page](https://www.fca.gov/bank-oversight/call-report-data-for-download).
 
-Consider the impact of [FCA Call Report Disclosures]
-(https://www.fca.gov/bank-oversight/call-report-disclosures) that outline potential issues.
+   FCA makes the current Call Report instructions available here [online](https://www.fca.gov/template-fca/bank/UCRCallRptInstructionsJune2026.pdf).
+
+   Consider the impact of [FCA Call Report Disclosures](https://www.fca.gov/bank-oversight/call-report-disclosures) that outline potential issues.
+
+### Version 0.3 Release Goals: Merger Adjustment
+Link UNINUMs across mergers and other Farm Credit System combinations, so that data can be merger adjusted. This is issue #60 (the successor API) and issue #61 (the dataset of successor events). The version 0.2 institution API is the base this builds on.
+
+When an institution merges, its UNINUM usually stops reporting and the surviving institution reports under a different UNINUM, often with a different name. Names are therefore not used to infer succession. Every link between two UNINUMs comes from a sourced event.
+
+1. Successor events (#61). A curated, shipped file of events. Each event records the predecessor UNINUM, the successor UNINUM, the quarter it took effect, the kind of event (for example a merger or a consolidation), and the source it was taken from. Events come from the information FCA publishes from 2003 onwards: [mergers are on the archive report page](https://www.fca.gov/about/report-archives).
+
+2. Successor API (#60). Resolve any UNINUM to its current UNINUM by following events forward in time from a starting quarter. Each UNINUM resolves to one of three statuses.
+   - *active*: it reports in the latest quarter.
+   - *succeeded*: an event chain leads to a UNINUM that is active.
+   - *unresolved*: it stopped reporting and no event explains why.
+
+   An unresolved UNINUM is reported as unresolved. It is never guessed. A merger adjustment function adds the current UNINUM and its status as columns on a dataframe of call report data.
+
+3. Gap report. List every UNINUM that stopped reporting without a recorded event. This is the work list for curating #61's events, and it shrinks as events are added.
 
 ### Version 0.4+ Release Goals
 After the completion of the releases to support the FCA call report, the project's releases will move on to generalize the patterns to support the FFIEC, FDIC
@@ -399,8 +415,31 @@ synthetic data cannot reproduce.
   shipped schedule metadata and institution registry (run by a
   maintainer, not part of CI or the package's own runtime). Re-run both
   after adding a quarter's zip to `data/fca-call-report/`.
+- `plans/` — one `plan_issue_<N>.md` per planned issue (see "Workflow"
+  below). Not shipped in the built wheel.
 - `pyproject.toml` — build, dependencies, and all tool configuration.
 - `.pre-commit-config.yaml` — lint/format/type/docstring hooks.
+
+## Workflow: plan, implement, review
+
+Work on an issue runs in three steps. Each step is a separate session, and each hands off through a file or a pull request rather than through conversation history.
+
+1. **Plan.** Write the plan for issue N to `plans/plan_issue_<N>.md` on its own branch and open a pull request holding only that file. The plan is reviewed and merged to `main` before any implementation starts. `plans/` sits at the repo root and is not shipped in the wheel.
+2. **Implement.** A new session starts from the latest `main`, reads the merged plan, and implements it on a new branch. It opens a pull request that links the issue and the plan. In the same pull request, it adds a status line at the top of the plan, such as `Status: implemented in #NNN`. When the implementation has to depart from the plan, the pull request description says where and why.
+3. **Review.** A review agent checks the implementation pull request against its plan and against this file. It reports anything the plan asked for that is missing, anything added that the plan did not ask for, and any breach of the conventions above.
+
+A plan covers these points.
+
+- **Goal.** What the issue asks for, and what is out of scope.
+- **Public API.** New or changed classes, functions, and parameters, with their signatures and the docstring summary each will carry.
+- **Data.** Any shipped or checked-in data the change adds or regenerates, and the script that produces it.
+- **Pull requests.** How the work divides, if it needs more than one pull request, and the order they land in.
+- **Tests.** The behaviors each test covers, including the error branches needed for 100% coverage, and whether any test is slow.
+- **Open questions.** Decisions the plan leaves for the reviewer to make before it merges.
+
+A plan is a Markdown file in the repo, so it must pass `pre-commit` like any other file (codespell, trailing whitespace, and the other hooks). It is working material, not user documentation, so the voice rules for docstrings and the user guide do not apply to it. A plan is not edited after it merges, except for the status line.
+
+A small change, such as a typo or a one-line fix, can skip the plan file. Its pull request description holds a short plan instead.
 
 ## Working style
 - Always run the package's pre-commit routine and tests on proposed code changes to ensure they pass. Run `ruff`, `mypy`, and `pytest` before considering any change done.
