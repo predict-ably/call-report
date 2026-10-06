@@ -189,6 +189,9 @@ module that only holds it. A target that genuinely cannot resolve goes in
   `call-report` (hyphen).
 - **Version** is single-sourced from `src/call_report/__init__.py` (`__version__`) via
   hatchling; bump it there.
+- **Pull requests and issues** follow the templates in `.github/`. Fill in every
+  section of `.github/PULL_REQUEST_TEMPLATE.md`, and open issues with the forms in
+  `.github/ISSUE_TEMPLATE/`. This applies to pull requests opened by agents too.
 
 ## Writing docstrings and other documentation
 

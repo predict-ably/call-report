@@ -1,0 +1,59 @@
+name: Data problem
+description: Report wrong, missing, or unreadable data in an FCA call report release.
+title: "[BUG] Data: "
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Use this form when the problem is with the data itself. Examples are
+        a release that fails to load, a value that looks wrong, a missing
+        quarter, or an institution with the wrong name or address. FCA
+        publishes known issues on its
+        [call report disclosures](https://www.fca.gov/bank-oversight/call-report-disclosures)
+        page, so please check there first.
+
+  - type: input
+    id: period
+    attributes:
+      label: Reporting period
+      description: The quarter or quarters affected, for example 2025Q4.
+    validations:
+      required: true
+
+  - type: input
+    id: schedule
+    attributes:
+      label: Schedule
+      description: The schedule affected, for example RC or INST. Leave blank if it affects every schedule.
+
+  - type: input
+    id: uninum
+    attributes:
+      label: UNINUM
+      description: The institution's UNINUM, if the problem is with one institution.
+
+  - type: input
+    id: field
+    attributes:
+      label: Field
+      description: The variable or column affected, if the problem is with one field.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the problem
+      description: >
+        What is wrong, and how do you know? If you compared against another
+        source, such as a value in the FCA release files or an FCA
+        publication, say which.
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Code that shows the problem
+      description: If the problem shows up through call-report, paste the code you ran.
+      render: python
