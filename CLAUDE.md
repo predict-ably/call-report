@@ -425,19 +425,31 @@ synthetic data cannot reproduce.
 Work on an issue runs in three steps. Each step is a separate session, and each hands off through a file or a pull request rather than through conversation history.
 
 1. **Plan.** Write the plan for issue N to `plans/plan_issue_<N>.md` on its own branch and open a pull request holding only that file. The plan is reviewed and merged to `main` before any implementation starts. `plans/` sits at the repo root and is not shipped in the wheel.
-2. **Implement.** A new session starts from the latest `main`, reads the merged plan, and implements it on a new branch. It opens a pull request that links the issue and the plan. In the same pull request, it adds a status line at the top of the plan, such as `Status: implemented in #NNN`. When the implementation has to depart from the plan, the pull request description says where and why.
+2. **Implement.** A new session starts from the latest `main`, reads the merged plan, and implements it on a new branch. It opens a pull request that links the issue and the plan. In the same pull request, it changes the plan's status line to `Status: implemented in #NNN`. When the implementation has to depart from the plan, the pull request description says where and why.
 3. **Review.** A review agent checks the implementation pull request against its plan and against this file. It reports anything the plan asked for that is missing, anything added that the plan did not ask for, and any breach of the conventions above.
 
-A plan covers these points.
+### Plan layout
 
-- **Goal.** What the issue asks for, and what is out of scope.
-- **Public API.** New or changed classes, functions, and parameters, with their signatures and the docstring summary each will carry.
-- **Data.** Any shipped or checked-in data the change adds or regenerates, and the script that produces it.
-- **Pull requests.** How the work divides, if it needs more than one pull request, and the order they land in.
-- **Tests.** The behaviors each test covers, including the error branches needed for 100% coverage, and whether any test is slow.
-- **Open questions.** Decisions the plan leaves for the reviewer to make before it merges.
+Every plan uses the same layout. It starts with a title line, `# Plan: issue #<N>, <issue title>`, followed by a `Status:` line. While the plan is under review, the status is `Status: proposed`. The sections below follow, as `##` headings, with these names and in this order. A section that does not apply stays in the plan and says "None." so the reader knows it was considered.
 
-A plan is a Markdown file in the repo, so it must pass `pre-commit` like any other file (codespell, trailing whitespace, and the other hooks). It is working material, not user documentation, so the voice rules for docstrings and the user guide do not apply to it. A plan is not edited after it merges, except for the status line.
+1. **Goal.** What the issue asks for, and what is out of scope.
+2. **Why.** The problem this solves and who it is for. This is where design reasoning belongs. It covers the alternatives considered and why this approach was chosen over them.
+3. **Approach.** How the change is implemented. It names the modules and files to add or change, the main steps, and how they fit the existing code.
+4. **Public API.** New or changed classes, functions, and parameters, with their signatures and the docstring summary each will carry.
+5. **Data.** Any shipped or checked-in data the change adds or regenerates, and the script that produces it.
+6. **Pull requests.** How the work divides, if it needs more than one pull request, and the order they land in.
+7. **Tests.** The behaviors each test covers, including the error branches needed for 100% coverage, and whether any test is slow.
+8. **Open questions.** Decisions the plan leaves for the reviewer to make before it merges.
+
+A small change gets short sections, not fewer sections.
+
+### Writing a plan
+
+A plan has a different purpose from a docstring. A docstring states the contract and leaves out the reasoning. A plan explains why the change is made and how it will be built, because the reviewer has to judge both before it merges.
+
+The plain language rules for docstrings still apply to a plan, with the same aim of being easy to read and understand. Do not use dashes or semicolons as sentence punctuation. Prefer short sentences and ordinary words. Attach every phrase to the thing it describes. Lists, tables, and code blocks are welcome where they make the plan easier to follow.
+
+A plan is a Markdown file in the repo, so it must pass `pre-commit` like any other file (codespell, trailing whitespace, and the other hooks). A plan is not edited after it merges, except for the status line.
 
 Every change follows this workflow, however small. A small change gets a short plan.
 
