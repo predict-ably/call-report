@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `call-report` provides a consistent Python interface for retrieving, parsing, and
 analyzing regulatory **call report** data filed by regulated U.S. financial
-institutions. Three reporting regimes are initially in scope:
+institutions. Four reporting regimes are initially in scope:
 
 - **FCA** — Farm Credit Administration call reports for Farm Credit System institutions.
 - **FFIEC** — Consolidated Reports of Condition and Income for banks.
@@ -31,6 +31,8 @@ report form comparable to FFIEC/NCUA/FCA. Do not add modules for them.
 The goal is to proceed toward the first release of the package and then add subsequent releases that add new functionality. It is expected that the first versions (v0.1, v0.2, and v0.3) will progress toward full support of the **FCA call report source**.
 
 ### Version 0.1 Release Goals
+Status: released as v0.1.0.
+
 Analyze the sources to determine a relatively standardized interface for working with the Call Report data. Then implement an initial "standard" object-oriented interface and other high-level package details.
 
 This should include a package level configuration functionality to choose the dataframe backend to use (and later anything else necessary), the standard object-oriented interface.
@@ -45,26 +47,28 @@ Context on data from different sources to achieve this:
 
 [FFIEC Data](https://cdr.ffiec.gov/public/PWS/PWSPage.aspx)
 
-[NCUA Natural Person Credit Union & Corporate Credit Union Call Report Data](https://ncua.gov/ana)(lysis/credit-union-corporate-call-report-data/quarterly-data)
+[NCUA Natural Person Credit Union & Corporate Credit Union Call Report Data](https://ncua.gov/analysis/credit-union-corporate-call-report-data/quarterly-data)
 
 ### Version 0.2 Release Goals: Process, Load, and Download FCA Call Reports
 Finish the interface for the **FCA call report source**. This covers processing release metadata and data, the institution API, and loading release files either from a local directory or by downloading them.
+
+Status: goals 1 to 4 are complete. Goal 5 is the remaining work.
 
 Version 0.2.0 is cut (issue #64) only after the download work in goal 5 is complete. Merger adjustment is not part of this release. It moved to version 0.3.
 
 This release will include several related processing capabilities for creating a standardized dataset from the FCA call report data.
 
-1. We need to reason about and design a API for call report schedule APIs. This may be a further refinement of FCALayout or an update. This of a schema like object (e.g., like PyArrow or Polars schema) that provides a mapping of column names to column metadata (including definition, first and last period), etc. I will provide some ideas in the references section. We'll need some concept of schema drift over time. This includes comparing differences in schemas, but also being able to request schemas for a given schedule as a of given date. Do we have a master schema for each schedule that is cross-time, and it can return the schema present on a given date as a schema object? The schema should be dataframe agnostic at its core -- but have a method like to_dataframe(dataframe_type) that returns a dataframe with the schema information.
+1. We need to reason about and design an API for call report schedule APIs. This may be a further refinement of FCALayout or an update. Think of a schema like object (e.g., like PyArrow or Polars schema) that provides a mapping of column names to column metadata (including definition, first and last period), etc. I will provide some ideas in the references section. We'll need some concept of schema drift over time. This includes comparing differences in schemas, but also being able to request schemas for a given schedule as of a given date. Do we have a master schema for each schedule that is cross-time, and it can return the schema present on a given date as a schema object? The schema should be dataframe agnostic at its core -- but have a method like to_dataframe(dataframe_type) that returns a dataframe with the schema information.
 
 2. We can then inspect all the files from 2000 onwards to define schedule specific metadata schemas for each schedule and ship them with the project for user ease.
 
 3. Institution API (issues #57, #58, #59). Extract the distinct UNINUM values in the data from 2000 onwards and provide an API for the name and address attributes reported for each UNINUM. This includes the most recent name, the history of names and addresses with the quarters each value was reported, and a point-in-time view for any quarter. Users can get one UNINUM's history or convert every UNINUM into a dataframe. The package ships this history as a registry built from the archived rosters. The API tracks changed name and address attributes for each UNINUM. It does not link one UNINUM to another, and it does not merger adjust. That work is version 0.3.
 
-4. This release will also include functioanlity to process the FCA data supported in the Version 0.1 release download into several common architectures. This includes a long dataframe that has the UNINUM, Release_Date, Schedule, Variable_Name, and Value stored (long-format). The ability to pivot to wide-format (note we'll have to handle variables that appear in multiple schedules when we do this). Finally, we want to make it easy to create sub-architecture related to specific call-report schedules. For example, a dataset at the level of the "loan portfolio" that includes the dollars of exposure, charge-offs, non-performing loans, etc that are reported across multiple portfolios. We can provide a function that takes in the schedules and provides a Dataframe with institutions, loan portfolio, and release dates defining the rows and each variable measured for that combination parsed into a column.
+4. This release will also include functionality to process the FCA data supported in the Version 0.1 release download into several common architectures. This includes a long dataframe that has the UNINUM, Release_Date, Schedule, Variable_Name, and Value stored (long-format). The ability to pivot to wide-format (note we'll have to handle variables that appear in multiple schedules when we do this). Finally, we want to make it easy to create sub-architecture related to specific call-report schedules. For example, a dataset at the level of the "loan portfolio" that includes the dollars of exposure, charge-offs, non-performing loans, etc that are reported across multiple portfolios. We can provide a function that takes in the schedules and provides a Dataframe with institutions, loan portfolio, and release dates defining the rows and each variable measured for that combination parsed into a column.
 
 5. Load and download release files. Release files reach `FCACallReport` through a transport. `LocalDirectoryTransport` reads extracted releases from a directory, and `PackagedArchiveTransport` reads the zips checked into `data/fca-call-report/`. This goal adds a transport that downloads releases.
 
-   FCA serves its files behind Cloudflare. Consider Python solutions for downloading the data despite this. Otherwise, suggest that the package downloads the data from a source we control instead, such as data shipped with the package or hosted in an Azure BLOB.
+   FCA's site uses Cloudflare, which may block automated downloads. First find out whether it does. If it does, find a Python approach that downloads the files reliably. If no reliable approach exists, suggest a source we control instead, such as data shipped with the package or hosted in an Azure BLOB.
 
    Each FCA release includes metadata and the files with the actual data. We need to be able to process both. Users should be able to specify a range of FCA call report releases and have the object oriented interface provide them with all of that data, whichever transport supplies it.
 
@@ -75,6 +79,8 @@ This release will include several related processing capabilities for creating a
    Consider the impact of [FCA Call Report Disclosures](https://www.fca.gov/bank-oversight/call-report-disclosures) that outline potential issues.
 
 ### Version 0.3 Release Goals: Merger Adjustment
+Status: not started.
+
 Link UNINUMs across mergers and other Farm Credit System combinations, so that data can be merger adjusted. This is issue #60 (the successor API) and issue #61 (the dataset of successor events). The version 0.2 institution API is the base this builds on.
 
 When an institution merges, its UNINUM usually stops reporting and the surviving institution reports under a different UNINUM, often with a different name. Names are therefore not used to infer succession. Every link between two UNINUMs comes from a sourced event.
@@ -151,6 +157,7 @@ Common commands:
 
 ```bash
 pytest                      # run tests
+pytest -m "not slow"        # skip the slow archive tests while iterating
 pytest --cov=call_report --cov-report=term-missing --cov-fail-under=100
 ruff check .                # lint
 ruff format .               # format
@@ -422,11 +429,11 @@ synthetic data cannot reproduce.
 
 ## Workflow: plan, implement, review
 
-Work on an issue runs in three steps. Each step is a separate session, and each hands off through a file or a pull request rather than through conversation history.
+Every change follows this workflow, however small. Work on an issue runs in three steps. Each step is a separate session, and each hands off through a file or a pull request rather than through conversation history.
 
 1. **Plan.** Write the plan for issue N to `plans/plan_issue_<N>.md` on its own branch and open a pull request holding only that file. The plan is reviewed and merged to `main` before any implementation starts. `plans/` sits at the repo root and is not shipped in the wheel.
 2. **Implement.** A new session starts from the latest `main`, reads the merged plan, and implements it on a new branch. It opens a pull request that links the issue and the plan. In the same pull request, it changes the plan's status line to `Status: implemented in #NNN`. When the implementation has to depart from the plan, the pull request description says where and why.
-3. **Review.** A review agent checks the implementation pull request against its plan and against this file. It reports anything the plan asked for that is missing, anything added that the plan did not ask for, and any breach of the conventions above.
+3. **Review.** A review agent reviews the implementation pull request. It does not open a pull request of its own. It checks the change against its plan and against this file, and posts a GitHub review on the pull request. The review reports anything the plan asked for that is missing, anything added that the plan did not ask for, and any breach of the conventions above. When it finds problems, the review requests changes, and they are fixed on the same branch before the pull request merges.
 
 ### Plan layout
 
@@ -447,11 +454,11 @@ A small change gets short sections, not fewer sections.
 
 A plan has a different purpose from a docstring. A docstring states the contract and leaves out the reasoning. A plan explains why the change is made and how it will be built, because the reviewer has to judge both before it merges.
 
-The plain language rules for docstrings still apply to a plan, with the same aim of being easy to read and understand. Do not use dashes or semicolons as sentence punctuation. Prefer short sentences and ordinary words. Attach every phrase to the thing it describes. Lists, tables, and code blocks are welcome where they make the plan easier to follow.
+The plain language rules for docstrings still apply to a plan, with the same aim of being easy to read and understand. Do not use dashes or semicolons as sentence punctuation. Prefer short sentences and ordinary words. Attach every phrase to the thing it describes. Lists and tables are welcome where they make the plan easier to follow.
+
+Show code wherever it makes the plan clearer. This is strongly encouraged. Write proposed interfaces as real Python signatures with type hints, and describe complex logic in short pseudocode.
 
 A plan is a Markdown file in the repo, so it must pass `pre-commit` like any other file (codespell, trailing whitespace, and the other hooks). A plan is not edited after it merges, except for the status line.
-
-Every change follows this workflow, however small. A small change gets a short plan.
 
 ## Working style
 - Always run the package's pre-commit routine and tests on proposed code changes to ensure they pass. Run `ruff`, `mypy`, and `pytest` before considering any change done.
