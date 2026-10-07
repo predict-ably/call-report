@@ -8,6 +8,20 @@ All notable changes to ``call-report`` are documented on this page, newest
 release first. See the :ref:`release_process` for how this page fits into
 cutting a release.
 
+.. _changelog_unreleased:
+
+Unreleased
+==========
+
+- ``code_value`` is now a nullable ``Int64`` in long format, the code grain,
+  and domain datasets. It was ``Float64``. A plain field's ``code_value`` is
+  null. pandas shows it as ``<NA>`` rather than ``NaN``.
+  :func:`~call_report.fca.convert_long_format_to_wide_format` and
+  :func:`~call_report.fca.convert_long_format_to_code_grain_format` still
+  accept a ``Float64`` ``code_value`` holding whole numbers.
+- :meth:`~call_report.fca.FCACallReport.to_domain_dataset` with
+  ``include_totals=False`` no longer raises under polars 2.0 (:issue:`120`).
+
 .. _changelog_0.1.0:
 
 0.1.0 (2026-07-26)

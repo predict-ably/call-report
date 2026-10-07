@@ -79,13 +79,14 @@ def test_coded_column_key_round_trips(
             "period": ["2026-03-31"],
             "schedule": [schedule],
             "code_column": [code_column],
-            "code_value": [float(code_value)],
+            "code_value": [code_value],
             "variable_name": [variable],
             "value": [1.0],
         }
     )
     parsed = _parse_wide_column_key(_key_of(frame))
-    assert parsed == (schedule, code_column, float(code_value), True, variable)
+    assert parsed == (schedule, code_column, code_value, True, variable)
+    assert isinstance(parsed[2], int)
 
 
 @given(schedule=names, code_column=names, code_value=code_values, variable=names)
