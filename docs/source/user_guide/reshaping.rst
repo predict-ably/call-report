@@ -676,9 +676,9 @@ code 66, but code 89 does:
    >>> split = FCACallReport(
    ...     start="2018-12-31", end="2019-03-31", transport=PackagedArchiveTransport()
    ... )
-   >>> farmer_mac = split.to_domain_dataset(domain_dataset="investments", include_totals=True)
-   >>> farmer_mac = farmer_mac[
-   ...     (farmer_mac["UNINUM"] == 722918) & farmer_mac["code_value"].isin([66, 86, 88, 89])
+   >>> investments = split.to_domain_dataset(domain_dataset="investments", include_totals=True)
+   >>> farmer_mac = investments[
+   ...     (investments["UNINUM"] == 722918) & investments["code_value"].isin([66, 86, 88, 89])
    ... ]
    >>> farmer_mac[["period", "code_value", "amortized_cost"]].reset_index(drop=True)
          period  code_value  amortized_cost
