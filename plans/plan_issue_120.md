@@ -113,6 +113,26 @@ pandas. Polars and pyarrow hold nulls in integer columns natively.
 
 This is a visible change to a public column, so it gets a changelog entry.
 
+### Why the integer must be nullable
+
+Long format needs an integer dtype that can hold a null. Every row from a field
+with no code (an RC field, for example) has no `code_value`. A numpy-backed
+pandas `int64` cannot store a missing value, so stacking coded and plain rows
+turns it into `float64` with `NaN`. That is how `code_value` became Float64. A
+placeholder code such as `0` or `-1` would avoid the null, but a reader could
+mistake it for a real code.
+
+The code grain and domain datasets never hold a null `code_value`. They share
+the column with long format, so one dtype everywhere keeps them consistent.
+
+This adds no new requirement for pandas users. The pandas output already uses
+the nullable dtypes for every other column. `load` returns `UNINUM`, the code
+columns, and every integer measure as `Int64`, and `to_long_format` returns
+`value` as `Float64`. These dtypes ship with pandas itself and are numpy-backed,
+so they need neither pyarrow nor an extra install. Only one thing behaves
+differently. `.astype("int64")` on the long format `code_value` raises because
+of the nulls. It raises on today's Float64 column for the same reason.
+
 ## Approach
 
 ### A backend helper for a nullable integer cast
