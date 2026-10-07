@@ -145,7 +145,7 @@ ruff check .                # lint
 ruff format .               # format
 mypy                        # type-check (config targets src and tests)
 pre-commit run --all-files  # run the full hook suite
-pip install -e ".[dev]" "polars==1.0.0"   # reproduce the polars floor job
+pip install -e ".[dev]" -r .github/minimum-versions.txt   # reproduce the minimum versions job
 ```
 
 Both `pytest` commands above also execute every doctest in `src/call_report/**` docstrings (`[tool.pytest.ini_options]` adds `src/call_report` to `testpaths` with `--doctest-modules`). A docstring's `Examples` section is therefore live test code, not illustrative prose: it must actually run and match its shown output. Public classes, functions, and methods need a genuinely working example -- construct real objects and show real (ideally meaningful, not merely illustrative) output rather than a placeholder. Dunder methods (`__repr__`, `__len__`, etc.) don't need their own Examples section -- their behavior is usually already covered by the class's own example or another method's. Prefer `# doctest: +ELLIPSIS` over `# doctest: +SKIP` for output that's correct but inherently variable (a temp path, a memory address); reserve `+SKIP` for examples that truly cannot run in a sandboxed test (e.g. real network access).
@@ -193,13 +193,17 @@ module that only holds it. A target that genuinely cannot resolve goes in
 - **Pull requests and issues** follow the templates in `.github/`. Fill in every
   section of `.github/PULL_REQUEST_TEMPLATE.md`, and open issues with the forms in
   `.github/ISSUE_TEMPLATE/`. This applies to pull requests opened by agents too.
-- **Dependency versions.** CI runs the full matrix on the newest polars, plus
-  one job pinned to the declared floor (`polars==1.0.0`). Code that has to
-  behave differently on each polars major checks the version in one helper in
-  `call_report.core._backend`, never inline. Each job enforces 100% branch
-  coverage by itself, so a version-specific branch is covered by tests that
-  drive the helper both ways, not by `# pragma: no cover`. Raising a floor in
-  `pyproject.toml` means raising the pin in `.github/workflows/test.yml` too.
+- **Dependency versions.** CI runs the full matrix on the newest release of
+  every dependency, plus one job on the oldest supported Python that installs
+  the floors pinned in `.github/minimum-versions.txt`. Every floor in
+  `pyproject.toml` for narwhals, pandas, polars, and pyarrow has a pin there,
+  and `tests/test_minimum_versions.py` fails when the two disagree. Raise both
+  together. Code that has to behave differently on each version of a
+  dependency checks the version in one helper in `call_report.core._backend`,
+  never inline. Each job enforces 100% branch coverage by itself, so a
+  version-specific branch is covered by tests that drive the helper both ways,
+  not by `# pragma: no cover`. When the oldest supported Python is dropped,
+  move the job to the next one.
 
 ## Writing docstrings and other documentation
 

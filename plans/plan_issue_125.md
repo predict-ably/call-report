@@ -1,6 +1,6 @@
 # Plan: issue #125, Test the minimum versions of narwhals, pandas, and pyarrow
 
-Status: proposed
+Status: implemented in #NNN
 
 ## Goal
 

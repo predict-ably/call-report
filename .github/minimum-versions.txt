@@ -1,0 +1,8 @@
+# The lowest supported version of each runtime dependency and dataframe
+# backend. Each pin equals the floor declared in pyproject.toml, which
+# tests/test_minimum_versions.py checks. The minimum versions job in
+# .github/workflows/test.yml installs these.
+narwhals==2.10.1
+pandas==2.2.0
+polars==1.0.0
+pyarrow==20.0.0

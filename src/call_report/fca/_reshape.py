@@ -544,12 +544,14 @@ def _with_is_multiple_flag(frame: FrameOrLazy) -> FrameOrLazy:
     # `PerformanceWarning` on a `LazyFrame`.
     if "code_column" not in frame.collect_schema():
         frame = frame.with_columns(
-            nw.lit(None, dtype=nw.String).alias("code_column"),
+            nw.lit(None, dtype=nw.Float64).alias("code_column"),
             nw.lit(None, dtype=nw.Float64).alias("code_value"),
             nw.lit(value=False).alias("is_multiple"),
         )
-        # A null literal cannot be built as Int64 on pandas, whose
-        # numpy-backed int64 has no null, so it is cast afterwards.
+        # A null literal cannot be built as String on pandas 2.x (it becomes
+        # the text "None") or as Int64 (numpy int64 has no null), so both are
+        # built as Float64 and cast afterwards.
+        frame = cast_nullable(frame=frame, column="code_column", dtype=nw.String())
         return cast_nullable(frame=frame, column="code_value", dtype=nw.Int64())
     return frame.with_columns((~nw.col("code_column").is_null()).alias("is_multiple"))
 
