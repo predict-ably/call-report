@@ -1,6 +1,6 @@
 # Plan: issue #121, Run the test suite under polars 1.x and polars 2.x
 
-Status: implemented in #NNN
+Status: implemented in #126
 
 ## Goal
 
