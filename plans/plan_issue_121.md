@@ -28,8 +28,8 @@ In scope:
 
 Out of scope:
 
-- Floor jobs for `pandas>=2.0`, `pyarrow>=15.0`, and `narwhals>=1.0`. The issue
-  calls these a follow-up. See "Open questions".
+- Floor jobs for `pandas>=2.0`, `pyarrow>=15.0`, and `narwhals>=1.0`. These
+  are #125.
 - A scheduled run against the newest dependencies. The issue lists it as a good
   addition but not a replacement. It stays a separate maintenance issue, as the
   plan for #120 also recommended.
@@ -305,14 +305,10 @@ uses.
 
 ## Open questions
 
-1. **Floors for the other dependencies.** `pandas>=2.0`, `pyarrow>=15.0`, and
-   `narwhals>=1.0` are also untested. The local runs above all used narwhals
-   2.26.0, so whether narwhals 1.0 still works is unknown. pandas 2.0.0 ships
-   no wheels for Python 3.12 and later, so its floor job would have to run on
-   3.11. The
-   recommendation is one follow-up issue that finds the real floor for each,
-   raises any that are wrong, and adds them to the pinned job (renamed to a
-   general "minimum versions" job). Should that be filed now?
+1. **Floors for the other dependencies.** Settled. `pandas>=2.0`,
+   `pyarrow>=15.0`, and `narwhals>=1.0` are also untested. #125 finds the real
+   floor for each, raises any that are wrong, and turns the pinned polars job
+   into a general "minimum versions" job.
 2. **Required checks.** The plan keeps the existing job names in case branch
    protection lists them. Should the new polars 1.0.0 job also be made a
    required check once it is green? The recommendation is yes, so a break on
