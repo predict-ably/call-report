@@ -21,6 +21,15 @@ Unreleased
   accept a ``Float64`` ``code_value`` holding whole numbers.
 - :meth:`~call_report.fca.FCACallReport.to_domain_dataset` with
   ``include_totals=False`` no longer raises under polars 2.0 (:issue:`120`).
+- The minimum supported versions are now narwhals 2.10.1, pandas 2.2.0, and
+  pyarrow 20.0. polars stays at 1.0. Earlier versions do not work with this
+  package (:issue:`125`).
+- With pandas 2.x, :meth:`~call_report.fca.FCACallReport.to_long_format`
+  returns a null ``code_column`` when no requested schedule is coded. It
+  returned the text ``"None"``.
+  :func:`~call_report.fca.convert_long_format_to_code_grain_format` now raises
+  :class:`~call_report.exceptions.ReshapeError` for such a frame, as
+  documented (:issue:`125`).
 
 .. _changelog_0.1.0:
 

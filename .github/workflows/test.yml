@@ -28,12 +28,12 @@ concurrency:
 
 jobs:
   pytest:
-    # Spelled out so the 12 polars-latest jobs keep the names that branch
-    # protection may list as required checks. Only the pinned job gets a
-    # polars suffix.
+    # Spelled out so the 12 newest-dependency jobs keep the names that
+    # branch protection may list as required checks. Only the minimum
+    # versions job gets a suffix.
     name: >-
       pytest (${{ matrix.os }}, ${{ matrix.python-version }}${{
-      matrix.polars != 'latest' && format(', polars {0}', matrix.polars) || '' }})
+      matrix.deps != 'latest' && format(', {0} versions', matrix.deps) || '' }})
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -42,15 +42,16 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
         # "latest" must be a base matrix value. Without it, the include
-        # entry below would merge into the existing ubuntu 3.12 job instead
+        # entry below would merge into the existing ubuntu 3.11 job instead
         # of adding a new one.
-        polars: ["latest"]
+        deps: ["latest"]
         include:
-          # The floor declared in pyproject.toml (polars>=1.0). polars does
-          # not differ by OS or Python here, so one job covers the 1.x major.
+          # Every floor in .github/minimum-versions.txt, on the oldest
+          # supported Python. The floors do not differ by OS, so one job
+          # covers them.
           - os: ubuntu-latest
-            python-version: "3.12"
-            polars: "1.0.0"
+            python-version: "3.11"
+            deps: "minimum"
 
     steps:
       - name: Checkout
@@ -64,25 +65,30 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package with dev dependencies
-        if: matrix.polars == 'latest'
+        if: matrix.deps == 'latest'
         run: pip install -e ".[dev]"
 
-      # The pin goes in the same resolve as the dev dependencies, so a
-      # dependency that needs a newer polars fails the install loudly.
-      - name: Install package with dev dependencies and pinned polars
-        if: matrix.polars != 'latest'
-        env:
-          POLARS_VERSION: ${{ matrix.polars }}
-        run: pip install -e ".[dev]" "polars==${POLARS_VERSION}"
+      # The pins go in the same resolve as the dev dependencies, so a
+      # dependency that needs a newer version fails the install loudly.
+      - name: Install package with dev dependencies at minimum versions
+        if: matrix.deps == 'minimum'
+        run: pip install -e ".[dev]" -r .github/minimum-versions.txt
 
-      - name: Check the polars version
-        if: matrix.polars != 'latest'
-        env:
-          EXPECTED_POLARS: ${{ matrix.polars }}
-        run: >-
-          python -c "import os, polars;
-          assert polars.__version__ == os.environ['EXPECTED_POLARS'],
-          polars.__version__"
+      - name: Check the installed minimum versions
+        if: matrix.deps == 'minimum'
+        run: |
+          python - <<'EOF'
+          from importlib.metadata import version
+          from pathlib import Path
+
+          from packaging.requirements import Requirement
+
+          for line in Path(".github/minimum-versions.txt").read_text().splitlines():
+              if line.strip() and not line.startswith("#"):
+                  requirement = Requirement(line)
+                  installed = version(requirement.name)
+                  assert installed in requirement.specifier, (requirement, installed)
+          EOF
 
       - name: Show dependencies
         run: python -m pip list
@@ -93,7 +99,7 @@ jobs:
       - name: Upload coverage to Codecov
         if: >-
           matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-          && matrix.polars == 'latest'
+          && matrix.deps == 'latest'
         uses: codecov/codecov-action@v7
         with:
           use_oidc: true

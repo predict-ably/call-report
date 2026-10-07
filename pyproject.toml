@@ -23,7 +23,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "narwhals>=1.0",
+    "narwhals>=2.10.1",
 ]
 
 [project.optional-dependencies]
@@ -34,9 +34,10 @@ dependencies = [
 # call_report's pandas/pyarrow-typed return values as Any instead of
 # pd.DataFrame/pa.Table. polars ships py.typed itself, so it needs nothing
 # extra.
-pandas = ["pandas>=2.0", "pandas-stubs>=2.0"]
+pandas = ["pandas>=2.2.0", "pandas-stubs>=2.0"]
 polars = ["polars>=1.0"]
-pyarrow = ["pyarrow>=15.0", "pyarrow-stubs>=20.0"]
+# pyarrow-stubs 20 requires pyarrow>=20, so the pyarrow floor matches it.
+pyarrow = ["pyarrow>=20.0", "pyarrow-stubs>=20.0"]
 dev = [
     "pytest>=8",
     "pytest-cov>=5",
@@ -52,9 +53,9 @@ dev = [
     "pre-commit>=3.7",
     "mypy>=1.10",
     "packaging>=24.0",
-    "pandas>=2.0",
+    "pandas>=2.2.0",
     "polars>=1.0",
-    "pyarrow>=15.0",
+    "pyarrow>=20.0",
     "pandas-stubs>=2.0",
     "pyarrow-stubs>=20.0",
 ]
