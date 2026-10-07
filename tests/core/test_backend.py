@@ -19,6 +19,7 @@ from call_report.core._backend import (
     _pyarrow_pivot,
     assert_unique_grain,
     build_frame,
+    cast_nullable,
     concat,
     convert_dataframe_type,
     finalize,
@@ -400,6 +401,33 @@ def test_is_in_null_safe_answers_false_for_a_null(backend: str) -> None:
     frame = build_frame(data={"code": [110, None]})
     kept = frame.filter(~is_in_null_safe(column="code", values=[155]))
     assert kept.shape[0] == 2
+
+
+# ---------------------------------------------------------------------------
+# cast_nullable
+# ---------------------------------------------------------------------------
+
+
+def test_cast_nullable_keeps_a_null_when_casting_float_to_int(backend: str) -> None:
+    """A float column holding a null casts to Int64 and keeps the null.
+
+    On pandas the column starts as numpy float64 holding NaN. A plain cast
+    targets numpy int64, which cannot hold a null and raises.
+    """
+    frame = build_frame(data={"code": [110.0, None]})
+    cast = cast_nullable(frame=frame, column="code", dtype=nw.Int64())
+    assert isinstance(cast, nw.DataFrame)
+    assert cast.schema["code"] == nw.Int64
+    assert cast["code"].null_count() == 1
+    assert cast["code"].drop_nulls().to_list() == [110]
+
+
+def test_cast_nullable_preserves_laziness(lazy_polars_backend: str) -> None:
+    """A lazy frame stays lazy, so a caller is not forced to collect."""
+    frame = build_frame(data={"code": [110.0, None]}).lazy()
+    cast = cast_nullable(frame=frame, column="code", dtype=nw.Int64())
+    assert isinstance(cast, nw.LazyFrame)
+    assert cast.collect_schema()["code"] == nw.Int64
 
 
 # ---------------------------------------------------------------------------

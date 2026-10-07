@@ -37,6 +37,7 @@ from call_report.core._backend import (
     FrameOrLazy,
     assert_unique_grain,
     build_frame,
+    cast_nullable,
     concat,
     date_dtype,
     finalize_as,
@@ -161,7 +162,7 @@ _LOOKUP_SCHEMA: dict[str, nw.dtypes.DType] = {
     "column_key": nw.String(),
     "schedule": nw.String(),
     "code_column": nw.String(),
-    "code_value": nw.Float64(),
+    "code_value": nw.Int64(),
     "is_multiple": nw.Boolean(),
     "variable_name": nw.String(),
 }
@@ -229,13 +230,11 @@ def _cast_numeric_to_float64(frame: FrameOrLazy, *, column: str) -> FrameOrLazy:
     numeric occurrence of `column` to Float64 up front removes that
     order-dependence.
 
-    Used for both `"value"`, holding every schedule's measures, and
-    `"code_value"`, holding every code-bearing schedule's own code. A code
-    is always Int64 in practice, but is normalized for the same reason.
-    This also resolves `column` being `Unknown` (see `_cast_unknown_dtype`).
-    `"value"` and `"code_value"` are always numeric when populated, since
-    no non-identifier `FCASchedule` field is ever ``Alphanum.``, so
-    `Unknown` is safe to treat as Float64 here. A genuinely non-numeric
+    Used for `"value"`, holding every schedule's measures. This also
+    resolves `column` being `Unknown` (see `_cast_unknown_dtype`).
+    `"value"` is always numeric when populated, since no non-identifier
+    `FCASchedule` field is ever ``Alphanum.``, so `Unknown` is safe to
+    treat as Float64 here. A genuinely non-numeric
     column with real data is left as-is.
 
     Parameters
@@ -287,10 +286,10 @@ def melt_schedule_frame(
     Every `RESHAPE_INDEX` column is cast to a concrete dtype up front if
     `Unknown`, which happens when a schedule has zero rows across every
     requested period (see `_cast_unknown_dtype`). None of them is touched
-    by `_cast_numeric_to_float64`'s later `"value"` and `"code_value"`
-    calls, but all carry the same cross-piece concat risk, and an
-    `Unknown` `period` also fails a decoding join with `ArrowInvalid`
-    under pyarrow before it ever reaches a concat.
+    by the later casts of `"value"` and `"code_value"`, but all carry the
+    same cross-piece concat risk, and an `Unknown` `period` also fails a
+    decoding join with `ArrowInvalid` under pyarrow before it ever reaches
+    a concat.
     `reshape_index_dtypes` names the target for each.
 
     Parameters
@@ -340,7 +339,7 @@ def melt_schedule_frame(
         melted = melted.rename({code_column: "code_value"}).with_columns(
             nw.lit(code_column).alias("code_column")
         )
-        melted = _cast_numeric_to_float64(melted, column="code_value")
+        melted = cast_nullable(frame=melted, column="code_value", dtype=nw.Int64())
 
     if not trailing_columns:
         return melted
@@ -409,11 +408,10 @@ def _with_column_key(frame: FrameOrLazy) -> FrameOrLazy:
     ``{schedule}__{code_column}_{code_value}__{variable_name}``.
 
     The plain half of the key comes from `_plain_column_key`, so wide
-    format and the code grain name a variable the same way.
-    `code_value`'s cast to a string goes through `fill_null` first,
-    because casting a `Float64`-with-null column straight to `Int64`
-    raises on the pandas backend, and that is the normal shape here once
-    code and non-code schedules are concatenated together.
+    format and the code grain name a variable the same way. A
+    `code_value` that is not already Int64, such as a Float64 column
+    from a long frame a caller built, is cast to Int64 first, so a code
+    keys as ``15`` and never as ``15.0``.
 
     Parameters
     ----------
@@ -431,7 +429,8 @@ def _with_column_key(frame: FrameOrLazy) -> FrameOrLazy:
     if "code_column" not in frame.collect_schema():
         return _with_plain_column_key(frame)
 
-    code_value_text = nw.col("code_value").fill_null(0).cast(nw.Int64).cast(nw.String)
+    frame = _with_integer_code_value(frame)
+    code_value_text = nw.col("code_value").cast(nw.String)
     plain_key = _plain_column_key()
     coded_key = nw.concat_str(
         [
@@ -447,6 +446,30 @@ def _with_column_key(frame: FrameOrLazy) -> FrameOrLazy:
         .otherwise(coded_key)
         .alias("column_key")
     )
+
+
+def _with_integer_code_value(frame: FrameOrLazy) -> FrameOrLazy:
+    """Cast `code_value` to Int64 if it is not already.
+
+    Every frame this module builds carries an Int64 `code_value`. A long
+    frame a caller supplies may not, for example one saved while the
+    column was still Float64. A Float64 code keys as ``15.0`` rather than
+    ``15``, and an `is_in` test of it against integer codes raises under
+    polars.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        A long-format frame with a `code_value` column.
+
+    Returns
+    -------
+    narwhals.DataFrame or narwhals.LazyFrame
+        `frame` with `code_value` as Int64. Lazy if `frame` was lazy.
+    """
+    if frame.collect_schema()["code_value"] == nw.Int64():
+        return frame
+    return cast_nullable(frame=frame, column="code_value", dtype=nw.Int64())
 
 
 def to_wide_format(
@@ -520,11 +543,14 @@ def _with_is_multiple_flag(frame: FrameOrLazy) -> FrameOrLazy:
     # `collect_schema()` rather than `.columns`, which emits a
     # `PerformanceWarning` on a `LazyFrame`.
     if "code_column" not in frame.collect_schema():
-        return frame.with_columns(
+        frame = frame.with_columns(
             nw.lit(None, dtype=nw.String).alias("code_column"),
             nw.lit(None, dtype=nw.Float64).alias("code_value"),
             nw.lit(value=False).alias("is_multiple"),
         )
+        # A null literal cannot be built as Int64 on pandas, whose
+        # numpy-backed int64 has no null, so it is cast afterwards.
+        return cast_nullable(frame=frame, column="code_value", dtype=nw.Int64())
     return frame.with_columns((~nw.col("code_column").is_null()).alias("is_multiple"))
 
 
@@ -653,7 +679,7 @@ def to_code_grain_format(
 
 def _parse_wide_column_key(
     column_key: str,
-) -> tuple[str, str | None, float | None, bool, str]:
+) -> tuple[str, str | None, int | None, bool, str]:
     """Parse a wide-format column name into its long-format components.
 
     Inverts the naming `_with_column_key` builds:
@@ -673,7 +699,7 @@ def _parse_wide_column_key(
 
     Returns
     -------
-    tuple[str, str or None, float or None, bool, str]
+    tuple[str, str or None, int or None, bool, str]
         ``(schedule, code_column, code_value, is_multiple, variable_name)``.
 
     Raises
@@ -689,7 +715,7 @@ def _parse_wide_column_key(
         schedule, coded, variable_name = parts
         code_column, _, code_value_text = coded.rpartition("_")
         if code_column and code_value_text.isdigit():
-            return schedule, code_column, float(code_value_text), True, variable_name
+            return schedule, code_column, int(code_value_text), True, variable_name
 
     raise ReshapeError(
         f"{column_key!r} doesn't match the wide-format naming convention "
@@ -875,7 +901,9 @@ def convert_long_format_to_wide_format(
     Parameters
     ----------
     long : NativeDataFrame
-        A long-format frame, e.g. from `FCACallReport.to_long_format`.
+        A long-format frame, e.g. from `FCACallReport.to_long_format`. A
+        Float64 `code_value` holding whole numbers is accepted and treated
+        as Int64.
     dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
 "polars_dataframe"}, optional
         The dataframe type to convert the result to as a final step.
@@ -963,7 +991,9 @@ def convert_long_format_to_code_grain_format(
     Parameters
     ----------
     long : NativeDataFrame
-        A long-format frame, e.g. from `FCACallReport.to_long_format`.
+        A long-format frame, e.g. from `FCACallReport.to_long_format`. A
+        Float64 `code_value` holding whole numbers is accepted and treated
+        as Int64.
     dataframe_type : {"pandas", "pyarrow_table", "polars_lazyframe", \
 "polars_dataframe"}, optional
         The dataframe type to convert the result to as a final step.
@@ -998,7 +1028,7 @@ def convert_long_format_to_code_grain_format(
     >>> list(code_grain.columns)[:5]
     ['UNINUM', 'period', 'code_column', 'code_value', 'RCB__BKVAL']
     """
-    frame = nw.from_native(long)
+    frame = _with_integer_code_value(nw.from_native(long))
     coded = _with_plain_column_key(frame.filter(~nw.col("code_column").is_null()))
     code_grain = pivot(
         frame=coded, on="column_key", index=list(CODE_GRAIN_INDEX), values="value"
@@ -1013,7 +1043,7 @@ _DOMAIN_LOOKUP_SCHEMA: dict[str, nw.dtypes.DType] = {
     "schedule": nw.String(),
     "variable_name": nw.String(),
     "output_column": nw.String(),
-    "mapped_code": nw.Float64(),
+    "mapped_code": nw.Int64(),
 }
 """dict[str, narwhals.dtypes.DType]: Declared dtypes for the decoding lookup.
 
@@ -1028,8 +1058,8 @@ so the dtypes are declared here instead. This is the same hazard
 
 _CODE_REMAP_SCHEMA: dict[str, nw.dtypes.DType] = {
     "schedule": nw.String(),
-    "code_value": nw.Float64(),
-    "remapped_code": nw.Float64(),
+    "code_value": nw.Int64(),
+    "remapped_code": nw.Int64(),
     "split_value": nw.String(),
     "dropped": nw.Boolean(),
 }
@@ -1038,8 +1068,8 @@ _CODE_REMAP_SCHEMA: dict[str, nw.dtypes.DType] = {
 `remapped_code` is null for every dropped code, and a dataset that drops
 codes without renumbering any leaves the column entirely null, which is
 the inference hazard `_DOMAIN_LOOKUP_SCHEMA` documents. `code_value`
-matches the melted frame's own, which `_cast_numeric_to_float64` has
-already made Float64.
+matches the melted frame's own, which `melt_schedule_frame` has already
+made Int64.
 """
 
 
@@ -1094,7 +1124,13 @@ def apply_domain_dataset_decoding(
     # dataset drawing solely on name-encoded sources has none to coalesce
     # against until one is supplied here.
     if "code_value" not in frame.collect_schema():
-        frame = frame.with_columns(nw.lit(None, dtype=nw.Float64()).alias("code_value"))
+        frame = cast_nullable(
+            frame=frame.with_columns(
+                nw.lit(None, dtype=nw.Float64()).alias("code_value")
+            ),
+            column="code_value",
+            dtype=nw.Int64(),
+        )
 
     # `frame` and `lookup` are matched to the same laziness just above, but
     # narwhals' `.join` signature binds a single concrete frame type (see
@@ -1443,7 +1479,7 @@ def add_derived_code_rows(
                 .alias(name)
                 for name in measures
             ],
-            nw.lit(float(item.code)).cast(nw.Float64()).alias("code_value"),
+            nw.lit(item.code, dtype=nw.Int64()).alias("code_value"),
         )
         pieces.append(
             summed.drop(*[f"_reported_{name}" for name in measures]).select(
@@ -1519,12 +1555,6 @@ def pivot_domain_dataset_wide(
     domain dataset declares exactly one and it therefore disambiguates
     nothing once every column already names its own measure.
 
-    `code_value`'s cast to a string goes through `fill_null` first,
-    because casting a `Float64`-with-null column straight to `Int64`
-    raises on the pandas backend. A dataset's own coded rows are never
-    null in practice, so this only guards a row that reached here some
-    other way.
-
     A dataset with a second row key column folds that into the name too,
     as ``{code_value}_{split_value}__{measure}``, since the code alone no
     longer identifies a row.
@@ -1560,7 +1590,7 @@ def pivot_domain_dataset_wide(
         variable_name="measure",
         value_name="value",
     )
-    code_value_text = nw.col("code_value").fill_null(0).cast(nw.Int64).cast(nw.String)
+    code_value_text = nw.col("code_value").cast(nw.String)
     if split_column is not None:
         code_value_text = nw.concat_str(
             [code_value_text, nw.col(split_column)], separator="_"

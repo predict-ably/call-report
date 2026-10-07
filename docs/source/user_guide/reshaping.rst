@@ -87,8 +87,8 @@ That column order is part of the contract, and both routes to a long-format
 frame produce it, so a positional read of one matches the other.
 
 ``value`` is always ``Float64``, the most generic type that represents every
-schedule's measures. A plain field has ``is_multiple`` ``False`` and null
-``code_column`` and ``code_value``:
+schedule's measures. ``code_value`` is always ``Int64``. A plain field has
+``is_multiple`` ``False`` and null ``code_column`` and ``code_value``:
 
 .. doctest::
 
@@ -110,7 +110,7 @@ That matches :class:`~call_report.fca.layout.FCALayout`'s own
    >>> coded = long[
    ...     (long["UNINUM"] == 620000)
    ...     & (long["schedule"] == "RCB")
-   ...     & (long["code_value"] == 81.0)
+   ...     & (long["code_value"] == 81)
    ... ].iloc[0]
    >>> coded["code_column"], float(coded["value"])
    ('INV_CODE', 9579.0)
@@ -146,7 +146,7 @@ become rows. Code 110 is agribusiness:
    >>> portfolio = code_grain[
    ...     (code_grain["UNINUM"] == 620000)
    ...     & (code_grain["code_column"] == "LOANSTATUS")
-   ...     & (code_grain["code_value"] == 110.0)
+   ...     & (code_grain["code_value"] == 110)
    ... ].iloc[0]
    >>> float(portfolio["RCF1__ACCR"]), float(portfolio["RCF1__TOTPERF"])
    (3067844.0, 3068039.0)
@@ -214,9 +214,7 @@ with no schedule prefix. Code 110 is agribusiness:
 
 .. doctest::
 
-   >>> agribusiness = loans[(loans["UNINUM"] == 620000) & (loans["code_value"] == 110.0)].iloc[
-   ...     0
-   ... ]
+   >>> agribusiness = loans[(loans["UNINUM"] == 620000) & (loans["code_value"] == 110)].iloc[0]
    >>> float(agribusiness["accruing"]), float(agribusiness["allowance"])
    (3067844.0, 11547.0)
 
@@ -354,13 +352,13 @@ With ``include_totals=True``, code 57 appears alongside the two rows it sums:
    ...     domain_dataset="loan_performance", include_totals=True
    ... )
    >>> nonaccrual = counted[
-   ...     (counted["UNINUM"] == 620000) & (counted["code_value"].isin([54.0, 56.0, 57.0]))
+   ...     (counted["UNINUM"] == 620000) & (counted["code_value"].isin([54, 56, 57]))
    ... ]
    >>> nonaccrual[["code_value", "total", "total_past_due"]].reset_index(drop=True)
       code_value    total  total_past_due
-   0        54.0  33156.0         21849.0
-   1        56.0  31678.0         27953.0
-   2        57.0  64834.0         49802.0
+   0          54  33156.0         21849.0
+   1          56  31678.0         27953.0
+   2          57  64834.0         49802.0
 
 Code 80 ("Number of loans") reports a loan count rather than dollars. It is
 the total number of loans, so it appears in ``total``. RC-F leaves every
@@ -369,7 +367,7 @@ null:
 
 .. doctest::
 
-   >>> row = counted[(counted["UNINUM"] == 620000) & (counted["code_value"] == 80.0)].iloc[0]
+   >>> row = counted[(counted["UNINUM"] == 620000) & (counted["code_value"] == 80)].iloc[0]
    >>> float(row["total"]), bool(row["total_past_due"] != row["total_past_due"])
    (18520.0, True)
 
@@ -419,9 +417,9 @@ continuous across the split all the same:
 
 .. doctest::
 
-   >>> row = allowance[
-   ...     (allowance["UNINUM"] == 620000) & (allowance["code_value"] == 70.0)
-   ... ].iloc[0]
+   >>> row = allowance[(allowance["UNINUM"] == 620000) & (allowance["code_value"] == 70)].iloc[
+   ...     0
+   ... ]
    >>> float(row["loans_and_leases"])
    40396.0
 
@@ -459,10 +457,10 @@ balance across it:
    >>> across = spanning.to_domain_dataset(domain_dataset="capital")
    >>> across = across[across["UNINUM"] == 620000]
    >>> ending = across[
-   ...     (across["period"] == "2016-12-31") & (across["code_value"] == 130.0)
+   ...     (across["period"] == "2016-12-31") & (across["code_value"] == 130)
    ... ].iloc[0]
    >>> beginning = across[
-   ...     (across["period"] == "2017-03-31") & (across["code_value"] == 10.0)
+   ...     (across["period"] == "2017-03-31") & (across["code_value"] == 10)
    ... ].iloc[0]
    >>> float(ending["capital_stock"]), float(beginning["capital_stock"])
    (351155.0, 351155.0)
@@ -527,7 +525,7 @@ Each asset type therefore appears twice per institution and period:
 .. doctest::
 
    >>> participations = transfers[
-   ...     (transfers["UNINUM"] == 620000) & (transfers["code_value"] == 10.0)
+   ...     (transfers["UNINUM"] == 620000) & (transfers["code_value"] == 10)
    ... ]
    >>> participations[["DIRECTION", "amortized_cost", "fair_value"]].reset_index(drop=True)
       DIRECTION  amortized_cost  fair_value
@@ -585,7 +583,7 @@ under code 17 on both sides of the rewrite:
    ...     start="2014-12-31", end="2015-03-31", transport=PackagedArchiveTransport()
    ... )
    >>> across = rewrite.to_domain_dataset(domain_dataset="investments")
-   >>> other_government = across[(across["UNINUM"] == 722502) & (across["code_value"] == 17.0)]
+   >>> other_government = across[(across["UNINUM"] == 722502) & (across["code_value"] == 17)]
    >>> other_government[["period", "amortized_cost"]].reset_index(drop=True)
          period  amortized_cost
    0 2014-12-31        171793.0
@@ -608,7 +606,7 @@ every total, code 98 appears only with ``include_totals=True``:
    ...     domain_dataset="investments", include_totals=True
    ... )
    >>> bank = with_total[with_total["UNINUM"] == 610000].set_index("code_value")
-   >>> float(bank.loc[98.0, "amortized_cost"]), float(bank.loc[85.0, "amortized_cost"])
+   >>> float(bank.loc[98, "amortized_cost"]), float(bank.loc[85, "amortized_cost"])
    (3166940.0, 59254.0)
 
 The dataset leaves out RC-B's summary lines, which are not security types.
@@ -680,17 +678,16 @@ code 66, but code 89 does:
    ... )
    >>> farmer_mac = split.to_domain_dataset(domain_dataset="investments", include_totals=True)
    >>> farmer_mac = farmer_mac[
-   ...     (farmer_mac["UNINUM"] == 722918)
-   ...     & farmer_mac["code_value"].isin([66.0, 86.0, 88.0, 89.0])
+   ...     (farmer_mac["UNINUM"] == 722918) & farmer_mac["code_value"].isin([66, 86, 88, 89])
    ... ]
    >>> farmer_mac[["period", "code_value", "amortized_cost"]].reset_index(drop=True)
          period  code_value  amortized_cost
-   0 2018-12-31        66.0        877938.0
-   1 2019-03-31        66.0             0.0
-   2 2019-03-31        86.0        514533.0
-   3 2019-03-31        88.0        369910.0
-   4 2018-12-31        89.0        877938.0
-   5 2019-03-31        89.0        884443.0
+   0 2018-12-31          66        877938.0
+   1 2019-03-31          66             0.0
+   2 2019-03-31          86        514533.0
+   3 2019-03-31          88        369910.0
+   4 2018-12-31          89        877938.0
+   5 2019-03-31          89        884443.0
 
 Codes 16 and 74 carry one caveat. At 2019Q1, UNINUM 722825 and 722918 each
 reported more under code 15 than they had held under code 17, while their

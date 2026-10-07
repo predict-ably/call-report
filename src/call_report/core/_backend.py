@@ -634,6 +634,9 @@ def is_in_null_safe(*, column: str, values: Sequence[Any]) -> nw.Expr:
     values, so the test is made explicitly False rather than left to each
     backend's own null handling.
 
+    `values` must share `column`'s dtype. polars does not convert them, so
+    integer values tested against a Float64 column raise.
+
     Parameters
     ----------
     column : str
@@ -657,6 +660,61 @@ def is_in_null_safe(*, column: str, values: Sequence[Any]) -> nw.Expr:
     False
     """
     return nw.col(column).is_in(list(values)).fill_null(value=False)
+
+
+def cast_nullable(
+    *, frame: FrameOrLazy, column: str, dtype: nw.dtypes.DType
+) -> FrameOrLazy:
+    """Cast `column` to `dtype`, keeping its nulls on every backend.
+
+    polars and pyarrow hold a null in any dtype, so for them this is a
+    plain cast. pandas picks its target from the column's current dtype.
+    A numpy-backed column, such as ``float64`` holding ``NaN``, would cast
+    to numpy ``int64``, which cannot hold a null and raises. For pandas
+    this casts to the nullable (masked) equivalent of `dtype` instead,
+    the same dtype `build_frame` gives a declared column.
+
+    Parameters
+    ----------
+    frame : narwhals.DataFrame or narwhals.LazyFrame
+        A frame with a `column` column.
+    column : str
+        The column to cast.
+    dtype : narwhals.dtypes.DType
+        The dtype to cast `column` to.
+
+    Returns
+    -------
+    narwhals.DataFrame or narwhals.LazyFrame
+        `frame` with `column` cast to `dtype`. Lazy if `frame` was lazy.
+
+    Examples
+    --------
+    >>> import narwhals as nw
+    >>> from call_report.config import config_context
+    >>> from call_report.core._backend import build_frame, cast_nullable
+    >>> with config_context(dataframe_backend="pandas"):
+    ...     frame = build_frame(data={"code": [110.0, None]})
+    ...     cast = cast_nullable(frame=frame, column="code", dtype=nw.Int64())
+    >>> cast.schema["code"]
+    Int64
+    >>> int(cast["code"].null_count())
+    1
+    """
+    if frame.implementation is not nw.Implementation.PANDAS:
+        return frame.with_columns(nw.col(column).cast(dtype))
+    # pandas has no lazy frame, so this branch is always eager.
+    native = frame.to_native()
+    # Schema.to_pandas() maps the narwhals dtype onto pandas' nullable
+    # dtype name, so this reaches pandas' own extension dtype without
+    # importing pandas.
+    pandas_dtype = nw.Schema({column: dtype}).to_pandas(dtype_backend="numpy_nullable")[
+        column
+    ]
+    return nw.from_native(
+        native.assign(**{column: native[column].astype(pandas_dtype)}),
+        eager_only=True,
+    )
 
 
 def assert_unique_grain(

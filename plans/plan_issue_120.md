@@ -1,6 +1,6 @@
 # Plan: issue #120, Polars 2.0 breaks is_in_null_safe on the Float64 code_value column
 
-Status: proposed
+Status: implemented in #123
 
 ## Goal
 

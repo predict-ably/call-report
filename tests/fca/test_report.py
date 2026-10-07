@@ -1772,8 +1772,23 @@ def test_to_domain_dataset_excludes_totals_by_default() -> None:
     without = report.to_domain_dataset(
         domain_dataset="loan_portfolio", include_totals=False
     )
-    assert 155.0 not in {row["code_value"] for row in rows_of(default)}
+    assert 155 not in {row["code_value"] for row in rows_of(default)}
     assert _normalize_missing(rows_of(default)) == _normalize_missing(rows_of(without))
+
+
+def test_to_domain_dataset_excludes_totals_under_polars(polars_backend: str) -> None:
+    """include_totals=False drops every total code under the polars backend.
+
+    `code_value` is Int64, the dtype of the integer total codes. polars 2.0
+    raises on an `is_in` test whose values do not share the column's dtype,
+    so a Float64 `code_value` failed here.
+    """
+    loans = _archive_report("2026-03-31", "2026-03-31").to_domain_dataset(
+        domain_dataset="loan_portfolio", include_totals=False
+    )
+    assert isinstance(loans, pl.DataFrame)
+    assert loans.schema["code_value"] == pl.Int64
+    assert 155 not in set(loans["code_value"].to_list())
 
 
 def test_to_domain_dataset_include_totals_true_adds_the_reported_subtotal() -> None:
@@ -1783,7 +1798,7 @@ def test_to_domain_dataset_include_totals_true_adds_the_reported_subtotal() -> N
     with_totals = report.to_domain_dataset(
         domain_dataset="loan_portfolio", include_totals=True
     )
-    assert 155.0 in {row["code_value"] for row in rows_of(with_totals)}
+    assert 155 in {row["code_value"] for row in rows_of(with_totals)}
     assert len(rows_of(without)) < len(rows_of(with_totals))
 
 

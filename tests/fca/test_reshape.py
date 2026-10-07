@@ -11,7 +11,7 @@ import pyarrow as pa
 import pytest
 
 from call_report.config import config_context
-from call_report.core._backend import build_frame, concat
+from call_report.core._backend import build_frame, cast_nullable, concat
 from call_report.exceptions import ReshapeError
 from call_report.fca._domain_datasets import (
     DomainDataset,
@@ -191,14 +191,14 @@ def test_melt_schedule_frame_empty_input_produces_float64_value(
     assert melted.collect_schema()["value"] == nw.Float64()
 
 
-def test_melt_schedule_frame_empty_coded_input_produces_float64_code_value(
-    polars_backend: str,
+def test_melt_schedule_frame_empty_coded_input_produces_int64_code_value(
+    backend: str,
 ) -> None:
-    """A zero-row *coded* schedule gets Float64 `value` and `code_value`."""
+    """A zero-row *coded* schedule gets Float64 `value` and Int64 `code_value`."""
     frame = build_frame(data={"UNINUM": [], "period": [], "INV_CODE": [], "BKVAL": []})
     melted = melt_schedule_frame(frame=frame, schedule="RCB", code_column="INV_CODE")
     assert melted.collect_schema()["value"] == nw.Float64()
-    assert melted.collect_schema()["code_value"] == nw.Float64()
+    assert melted.collect_schema()["code_value"] == nw.Int64()
 
 
 # ---------------------------------------------------------------------------
@@ -1098,7 +1098,7 @@ def test_convert_wide_format_to_long_format_without_a_coded_schedule(
     result = nw.from_native(convert_wide_format_to_long_format(wide=wide.to_native()))
     schema = result.collect_schema()
     assert schema["code_column"] == nw.String
-    assert schema["code_value"] == nw.Float64
+    assert schema["code_value"] == nw.Int64
     assert schema["is_multiple"] == nw.Boolean
     assert result["is_multiple"].to_list() == [False, False]
 
@@ -1341,8 +1341,62 @@ def test_to_code_grain_format_stays_lazy_until_the_pivot(
 def test_code_grain_value_columns_are_float64(backend: str) -> None:
     """Every measure column is Float64, matching the other two architectures."""
     schema = to_code_grain_format(**_reshape_inputs()).collect_schema()
-    assert schema["code_value"] == nw.Float64
     assert schema["RCB__BKVAL"] == nw.Float64
+
+
+def test_code_grain_code_value_is_int64(backend: str) -> None:
+    """`code_value` is Int64 in the code grain, matching the codes it holds."""
+    schema = to_code_grain_format(**_reshape_inputs()).collect_schema()
+    assert schema["code_value"] == nw.Int64
+
+
+def test_long_format_code_value_is_int64_with_a_null_for_plain_rows(
+    backend: str,
+) -> None:
+    """Long format keeps `code_value` Int64 when coded and plain rows are stacked.
+
+    A plain row has no code, so the column must hold a null. pandas' numpy
+    int64 cannot, and without the nullable cast the stack turns the column
+    into float64.
+    """
+    long = to_long_format(**_reshape_inputs())
+    assert long.collect_schema()["code_value"] == nw.Int64
+    codes = [row["code_value"] for row in rows_of(long)]
+    assert sorted(code for code in codes if not is_missing(code)) == [10, 20]
+    assert any(is_missing(code) for code in codes)
+
+
+def _long_with_float64_code_value() -> Any:
+    """Return a native long frame whose `code_value` is still Float64."""
+    long = to_long_format(**_reshape_inputs())
+    return cast_nullable(
+        frame=long, column="code_value", dtype=nw.Float64()
+    ).to_native()
+
+
+def test_convert_long_format_to_wide_format_accepts_a_float64_code_value(
+    backend: str,
+) -> None:
+    """A Float64 code keys as ``INV_CODE_10``, never as ``INV_CODE_10.0``.
+
+    A long frame saved while `code_value` was Float64 would otherwise key
+    a column that `convert_wide_format_to_long_format` cannot parse back.
+    """
+    long = _long_with_float64_code_value()
+    assert nw.from_native(long).collect_schema()["code_value"] == nw.Float64
+    wide = nw.from_native(convert_long_format_to_wide_format(long=long))
+    assert "RCB__INV_CODE_10__BKVAL" in wide.columns
+    assert "RCB__INV_CODE_10.0__BKVAL" not in wide.columns
+
+
+def test_convert_long_format_to_code_grain_format_accepts_a_float64_code_value(
+    backend: str,
+) -> None:
+    """A Float64 `code_value` comes out of the code grain as Int64."""
+    long = _long_with_float64_code_value()
+    code_grain = nw.from_native(convert_long_format_to_code_grain_format(long=long))
+    assert code_grain.collect_schema()["code_value"] == nw.Int64
+    assert sorted(code_grain["code_value"].to_list()) == [10, 20]
 
 
 def test_both_code_grain_routes_agree(backend: str) -> None:
@@ -1515,6 +1569,7 @@ def test_decoding_a_name_encoded_source_alone_supplies_code_value(
     decoded = apply_domain_dataset_decoding(
         frame=frame, dataset=_dataset(_name_encoded_source())
     )
+    assert decoded.collect_schema()["code_value"] == nw.Int64
     assert [
         row["code_value"] for row in sorted_rows(decoded, by=["variable_name"])
     ] == [
@@ -1707,11 +1762,19 @@ def test_derived_is_skipped_when_a_component_column_is_absent(backend: str) -> N
 
 
 def test_exclude_reported_totals_drops_a_matching_code(backend: str) -> None:
-    """A code_value in total_codes is dropped."""
-    frame = build_frame(data={"code_value": [100.0, 155.0], "value": [1.0, 2.0]})
+    """A code_value in total_codes is dropped.
+
+    `code_value` is Int64, the dtype of the integer total codes. polars
+    2.0 raises on an `is_in` test whose values do not share the column's
+    dtype.
+    """
+    frame = build_frame(
+        data={"code_value": [100, 155], "value": [1.0, 2.0]},
+        schema={"code_value": nw.Int64()},
+    )
     result = exclude_reported_totals(frame=frame, total_codes=frozenset({155}))
     rows = rows_of(result)
-    assert [row["code_value"] for row in rows] == [100.0]
+    assert [row["code_value"] for row in rows] == [100]
 
 
 def test_exclude_reported_totals_keeps_a_null_code_value(backend: str) -> None:
@@ -1723,7 +1786,10 @@ def test_exclude_reported_totals_keeps_a_null_code_value(backend: str) -> None:
     one of the source's own declared total codes, so it must always
     survive, the same on every backend.
     """
-    frame = build_frame(data={"code_value": [110, None], "value": [100.0, 50.0]})
+    frame = build_frame(
+        data={"code_value": [110, None], "value": [100.0, 50.0]},
+        schema={"code_value": nw.Int64()},
+    )
     result = exclude_reported_totals(frame=frame, total_codes=frozenset({155}))
     rows = sorted_rows(result, by=["value"])
     assert len(rows) == 2
@@ -1774,7 +1840,7 @@ def test_pivot_domain_dataset_wide_keys_one_row_per_institution_and_period(
             "UNINUM": [1, 1],
             "period": ["2026-03-31", "2026-03-31"],
             "code_column": ["LOAN_PORTFOLIO", "LOAN_PORTFOLIO"],
-            "code_value": [100.0, 105.0],
+            "code_value": [100, 105],
             "accruing": [10.0, 20.0],
             "charge_off": [1.0, 2.0],
         }
@@ -1803,7 +1869,7 @@ def test_pivot_domain_dataset_wide_drops_code_column(backend: str) -> None:
             "UNINUM": [1, 2],
             "period": ["2026-03-31", "2026-03-31"],
             "code_column": ["LOAN_PORTFOLIO", "LOAN_PORTFOLIO"],
-            "code_value": [100.0, 100.0],
+            "code_value": [100, 100],
             "accruing": [10.0, 20.0],
         }
     )
@@ -1816,7 +1882,9 @@ def test_pivot_domain_dataset_wide_drops_code_column(backend: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_add_derived_code_rows_keeps_a_split_column_as_a_row_key() -> None:
+def test_add_derived_code_rows_keeps_a_split_column_as_a_row_key(
+    backend: str,
+) -> None:
     """A computed code sums within each split value, never across them.
 
     With a split column the row key is the code plus the split value, so
@@ -1856,18 +1924,20 @@ def test_add_derived_code_rows_keeps_a_split_column_as_a_row_key() -> None:
             "UNINUM": [1, 1, 1, 1],
             "period": [date(2025, 3, 31)] * 4,
             "code_column": ["ASSET_TYPE"] * 4,
-            "code_value": [10.0, 10.0, 30.0, 30.0],
+            "code_value": [10, 10, 30, 30],
             "DIRECTION": ["Purchased", "Sold", "Purchased", "Sold"],
             "amortized_cost": [1.0, 2.0, 10.0, 20.0],
-        }
+        },
+        schema={"code_value": nw.Int64()},
     )
     result = add_derived_code_rows(frame=frame, dataset=dataset, include_totals=True)
     totals = {
         row["DIRECTION"]: row["amortized_cost"]
         for row in rows_of(result)
-        if row["code_value"] == 99.0
+        if row["code_value"] == 99
     }
     assert totals == {"Purchased": 11.0, "Sold": 22.0}
+    assert result.collect_schema()["code_value"] == nw.Int64
 
 
 def test_add_derived_code_rows_skips_a_subtotal_unless_totals_are_kept() -> None:
