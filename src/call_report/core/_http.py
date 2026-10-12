@@ -67,8 +67,8 @@ _CLOUDFLARE_SNIFF_BYTES = 512
 _sleep: Callable[[float], None] = time.sleep
 _jitter: Callable[[], float] = random.random
 
-# Request headers that carry credentials. They are not sent on to another
-# host when a redirect leaves the one the caller asked for.
+# Request headers that carry credentials. They are dropped when a redirect
+# leaves the host, or leaves https for plain http (see _keeps_credentials).
 _CREDENTIAL_HEADERS = frozenset({"authorization", "cookie"})
 
 # curl's code for a TLS certificate that cannot be verified,
@@ -146,12 +146,12 @@ def fetch_bytes(
 ) -> bytes:
     """Download a URL and return its body.
 
-    Redirects are followed. A redirect to another host is sent without the
-    ``Authorization`` and ``Cookie`` headers. Connection errors, timeouts,
-    HTTP 429, and HTTP 5xx responses are retried. The wait before each retry
-    doubles from one second, with up to a quarter added at random, unless a
-    ``Retry-After`` header asks for a different wait. Any other failure is
-    raised at once.
+    Redirects are followed. A redirect to another host, or from ``https`` to
+    plain ``http``, is sent without the ``Authorization`` and ``Cookie``
+    headers. Connection errors, timeouts, HTTP 429, and HTTP 5xx responses
+    are retried. The wait before each retry doubles from one second, with up
+    to a quarter added at random, unless a ``Retry-After`` header asks for a
+    different wait. Any other failure is raised at once.
 
     Parameters
     ----------
@@ -403,9 +403,9 @@ def _request_once(
     """Send one GET request, follow its redirects, and consume the body.
 
     Each redirect is checked by `_check_url` before it is followed. A
-    redirect to another host is sent without the ``Authorization`` and
-    ``Cookie`` headers. The final response is checked by `_check_response`
-    before `consume` reads it.
+    redirect to another host, or from ``https`` to plain ``http``, is sent
+    without the ``Authorization`` and ``Cookie`` headers. The final response
+    is checked by `_check_response` before `consume` reads it.
 
     Parameters
     ----------
@@ -439,7 +439,7 @@ def _request_once(
             if response.status in _REDIRECT_STATUSES and location:
                 target = urljoin(current, location)
                 _check_url(target, stacklevel=_WARN_STACKLEVEL_ON_REDIRECT)
-                if urlsplit(target).netloc.lower() != urlsplit(current).netloc.lower():
+                if not _keeps_credentials(current, target):
                     headers = {
                         name: value
                         for name, value in headers.items()
@@ -450,6 +450,31 @@ def _request_once(
             _check_response(response, requested=url, current=current)
             return consume(response)
     raise DownloadError(f"{url} redirected more than {_MAX_REDIRECTS} times.")
+
+
+def _keeps_credentials(current: str, target: str) -> bool:
+    """Return whether a redirect from current to target may keep credential headers.
+
+    A redirect keeps ``Authorization`` and ``Cookie`` only when it stays on
+    the same host and does not go from ``https`` to plain ``http``. A
+    redirect from ``http`` to ``https`` on the same host keeps them.
+
+    Parameters
+    ----------
+    current : str
+        The URL that answered with the redirect.
+    target : str
+        The URL the redirect points to.
+
+    Returns
+    -------
+    bool
+        ``True`` if the credential headers may be sent to `target`.
+    """
+    before, after = urlsplit(current), urlsplit(target)
+    if before.netloc.lower() != after.netloc.lower():
+        return False
+    return not (before.scheme == "https" and after.scheme == "http")
 
 
 def _check_url(url: str, *, stacklevel: int) -> None:
