@@ -1295,6 +1295,4 @@ needs the library installed.
 
 ## Open questions
 
-1. **Loopback exemption.** The warning for plain `http` skips loopback hosts so
-   a local server does not warn. Warning for loopback too is stricter, and
-   would make the test server's tests filter the warning.
+None.
