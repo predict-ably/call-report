@@ -34,7 +34,7 @@ In scope:
 6. An `available_periods()` method on every transport. `FCACallReport`
    validates both ends of a requested range against the transport.
    `LATEST_KNOWN_PERIOD` is removed from the package's own code, so adding a
-   quarter never needs a constant changed.
+   quarter never needs a constant changed. `EARLIEST_PERIOD` becomes private.
 7. A downloadable copy of the shipped schedule metadata and institution
    registry, published with the mirror, so a user can get a new quarter's
    metadata without upgrading the package.
@@ -302,6 +302,16 @@ earliest and its last is its latest. `fetch` checks both ends of the requested
 range against them, in place of the fixed `EARLIEST_PERIOD` and
 `LATEST_KNOWN_PERIOD`.
 
+`EARLIEST_PERIOD` is a different kind of constant. 2000Q1 is FCA's first
+release and never changes, so it needs no upkeep. It is still needed in two
+places. The local transports find their periods by checking each quarter for
+a folder or zip, so they need a quarter to start from. They cannot work
+backwards from folder names, because `dirname_for` can be any function.
+`construct_fca_download_url` also needs it to reject a quarter before FCA's
+first release with a clear error, rather than build a URL that returns 404.
+So it stays, renamed `_FIRST_RELEASE_PERIOD`, private to `catalog.py`, and
+used only for those two things. It is no longer public API.
+
 | Transport | `available_periods()` comes from |
 |---|---|
 | `PackagedArchiveTransport` | the zips present in `archive_root` |
@@ -316,7 +326,8 @@ Adding a method to the `FCATransport` protocol breaks a transport a user has
 written. The package is pre-1.0 alpha and the protocol shipped in 0.1.0, so
 this plan makes the change cleanly. The two transports in the package are
 updated to match, the report calls the method directly with no fallback, and
-the changelog records the break.
+the changelog records the break, along with the removal of the two public
+period constants.
 
 ### Failures are recorded, and can be retried
 
@@ -596,7 +607,10 @@ create it. The downloader creates `<download folder>/fca/` on first use.
 ### Changes in `src/call_report/fca/catalog.py`
 
 - `LATEST_KNOWN_PERIOD` is removed. The upper bound on a period is the quarter
-  containing today's date, and the lower bound stays `EARLIEST_PERIOD`.
+  containing today's date.
+- `EARLIEST_PERIOD` is renamed `_FIRST_RELEASE_PERIOD` and is no longer
+  public. It is the lower bound on a period. The two generation scripts in
+  `scripts/` import the private name.
 - `fca_release_stem(*, period)` returns a period's zip stem (`"2026March"`,
   `"Sept2014"`) with no upper bound check. `_default_dirname` in `transport.py`
   calls it, so a local transport can name a folder for any quarter.
@@ -692,7 +706,7 @@ def _wanted(self, period, outdated) -> bool:
 
 - `FCATransport` gains `available_periods(self) -> tuple[ReportingPeriod, ...]`.
 - `LocalDirectoryTransport.available_periods()` checks, for each quarter from
-  `EARLIEST_PERIOD` through the quarter containing today, whether
+  `_FIRST_RELEASE_PERIOD` through the quarter containing today, whether
   `data_dir / dirname_for(period)` is a folder. That is about 107 checks, and
   it works for any `dirname_for` because it never reverses a folder name.
 - `PackagedArchiveTransport.available_periods()` does the same for
@@ -833,7 +847,7 @@ class FCAReleaseCatalog:
 `url_for` raises `PeriodNotAvailableError` for a period the catalog does not
 hold. A catalog built from the mirror carries `sha256` and `snapshot`. One
 built from FCA's page carries neither. `LATEST_KNOWN_PERIOD` is removed from
-this module.
+this module, and `EARLIEST_PERIOD` becomes the private `_FIRST_RELEASE_PERIOD`.
 
 New in `call_report.exceptions`:
 
@@ -1060,8 +1074,8 @@ order.
    `core/_http.py`, `core/_archive.py`, `core/_dirs.py`,
    `ZipArchiveUnpackingError`, `InsecureConnectionWarning`, `fca_release_stem`,
    `parse_fca_release_filename`, `available_periods()` on the protocol and the
-   two local transports, the `FCACallReport` validation change, and the removal
-   of `LATEST_KNOWN_PERIOD`. `PackagedArchiveTransport` moves to
+   two local transports, the `FCACallReport` validation change, the removal
+   of `LATEST_KNOWN_PERIOD`, and making `EARLIEST_PERIOD` private. `PackagedArchiveTransport` moves to
    `extract_zip`. The optional `curl_cffi` extra is added to `pyproject.toml`.
 2. **`[MNT] Mirror FCA release zips as GitHub releases and check for drift (#119)`.**
    `scripts/build_fca_mirror_manifest.py`, `scripts/check_fca_drift.py`, their
@@ -1150,10 +1164,11 @@ tests point at the local server.
   that do not parse. A `hypothesis` round trip:
   `parse(stem(p) + ".zip") == p` for every period.
 - `construct_fca_download_url` and `construct_fca_mirror_url` for both eras
-  and for a snapshot. A period before `EARLIEST_PERIOD` or after the quarter
+  and for a snapshot. A period before `_FIRST_RELEASE_PERIOD` or after the quarter
   containing today (with `date.today` patched) raises
   `PeriodNotAvailableError`.
-- `LATEST_KNOWN_PERIOD` is no longer importable from `call_report.fca.catalog`.
+- Neither `LATEST_KNOWN_PERIOD` nor `EARLIEST_PERIOD` is importable from
+  `call_report.fca.catalog`.
 - `from_manifest_json` on the fixture reads URLs, checksums, and the snapshot,
   and rejects a manifest with an unknown `schema_version` or a missing key with
   `DownloadError`.
