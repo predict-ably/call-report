@@ -30,14 +30,39 @@ Unreleased
   :func:`~call_report.fca.convert_long_format_to_code_grain_format` now raises
   :class:`~call_report.exceptions.ReshapeError` for such a frame, as
   documented (:issue:`125`).
-- The FCA archive now covers 2026Q2, and
-  ``call_report.fca.catalog.LATEST_KNOWN_PERIOD`` is 2026Q2. It also
-  holds FCA's 2026-08-31 regeneration of 2023Q2 through 2026Q1, which amends
-  a few values and leaves some fields empty that were ``0``. The shipped
+- The FCA archive now covers 2026Q2. It also holds FCA's 2026-08-31
+  regeneration of 2023Q2 through 2026Q1, which amends a few values and leaves
+  some fields empty that were ``0``. The shipped
   schedule metadata and institution registry are regenerated to match. The
   regenerated releases show six institutions' current addresses in every one
   of those quarters. The registry keeps the addresses the institutions
   reported at the time (:issue:`130`).
+- Every transport now has an ``available_periods()`` method, which returns the
+  periods it can supply. :meth:`~call_report.fca.FCACallReport.fetch` accepts
+  a range that starts and ends within those periods, and
+  :meth:`~call_report.fca.FCACallReport.available_periods` returns them. So a
+  quarter extracted into a folder, or added to an archive, can be read without
+  a new package release (:issue:`119`).
+- **Breaking:** a transport written for 0.1 needs an ``available_periods()``
+  method to work with :class:`~call_report.fca.FCACallReport`. See
+  :class:`~call_report.fca.transport.FCATransport` (:issue:`119`).
+- **Breaking:** ``call_report.fca.catalog.LATEST_KNOWN_PERIOD`` and
+  ``call_report.fca.catalog.EARLIEST_PERIOD`` are removed.
+  :func:`~call_report.fca.catalog.construct_fca_download_url` accepts any
+  quarter from 2000Q1 through the quarter containing today (:issue:`119`).
+- :class:`~call_report.fca.transport.PackagedArchiveTransport` raises
+  :class:`~call_report.exceptions.ZipArchiveUnpackingError` for a zip it
+  cannot unpack, including one with a member whose path would land outside
+  its folder. :meth:`~call_report.fca.FCACallReport.fetch` records the error
+  in ``errors_`` (:issue:`119`).
+- New :func:`~call_report.fca.catalog.fca_release_stem` and
+  :func:`~call_report.fca.catalog.parse_fca_release_filename` convert between
+  a period and the name of its FCA release zip (:issue:`119`).
+- New :func:`~call_report.core.default_download_dir` gives the folder
+  downloaded files are kept in. Set the ``CALL_REPORT_DOWNLOAD_DIR``
+  environment variable to choose another (:issue:`119`).
+- New optional extra, ``call-report[curl_cffi]``, for downloading from a
+  server that refuses the standard library's HTTP client (:issue:`119`).
 
 .. _changelog_0.1.0:
 

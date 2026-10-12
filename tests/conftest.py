@@ -9,12 +9,15 @@ identities in ``sys.modules``.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from hypothesis import HealthCheck, settings
 
 from call_report.config import config_context, get_config, set_config
+from call_report.core import _http
 from tests.helpers import ALL_BACKENDS
+from tests.http_server import LocalHTTPServer
 
 # hypothesis fails an example that exceeds a 200ms deadline. That is a poor
 # fit here: a property test that builds a dataframe pays the backend's
@@ -132,3 +135,32 @@ def lazy_polars_backend() -> Iterator[str]:
     """Configure the polars backend in lazy mode for the whole test body."""
     with config_context(dataframe_backend="polars", lazy=True):
         yield "polars"
+
+
+@pytest.fixture
+def http_server(tmp_path: Path) -> Iterator[LocalHTTPServer]:
+    """Run a local HTTP server for the test, serving files from a temp folder.
+
+    The server listens on ``127.0.0.1`` only, so a test that uses it never
+    reaches the internet. It is stopped after the test.
+    """
+    root = tmp_path / "served"
+    root.mkdir()
+    server = LocalHTTPServer(root)
+    server.start()
+    try:
+        yield server
+    finally:
+        server.stop()
+
+
+@pytest.fixture
+def recorded_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Replace the HTTP helper's sleep, and record each wait it asks for.
+
+    A retry backs off for real seconds. Without this a test of retries
+    would wait for them.
+    """
+    sleeps: list[float] = []
+    monkeypatch.setattr(_http, "_sleep", sleeps.append)
+    return sleeps

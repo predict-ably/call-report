@@ -43,7 +43,7 @@ What the archived rosters contain, and what the code relies on:
 
 Notes
 -----
-Extend the registry through the latest known period::
+Extend the registry through the newest quarter in the archive::
 
     python scripts/generate_fca_institution_registry.py
 
@@ -66,7 +66,7 @@ from call_report.core._periods import PeriodRange, ReportingPeriod
 from call_report.exceptions import InstitutionError
 from call_report.fca import FCAInstitution, FCAInstitutionRegistry
 from call_report.fca._institution import _VERSIONED_COLUMNS, _build_history
-from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
+from call_report.fca.catalog import _FIRST_RELEASE_PERIOD
 from call_report.fca.institutions import _read_institutions_frame
 from call_report.fca.transport import PackagedArchiveTransport
 
@@ -502,12 +502,10 @@ def main(
     args = _parse_args(argv)
     previous = _load_base()
     seed = None if args.full else previous
-    start = EARLIEST_PERIOD if seed is None else seed.last_period.next()
-    periods = (
-        list(PeriodRange(start=start, end=LATEST_KNOWN_PERIOD))
-        if start <= LATEST_KNOWN_PERIOD
-        else []
-    )
+    start = _FIRST_RELEASE_PERIOD if seed is None else seed.last_period.next()
+    # The newest zip in the checked-in archive is the newest quarter to read.
+    latest = PackagedArchiveTransport().available_periods()[-1]
+    periods = list(PeriodRange(start=start, end=latest)) if start <= latest else []
 
     if read_roster is None:
         with PackagedArchiveTransport() as transport:

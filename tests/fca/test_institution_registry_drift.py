@@ -25,11 +25,9 @@ from __future__ import annotations
 
 import pytest
 
-from call_report.core import PeriodRange
 from call_report.fca import FCAInstitutionRegistry, get_fca_institution_registry
-from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
 from call_report.fca.transport import PackagedArchiveTransport
-from tests.helpers import load_institution_registry_script
+from tests.helpers import archived_periods, load_institution_registry_script
 
 generate = load_institution_registry_script()
 
@@ -67,17 +65,18 @@ def test_loader_serves_the_shipped_file() -> None:
     assert get_fca_institution_registry() == shipped
 
 
-def test_shipped_registry_spans_the_catalog() -> None:
-    """The shipped registry runs from EARLIEST_PERIOD to LATEST_KNOWN_PERIOD.
+def test_shipped_registry_spans_the_archive() -> None:
+    """The shipped registry runs from the oldest to the newest archived quarter.
 
-    Catches a new quarter added to the archive and catalog without the
-    registry being regenerated for it.
+    Catches a new quarter's zip added to the archive without the registry
+    being regenerated for it.
     """
     registry = get_fca_institution_registry()
-    assert registry.first_period == EARLIEST_PERIOD
-    assert registry.last_period == LATEST_KNOWN_PERIOD, (
+    newest = archived_periods()[-1]
+    assert registry.first_period == archived_periods()[0]
+    assert registry.last_period == newest, (
         f"the shipped registry ends at {registry.last_period.label} but the "
-        f"catalog runs through {LATEST_KNOWN_PERIOD.label}; re-run "
+        f"archive runs through {newest.label}. Re-run "
         "scripts/generate_fca_institution_registry.py."
     )
 
@@ -99,7 +98,7 @@ def test_a_full_rebuild_reproduces_the_base() -> None:
         )
         rebuilt = generate._generate_base(
             seed=None,
-            periods=list(PeriodRange(start=EARLIEST_PERIOD, end=LATEST_KNOWN_PERIOD)),
+            periods=list(archived_periods()),
             read_roster=generate._read_archived_roster(transport),
         )
     assert generate._audit(rebuilt, _base()), (

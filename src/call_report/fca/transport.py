@@ -12,15 +12,19 @@ from __future__ import annotations
 import shutil
 import tempfile
 import weakref
-import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, Self
 
-from call_report.core import ReportingPeriod
+from call_report.core import PeriodRange, ReportingPeriod
+from call_report.core._archive import extract_zip
 from call_report.exceptions import DownloadError
-from call_report.fca.catalog import construct_fca_download_url
+from call_report.fca.catalog import (
+    _FIRST_RELEASE_PERIOD,
+    _current_period,
+    fca_release_stem,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PACKAGED_ARCHIVE_ROOT = _REPO_ROOT / "data" / "fca-call-report"
@@ -29,8 +33,8 @@ _PACKAGED_ARCHIVE_ROOT = _REPO_ROOT / "data" / "fca-call-report"
 class FCATransport(Protocol):
     """The interface FCACallReport uses to resolve a period's local files.
 
-    Any object implementing `resolve` can be passed as an
-    `FCACallReport`'s ``transport=`` argument. Two implementations ship
+    Any object implementing `resolve` and `available_periods` can be passed
+    as an `FCACallReport`'s ``transport=`` argument. Two implementations ship
     with the package: `LocalDirectoryTransport`, for a user-supplied
     directory of already-extracted releases, and `PackagedArchiveTransport`,
     for the historical release zips checked into this repository.
@@ -58,6 +62,23 @@ class FCATransport(Protocol):
         ------
         DownloadError
             If the period's files cannot be resolved.
+        ZipArchiveUnpackingError
+            If the period's zip archive cannot be unpacked.
+        """
+        ...  # pragma: no cover
+
+    def available_periods(self) -> tuple[ReportingPeriod, ...]:
+        """Return every period this transport can supply, oldest first.
+
+        `FCACallReport.fetch` refuses a range that starts before the first
+        of these periods or ends after the last. A period between them that
+        `resolve` cannot supply is recorded in `FCACallReport.errors_`.
+
+        Returns
+        -------
+        tuple[ReportingPeriod, ...]
+            The periods this transport can supply, oldest first. Empty if
+            it can supply none.
         """
         ...  # pragma: no cover
 
@@ -79,8 +100,31 @@ def _default_dirname(period: ReportingPeriod) -> str:
         The FCA download URL's filename without its ``.zip`` extension,
         e.g. ``"2026March"`` or ``"Mar2003"``.
     """
-    url = construct_fca_download_url(period=period)
-    return url.rsplit("/", 1)[-1].removesuffix(".zip")
+    return fca_release_stem(period=period)
+
+
+def _periods_present(
+    exists: Callable[[ReportingPeriod], bool],
+) -> tuple[ReportingPeriod, ...]:
+    """Return every period from FCA's first release to today that `exists` finds.
+
+    Every quarter from 2000Q1 through the quarter containing today is
+    checked, so the result is sorted and may have gaps.
+
+    Parameters
+    ----------
+    exists : Callable[[ReportingPeriod], bool]
+        Says whether a transport has a period's files.
+
+    Returns
+    -------
+    tuple[ReportingPeriod, ...]
+        The periods `exists` finds, oldest first.
+    """
+    # Each quarter is checked in turn rather than working back from the names
+    # found on disk, so a transport's dirname_for can be any function.
+    candidates = PeriodRange(start=_FIRST_RELEASE_PERIOD, end=_current_period())
+    return tuple(period for period in candidates if exists(period))
 
 
 @dataclass(kw_only=True)
@@ -137,7 +181,7 @@ class LocalDirectoryTransport:
         DownloadError
             If no directory exists at the expected location.
         """
-        directory = Path(self.data_dir) / self.dirname_for(period)
+        directory = self._directory_for(period)
         if not directory.is_dir():
             raise DownloadError(
                 f"No local FCA data found for {period.label}; expected a directory "
@@ -147,6 +191,48 @@ class LocalDirectoryTransport:
                 f"retrieval strategy."
             )
         return directory
+
+    def available_periods(self) -> tuple[ReportingPeriod, ...]:
+        """Return every period with a release folder in `data_dir`, oldest first.
+
+        Each quarter from FCA's first release, 2000Q1, through the quarter
+        containing today is checked for a folder named by `dirname_for`.
+
+        Returns
+        -------
+        tuple[ReportingPeriod, ...]
+            The periods `resolve` can supply. Empty if `data_dir` holds no
+            release folders.
+
+        Examples
+        --------
+        >>> with tempfile.TemporaryDirectory() as tmp:
+        ...     data_dir = Path(tmp)
+        ...     for name in ("Dec2014", "2015March", "2015June"):
+        ...         (data_dir / name).mkdir()
+        ...     transport = LocalDirectoryTransport(data_dir=data_dir)
+        ...     [period.label for period in transport.available_periods()]
+        ['2014Q4', '2015Q1', '2015Q2']
+        """
+        return _periods_present(lambda period: self._directory_for(period).is_dir())
+
+    def _directory_for(self, period: ReportingPeriod) -> Path:
+        """Return where `period`'s release folder is expected.
+
+        The folder may not exist. `resolve` and `available_periods` both check
+        this one location, so they always agree.
+
+        Parameters
+        ----------
+        period : ReportingPeriod
+            The period to look for.
+
+        Returns
+        -------
+        pathlib.Path
+            `data_dir` joined with the name `dirname_for` gives `period`.
+        """
+        return Path(self.data_dir) / self.dirname_for(period)
 
 
 @dataclass(kw_only=True)
@@ -236,13 +322,15 @@ class PackagedArchiveTransport:
         ------
         DownloadError
             If no zip exists at the expected location under `archive_root`.
+        ZipArchiveUnpackingError
+            If the zip is not a valid archive, or has a corrupt member or a
+            member whose path would land outside its folder.
         """
         cached = self._extracted.get(period)
         if cached is not None:
             return cached
 
-        stem = self.dirname_for(period)
-        archive_path = Path(self.archive_root) / f"{stem}.zip"
+        archive_path = self._archive_for(period)
         if not archive_path.is_file():
             raise DownloadError(
                 f"No packaged FCA archive found for {period.label}; expected a zip "
@@ -257,12 +345,54 @@ class PackagedArchiveTransport:
             self._finalizer = weakref.finalize(
                 self, shutil.rmtree, root, ignore_errors=True
             )
-        target_dir = self._extract_root / stem
-        with zipfile.ZipFile(archive_path) as archive:
-            archive.extractall(target_dir)
-
+        target_dir = extract_zip(
+            archive=archive_path, target_dir=self._extract_root / archive_path.stem
+        )
         self._extracted[period] = target_dir
         return target_dir
+
+    def available_periods(self) -> tuple[ReportingPeriod, ...]:
+        """Return every period with a release zip in `archive_root`, oldest first.
+
+        Each quarter from FCA's first release, 2000Q1, through the quarter
+        containing today is checked for a zip named by `dirname_for`. No zip
+        is opened.
+
+        Returns
+        -------
+        tuple[ReportingPeriod, ...]
+            The periods `resolve` can supply. Empty if `archive_root` holds
+            no release zips.
+
+        Examples
+        --------
+        >>> with PackagedArchiveTransport() as transport:
+        ...     periods = transport.available_periods()
+        >>> periods[0].label
+        '2000Q1'
+        >>> periods == tuple(PeriodRange(start=periods[0], end=periods[-1]))
+        True
+        """
+        return _periods_present(lambda period: self._archive_for(period).is_file())
+
+    def _archive_for(self, period: ReportingPeriod) -> Path:
+        """Return where `period`'s release zip is expected.
+
+        The zip may not exist. `resolve` and `available_periods` both check
+        this one location, so they always agree.
+
+        Parameters
+        ----------
+        period : ReportingPeriod
+            The period to look for.
+
+        Returns
+        -------
+        pathlib.Path
+            `archive_root` joined with the zip name `dirname_for` gives
+            `period`.
+        """
+        return Path(self.archive_root) / f"{self.dirname_for(period)}.zip"
 
     def close(self) -> None:
         """Remove the temporary directory this transport extracted zips into.

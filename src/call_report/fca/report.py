@@ -30,8 +30,10 @@ from call_report.exceptions import (
     DownloadError,
     InvalidPeriodError,
     LayoutParseError,
+    PeriodNotAvailableError,
     ReshapeError,
     ScheduleNotFoundError,
+    ZipArchiveUnpackingError,
 )
 from call_report.fca import _reshape
 from call_report.fca._discovery import ReleaseFiles, scan_release
@@ -39,7 +41,6 @@ from call_report.fca._domain_datasets import get_fca_domain_dataset
 from call_report.fca._institution import FCAInstitution
 from call_report.fca._institution_registry import FCAInstitutionRegistry
 from call_report.fca._schedule_metadata import get_fca_file_metadata
-from call_report.fca.catalog import construct_fca_download_url
 from call_report.fca.enums import FCADomainDataset, FCASchedule
 from call_report.fca.institutions import INSTITUTIONS_ROOT, _read_institutions_frame
 from call_report.fca.layout import FCALayout, parse_layout
@@ -159,12 +160,13 @@ class FCACallReport(BaseCallReport):
     def fetch(self) -> Self:
         """Validate parameters and resolve every requested period's files.
 
-        Populates `periods_`, `releases_`, `schedules_`, and `errors_`. A
-        period that is within FCA's catalog bounds but whose local files
-        cannot be resolved is skipped and recorded in `errors_` rather than
-        aborting the whole call. An out-of-bounds request, or one missing
-        `end`, is an immediate error, since neither is a partial-data
-        situation.
+        Populates `periods_`, `releases_`, `schedules_`, and `errors_`. The
+        requested range must start no earlier and end no later than the
+        periods the transport can supply (see `available_periods`). A
+        period inside the range whose files cannot be resolved is skipped
+        and recorded in `errors_` rather than aborting the whole call. A
+        range outside the transport's periods, or one missing `end`, is an
+        immediate error, since neither is a partial-data situation.
 
         Returns
         -------
@@ -177,10 +179,11 @@ class FCACallReport(BaseCallReport):
             If `end` was not supplied, or `start`/`end` is not a valid
             quarter-end date.
         PeriodNotAvailableError
-            If the requested range falls outside FCA's known-published
-            bounds.
+            If the requested range starts before the transport's first
+            available period or ends after its last.
         DownloadError
-            If every requested period failed to resolve.
+            If the transport has no available periods, or every requested
+            period failed to resolve.
 
         Examples
         --------
@@ -202,18 +205,14 @@ class FCACallReport(BaseCallReport):
                 "for a single quarter."
             )
         periods = PeriodRange(start=self.start, end=self.end)
-
-        # Validate the whole range against FCA's catalog bounds up front --
-        # an out-of-bounds request is invalid, not a partial-data situation.
-        construct_fca_download_url(period=periods[0])
-        construct_fca_download_url(period=periods[-1])
+        self._check_range(periods)
 
         releases: dict[ReportingPeriod, FCAReleaseManifest] = {}
         errors: list[FCAIssue] = []
         for period in periods:
             try:
                 release_dir = self.transport.resolve(period=period)
-            except DownloadError as error:
+            except (DownloadError, ZipArchiveUnpackingError) as error:
                 errors.append(FCAIssue(period=period, schedule=None, error=error))
                 continue
             files = scan_release(release_dir=release_dir)
@@ -235,6 +234,39 @@ class FCACallReport(BaseCallReport):
         # from the previous run's releases.
         self._institution_registry: FCAInstitutionRegistry | None = None
         return self
+
+    def _check_range(self, periods: PeriodRange) -> None:
+        """Raise if a requested range reaches outside the transport's periods.
+
+        Both ends of the range are checked against the first and last of the
+        transport's `available_periods`. A gap inside the range is left for
+        `fetch` to record in `errors_`.
+
+        Parameters
+        ----------
+        periods : PeriodRange
+            The requested range.
+
+        Raises
+        ------
+        DownloadError
+            If the transport has no available periods.
+        PeriodNotAvailableError
+            If `periods` starts before the transport's first available
+            period or ends after its last.
+        """
+        available = self.transport.available_periods()
+        if not available:
+            raise DownloadError(
+                f"The transport has no FCA releases available: {self.transport!r}."
+            )
+        first, last = available[0], available[-1]
+        if periods[0] < first or periods[-1] > last:
+            raise PeriodNotAvailableError(
+                f"The requested range {periods[0].label}-{periods[-1].label} is not "
+                f"available. The transport has releases from {first.label} through "
+                f"{last.label}."
+            )
 
     def _ensure_fetched(self) -> None:
         """Call `fetch` if it has not already run.
@@ -728,16 +760,17 @@ class FCACallReport(BaseCallReport):
         return get_fca_file_metadata(schedule=FCASchedule.coerce(value=schedule))
 
     def available_periods(self) -> tuple[ReportingPeriod, ...]:
-        """Return every period FCA is known to publish.
+        """Return every period the transport can supply.
 
-        Reflects FCA's overall catalog (`call_report.fca.catalog`),
-        independent of this instance's `start` and `end`. It does not
-        require `fetch` to have run.
+        Reflects what the transport holds, independent of this instance's
+        `start` and `end`. It does not require `fetch` to have run. `fetch`
+        accepts a range that starts no earlier than the first of these
+        periods and ends no later than the last.
 
         Returns
         -------
         tuple[ReportingPeriod, ...]
-            The known-available periods, oldest first.
+            The available periods, oldest first.
 
         Examples
         --------
@@ -750,12 +783,10 @@ class FCACallReport(BaseCallReport):
         >>> periods = report.available_periods()
         >>> periods[0].label
         '2000Q1'
-        >>> periods[-1].label
-        '2026Q2'
+        >>> periods == tuple(PeriodRange(start=periods[0], end=periods[-1]))
+        True
         """
-        from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
-
-        return tuple(PeriodRange(start=EARLIEST_PERIOD, end=LATEST_KNOWN_PERIOD))
+        return self.transport.available_periods()
 
     def available_schedules(self) -> tuple[FCASchedule, ...]:
         """Return every schedule FCA's format has ever used.

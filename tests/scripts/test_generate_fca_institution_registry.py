@@ -17,9 +17,8 @@ import pytest
 from call_report.core import PeriodRange, ReportingPeriod
 from call_report.exceptions import InstitutionError
 from call_report.fca import FCAInstitutionRegistry
-from call_report.fca.catalog import LATEST_KNOWN_PERIOD
 from tests.fca.institution_rows import ROW
-from tests.helpers import load_institution_registry_script
+from tests.helpers import load_institution_registry_script, newest_archived_period
 
 generate = load_institution_registry_script()
 
@@ -242,13 +241,13 @@ class TestMain:
     """The whole pipeline, run against temporary files."""
 
     def rosters(self) -> dict[ReportingPeriod, list[dict[str, Any]]]:
-        """Return a roster for every quarter up to LATEST_KNOWN_PERIOD."""
-        periods = [LATEST_KNOWN_PERIOD.previous(), LATEST_KNOWN_PERIOD]
+        """Return a roster for every quarter up to the newest archived one."""
+        periods = [newest_archived_period().previous(), newest_archived_period()]
         return {period: [ROW] for period in periods}
 
     def seed_base(self, paths: Path) -> Any:
         """Write a base holding every quarter but the latest."""
-        base = registry((LATEST_KNOWN_PERIOD.previous(), [ROW]))
+        base = registry((newest_archived_period().previous(), [ROW]))
         generate._write_json(generate._BASE_PATH, base)
         return base
 
@@ -257,11 +256,11 @@ class TestMain:
         self.seed_base(paths)
         read = FakeArchive(self.rosters())
         assert generate.main([], read_roster=read) == 0
-        assert read.reads == [LATEST_KNOWN_PERIOD]
+        assert read.reads == [newest_archived_period()]
         shipped = FCAInstitutionRegistry.from_json(
             text=generate._SHIPPED_PATH.read_text(encoding="utf-8")
         )
-        assert shipped.last_period == LATEST_KNOWN_PERIOD
+        assert shipped.last_period == newest_archived_period()
         assert generate._BASE_PATH.read_text(encoding="utf-8") == (
             generate._SHIPPED_PATH.read_text(encoding="utf-8")
         )
@@ -277,7 +276,7 @@ class TestMain:
         """Corrections change the shipped file and leave the base as read."""
         self.seed_base(paths)
         generate._OVERRIDES_PATH.parent.mkdir(parents=True)
-        start = LATEST_KNOWN_PERIOD.previous().period_end.isoformat()
+        start = newest_archived_period().previous().period_end.isoformat()
         generate._OVERRIDES_PATH.write_text(
             json.dumps(
                 {
@@ -303,12 +302,12 @@ class TestMain:
         generate._write_json(generate._BASE_PATH, registry(*self.rosters().items()))
         read = FakeArchive(self.rosters())
         assert generate.main(["--full"], read_roster=read) == 0
-        assert read.reads[0] == generate.EARLIEST_PERIOD
-        assert read.reads[-1] == LATEST_KNOWN_PERIOD
+        assert read.reads[0] == generate._FIRST_RELEASE_PERIOD
+        assert read.reads[-1] == newest_archived_period()
 
     def test_full_run_drift(self, paths: Path) -> None:
         """--full returns 1 and writes nothing when the base differs."""
-        stale = registry((LATEST_KNOWN_PERIOD, [{**ROW, "CITY": "X"}]))
+        stale = registry((newest_archived_period(), [{**ROW, "CITY": "X"}]))
         generate._write_json(generate._BASE_PATH, stale)
         assert generate.main(["--full"], read_roster=FakeArchive(self.rosters())) == 1
         assert not generate._SHIPPED_PATH.exists()

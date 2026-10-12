@@ -87,6 +87,22 @@ class DownloadError(CallReportError):
     """
 
 
+class ZipArchiveUnpackingError(CallReportError):
+    """A zip archive could not be unpacked.
+
+    Raised for a file that is not a zip, a zip with a corrupt member, or a
+    member whose path would land outside the target folder.
+    """
+
+
+class InsecureConnectionWarning(UserWarning):
+    """A request was made over plain HTTP to a host that is not this machine.
+
+    The request still goes ahead. Plain HTTP is neither private nor
+    protected against tampering, so prefer an ``https`` URL.
+    """
+
+
 class ReshapeError(CallReportError):
     """Loaded schedule data could not be reshaped into the requested layout.
 

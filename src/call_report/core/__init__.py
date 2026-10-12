@@ -14,6 +14,7 @@ This package collects the small vocabulary every call report source shares:
   entry point implements.
 - The dataframe vocabulary every reader returns and is steered by:
   :data:`NativeDataFrame` and :data:`DataFrameType`.
+- :func:`default_download_dir`, the folder downloaded files are kept in.
 
 The concrete definitions live in private sub-modules and are re-exported
 here, so import them directly from ``call_report.core``, e.g.
@@ -24,6 +25,7 @@ from __future__ import annotations
 
 from call_report.core._backend import DataFrameType, NativeDataFrame
 from call_report.core._base import BaseCallReport
+from call_report.core._dirs import default_download_dir
 from call_report.core._enums import FileType, Quarter, Source
 from call_report.core._periods import PeriodRange, ReportingPeriod
 from call_report.core._schema import (
@@ -52,4 +54,5 @@ __all__ = [
     "Quarter",
     "ReportingPeriod",
     "Source",
+    "default_download_dir",
 ]

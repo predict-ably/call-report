@@ -47,10 +47,10 @@ from call_report.fca import (
     get_fca_file_metadata,
     get_institutions_file_metadata,
 )
-from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
+from call_report.fca.catalog import _FIRST_RELEASE_PERIOD, parse_fca_release_filename
 from call_report.fca.institutions import INSTITUTIONS_ROOT
 from call_report.fca.transport import PackagedArchiveTransport
-from tests.helpers import load_generation_script
+from tests.helpers import archived_periods, load_generation_script
 
 generate = load_generation_script()
 
@@ -163,52 +163,40 @@ def test_shipped_file_text_matches_a_fresh_serialization(root: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# archive / catalog / metadata agree on the latest quarter (cheap)
+# archive and metadata agree on the newest quarter (cheap)
 # ---------------------------------------------------------------------------
 
 
-def test_the_archive_covers_every_period_the_catalog_claims() -> None:
-    """Every quarter between EARLIEST_PERIOD and LATEST_KNOWN_PERIOD has a zip.
+def test_the_archive_has_no_gaps() -> None:
+    """The archive holds a zip for every quarter from 2000Q1 to its newest one.
 
     Periods are turned into filenames with the transport's own
     `dirname_for`, so this follows FCA's naming convention (which changed
     in 2015) rather than reimplementing it.
     """
-    with PackagedArchiveTransport() as transport:
-        missing = [
-            period.label
-            for period in PeriodRange(start=EARLIEST_PERIOD, end=LATEST_KNOWN_PERIOD)
-            if not (
-                transport.archive_root / f"{transport.dirname_for(period)}.zip"
-            ).is_file()
-        ]
-    assert not missing, f"archive is missing release zips for: {missing}"
+    periods = archived_periods()
+    expected = tuple(PeriodRange(start=_FIRST_RELEASE_PERIOD, end=periods[-1]))
+    missing = sorted({period.label for period in expected} - {p.label for p in periods})
+    assert periods == expected, f"archive is missing release zips for: {missing}"
 
 
-def test_the_archive_holds_no_release_beyond_the_catalog() -> None:
-    """The archive has exactly one zip per catalog period, and no others.
+def test_every_archived_zip_names_a_release() -> None:
+    """Every zip in the archive is named the way FCA names a release.
 
-    Combined with the coverage test above, an exact count means no zip
-    exists outside EARLIEST_PERIOD..LATEST_KNOWN_PERIOD. This is what
-    catches a new quarter dropped into data/fca-call-report/ without
-    LATEST_KNOWN_PERIOD being moved with it, which is the first half of
-    the silent staleness this module exists to prevent.
+    A zip with any other name is invisible to the transport, so its
+    quarter would quietly drop out of every test that reads the archive.
     """
-    expected = len(PeriodRange(start=EARLIEST_PERIOD, end=LATEST_KNOWN_PERIOD))
     with PackagedArchiveTransport() as transport:
-        found = sorted(path.name for path in transport.archive_root.glob("*.zip"))
-    assert len(found) == expected, (
-        f"archive holds {len(found)} zips but the catalog spans {expected} periods "
-        f"({EARLIEST_PERIOD.label}-{LATEST_KNOWN_PERIOD.label}); a release was added "
-        "without moving LATEST_KNOWN_PERIOD, or vice versa."
-    )
+        names = sorted(path.name for path in transport.archive_root.glob("*.zip"))
+    unparsed = [name for name in names if parse_fca_release_filename(name) is None]
+    assert not unparsed, f"archive holds zips that name no release: {unparsed}"
+    assert len(names) == len(archived_periods())
 
 
-def test_the_shipped_metadata_reaches_the_latest_catalog_period() -> None:
-    """Some schedule's metadata extends to LATEST_KNOWN_PERIOD, and none beyond.
+def test_the_shipped_metadata_reaches_the_newest_archived_period() -> None:
+    """Some schedule's metadata extends to the newest archived quarter, and none beyond.
 
-    The second half of the staleness check: the catalog and archive can
-    agree on a new quarter while the shipped metadata was never
+    The archive can gain a new quarter while the shipped metadata was never
     regenerated for it.
 
     Compared across roots rather than per root, because schedules are
@@ -216,10 +204,10 @@ def test_the_shipped_metadata_reaches_the_latest_catalog_period() -> None:
     every root to reach the latest period would be wrong.
     """
     last = max(_shipped(root).last_period for root in ALL_ROOTS)
-    assert last == LATEST_KNOWN_PERIOD, (
-        f"shipped metadata reaches {last.label} but the catalog runs through "
-        f"{LATEST_KNOWN_PERIOD.label}; re-run "
-        "scripts/generate_fca_schedule_metadata.py."
+    newest = archived_periods()[-1]
+    assert last == newest, (
+        f"shipped metadata reaches {last.label} but the archive runs through "
+        f"{newest.label}. Re-run scripts/generate_fca_schedule_metadata.py."
     )
 
 
@@ -261,7 +249,7 @@ def test_a_full_rebuild_reproduces_the_checked_in_base() -> None:
     )
 
     rebuilt = generate._generate_bases(
-        resume_period=EARLIEST_PERIOD, roots_filter=None, seed={}
+        resume_period=_FIRST_RELEASE_PERIOD, roots_filter=None, seed={}
     )
     checked_in = _bases()
 
