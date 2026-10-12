@@ -30,6 +30,12 @@ Unreleased
   :func:`~call_report.fca.convert_long_format_to_code_grain_format` now raises
   :class:`~call_report.exceptions.ReshapeError` for such a frame, as
   documented (:issue:`125`).
+- The FCA archive now covers 2026Q2, and
+  ``call_report.fca.catalog.LATEST_KNOWN_PERIOD`` is 2026Q2. It also
+  holds FCA's 2026-08-31 regeneration of 2023Q2 through 2026Q1, which amends
+  a few values, leaves some fields empty that were ``0``, and changes six
+  institutions' addresses in those quarters. The shipped schedule metadata
+  and institution registry are regenerated to match (:issue:`130`).
 
 .. _changelog_0.1.0:
 

@@ -72,7 +72,7 @@ def test_construct_fca_download_url_september_uses_four_letter_abbreviation() ->
 def test_earliest_and_latest_known_period_bounds() -> None:
     """The catalog's known bounds match the confirmed FCA publication history."""
     assert ReportingPeriod.from_period_end(value="2000-03-31") == EARLIEST_PERIOD
-    assert ReportingPeriod.from_period_end(value="2026-03-31") == LATEST_KNOWN_PERIOD
+    assert ReportingPeriod.from_period_end(value="2026-06-30") == LATEST_KNOWN_PERIOD
 
 
 def test_construct_fca_download_url_rejects_period_before_earliest() -> None:
@@ -82,12 +82,12 @@ def test_construct_fca_download_url_rejects_period_before_earliest() -> None:
         construct_fca_download_url(period=too_early)
     message = str(exc_info.value)
     assert "2000-03-31" in message
-    assert "2026-03-31" in message
+    assert "2026-06-30" in message
 
 
 def test_construct_fca_download_url_rejects_period_after_latest_known() -> None:
     """A period after the latest known release raises PeriodNotAvailableError."""
-    too_late = ReportingPeriod.from_period_end(value="2026-06-30")
+    too_late = ReportingPeriod.from_period_end(value="2026-09-30")
     with pytest.raises(PeriodNotAvailableError):
         construct_fca_download_url(period=too_late)
 

@@ -3,7 +3,7 @@
   "periods": [
     {
       "start": "2000-03-31",
-      "end": "2026-03-31"
+      "end": "2026-06-30"
     }
   ],
   "fields": {
@@ -13,7 +13,7 @@
           "dtype": "Int64",
           "definition": "System Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -23,7 +23,7 @@
           "dtype": "Int64",
           "definition": "District Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -33,7 +33,7 @@
           "dtype": "Int64",
           "definition": "Association Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -43,7 +43,7 @@
           "dtype": "Int64",
           "definition": "Month of Report",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -53,7 +53,7 @@
           "dtype": "Int64",
           "definition": "Year of Report",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -63,7 +63,7 @@
           "dtype": "Int64",
           "definition": "System, District, and Association codes concatenated",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -79,7 +79,7 @@
           "dtype": "Int64",
           "definition": "Code for Loan Performance Status: 100 Production Agribulture: Real Estate 105 Production Agribulture: Production and Intermediate Term 110 Agribusiness 115 Communication 120 Energy 125 Water/Waste disposal 130 Rural residential real estate 135 International 140 Lease receivables 145 Direct loans to associations 150 Discounted loans to OFIs 152 Other loans 155 Total",
           "period_start": "2015-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -89,7 +89,7 @@
           "dtype": "Int64",
           "definition": "Accruing Loans",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -99,7 +99,7 @@
           "dtype": "Int64",
           "definition": "Accruing 90 days or more past due",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -109,7 +109,7 @@
           "dtype": "Int64",
           "definition": "Formally restructured accruing",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -119,7 +119,7 @@
           "dtype": "Int64",
           "definition": "Nonaccrual cash basis",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -129,7 +129,7 @@
           "dtype": "Int64",
           "definition": "Nonaccrual other",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -139,7 +139,7 @@
           "dtype": "Int64",
           "definition": "Total",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     }

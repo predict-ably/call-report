@@ -3,7 +3,7 @@
   "periods": [
     {
       "start": "2000-03-31",
-      "end": "2026-03-31"
+      "end": "2026-06-30"
     }
   ],
   "fields": {
@@ -13,7 +13,7 @@
           "dtype": "Int64",
           "definition": "System Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -23,7 +23,7 @@
           "dtype": "Int64",
           "definition": "District Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -33,7 +33,7 @@
           "dtype": "Int64",
           "definition": "Association Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -43,7 +43,7 @@
           "dtype": "Int64",
           "definition": "Month of Report",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -53,7 +53,7 @@
           "dtype": "Int64",
           "definition": "Year of Report",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -63,7 +63,7 @@
           "dtype": "Int64",
           "definition": "System, District, and Association codes concatenated",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -73,7 +73,7 @@
           "dtype": "Int64",
           "definition": "Cash",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -117,7 +117,7 @@
           "dtype": "Int64",
           "definition": "Accounts Receivable",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -127,7 +127,7 @@
           "dtype": "Int64",
           "definition": "Accrual Loans and Leases net of unearned income and unapplied loan payments",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -137,7 +137,7 @@
           "dtype": "Int64",
           "definition": "Loans, notes, sales, contracts, and leases: Notes receivable from other FCS institutions",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -147,7 +147,7 @@
           "dtype": "Int64",
           "definition": "Loans, notes, sales, contracts, and leases: Other notes receivable",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -157,7 +157,7 @@
           "dtype": "Int64",
           "definition": "Loans, notes, sales, contracts, and leases: Accrual Sales Contracts",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -167,7 +167,7 @@
           "dtype": "Int64",
           "definition": "Loans, notes, sales, contracts, and leases: Nonaccrual Loans",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -183,7 +183,7 @@
           "dtype": "Int64",
           "definition": "Loans, notes, sales, contracts, and leases: Allowance for credit losses on loans, etc.",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -193,7 +193,7 @@
           "dtype": "Int64",
           "definition": "Loans, notes, sales, contracts, and leases: Net Loans",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -203,7 +203,7 @@
           "dtype": "Int64",
           "definition": "Accrued Interest Receivable on Loans and Leases",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -213,7 +213,7 @@
           "dtype": "Int64",
           "definition": "Accrued Interest Receivable on Notes receivable from other FCS Institutions",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -223,7 +223,7 @@
           "dtype": "Int64",
           "definition": "Accrued Interest Receivable on Other Notes receivable",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -233,7 +233,7 @@
           "dtype": "Int64",
           "definition": "Accrued Interest Receivable on Sales Contracts",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -267,7 +267,7 @@
           "dtype": "Int64",
           "definition": "Accrued Interest Receivable on Securities",
           "period_start": "2008-09-30",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -277,7 +277,7 @@
           "dtype": "Int64",
           "definition": "Total Accrued Interest Receivable",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -297,7 +297,7 @@
           "dtype": "Int64",
           "definition": "Other Property Owned",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -307,7 +307,7 @@
           "dtype": "Int64",
           "definition": "Premises and Other Fixed Assets",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -317,7 +317,7 @@
           "dtype": "Int64",
           "definition": "Other Assets",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -327,7 +327,7 @@
           "dtype": "Int64",
           "definition": "Total Assets",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -337,7 +337,7 @@
           "dtype": "Int64",
           "definition": "Interest bearing liabilities: Systemwide notes and bonds outstanding",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -347,7 +347,7 @@
           "dtype": "Int64",
           "definition": "Interest bearing liabilities: Notes payable to other FCS",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -357,7 +357,7 @@
           "dtype": "Int64",
           "definition": "Interest bearing liabilities: Other interest-bearing debt",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -367,7 +367,7 @@
           "dtype": "Int64",
           "definition": "Accounts Payable",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -377,7 +377,7 @@
           "dtype": "Int64",
           "definition": "Accrued interest payable on: Systemwide notes and bonds outstanding",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -387,7 +387,7 @@
           "dtype": "Int64",
           "definition": "Accrued interest payable on: Notes payable to other FCS institutions",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -397,7 +397,7 @@
           "dtype": "Int64",
           "definition": "Accrued Interest Payable on Other interest-bearing debt",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -407,7 +407,7 @@
           "dtype": "Int64",
           "definition": "Total Accrued Interest Payable",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -417,7 +417,7 @@
           "dtype": "Int64",
           "definition": "Other Liabilities",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -427,7 +427,7 @@
           "dtype": "Int64",
           "definition": "Total Liabilities",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -457,7 +457,7 @@
           "dtype": "Int64",
           "definition": "Total Net Worth",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -467,7 +467,7 @@
           "dtype": "Int64",
           "definition": "Total Liabilities and Net Worth",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -477,7 +477,7 @@
           "dtype": "Int64",
           "definition": "Accumulated other comprehensive income (net)",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -487,7 +487,7 @@
           "dtype": "Int64",
           "definition": "Loans, notes, sales, contracts, and leases: Loan adjustment for fair value",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -497,7 +497,7 @@
           "dtype": "Int64",
           "definition": "Interest bearing liabilities: Debt adjustment for fair value",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -507,7 +507,7 @@
           "dtype": "Int64",
           "definition": "Interest bearing liabilities: Total interest bearing liabilities",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -517,7 +517,7 @@
           "dtype": "Int64",
           "definition": "Accrued interest receivable: Derivatives",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -533,7 +533,7 @@
           "dtype": "Int64",
           "definition": "Interest bearing liabilities: Subordinated notes and bonds",
           "period_start": "2013-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -543,7 +543,7 @@
           "dtype": "Int64",
           "definition": "Accrued interest payable on: Subordinated notes and bonds",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -553,7 +553,7 @@
           "dtype": "Int64",
           "definition": "Accrued interest payable on: Derivatives",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -563,7 +563,7 @@
           "dtype": "Int64",
           "definition": "Loans and leases held for sale",
           "period_start": "2013-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -573,7 +573,7 @@
           "dtype": "Int64",
           "definition": "Reserve for credit losses on off-balance sheet exposures",
           "period_start": "2013-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -583,7 +583,7 @@
           "dtype": "Int64",
           "definition": "Interest bearing liabilities: Limited-life (term) preferred stock",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -593,7 +593,7 @@
           "dtype": "Int64",
           "definition": "Accrued interest payable on: Limited-life (term) preferred stock",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -603,7 +603,7 @@
           "dtype": "Int64",
           "definition": "Capital stock",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -613,7 +613,7 @@
           "dtype": "Int64",
           "definition": "Perpetual Preferred stock",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -623,7 +623,7 @@
           "dtype": "Int64",
           "definition": "Paid-in capital",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -633,7 +633,7 @@
           "dtype": "Int64",
           "definition": "Allocated Surplus",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -643,7 +643,7 @@
           "dtype": "Int64",
           "definition": "Unallocated retained earnings",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -653,7 +653,7 @@
           "dtype": "Int64",
           "definition": "Debt securities, net of allowance for credit losses",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -663,7 +663,7 @@
           "dtype": "Int64",
           "definition": "Equity investments in System institutions and Farmer Mac",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -673,7 +673,7 @@
           "dtype": "Int64",
           "definition": "Equity investments in non-System institutions",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -683,7 +683,7 @@
           "dtype": "Int64",
           "definition": "Total Investments",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     }

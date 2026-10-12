@@ -78,7 +78,7 @@ def test_frame_reproduces_roster(
         )
 
     rebuilt = archive_registry.to_dataframe(dataframe_type="polars_dataframe")
-    assert len(rows_of(rebuilt)) == 9885
+    assert len(rows_of(rebuilt)) == 9949
     assert keyed(rebuilt) == keyed(stacked_roster)
 
 
