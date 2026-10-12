@@ -14,8 +14,9 @@ In scope:
    of this repository, with a manifest of checksums. A rolling release always
    holds the current files. A dated snapshot release is cut whenever the data
    changes, so a user can download exactly the files an earlier analysis used.
-   A workflow keeps the mirror in step with `data/fca-call-report/`, and a
-   nightly check reports when FCA has published or changed a file.
+   A workflow keeps the mirror in step with `data/fca-call-report/`. A nightly
+   check finds when FCA has published or changed a file, opens an issue, and
+   opens a data pull request linked to it.
 2. Two shared, standard library helpers in `call_report.core`. The HTTP helper
    retries transient failures and warns about plain `http` URLs. It can use
    `curl_cffi` instead of `urllib` through an optional extra. The zip
@@ -48,8 +49,6 @@ In scope:
 Out of scope:
 
 - Merger adjustment (version 0.3).
-- Opening a data pull request automatically when FCA changes a file. The
-  nightly check opens an issue, and a maintainer refreshes the data.
 - Generating schedule metadata or the institution registry from a user's own
   folder of releases. The generation scripts stay in `scripts/`. The nightly
   drift check keeps the published metadata bundle current, so a user gets a
@@ -178,8 +177,9 @@ four places.
    as a dated snapshot release, so a superseded file stays downloadable. See
    "Versioning the mirror".
 4. **Drift is checked every night.** A scheduled workflow compares FCA's
-   current files with the mirror's manifest, so a maintainer hears of a change
-   within a day. See "The nightly drift check".
+   current files with the mirror's manifest. When they differ, it opens an
+   issue and a data pull request, so the repository is never more than a day
+   behind FCA waiting for someone to notice. See "The nightly drift check".
 
 Bringing the 13 changed or new zips into `data/fca-call-report/`, and
 regenerating the shipped metadata and registry, is a separate data pull
@@ -480,13 +480,45 @@ differ, and the quarters the mirror holds that FCA no longer lists. It exits
 nonzero if there is any difference. It sends the same `User-Agent` as the
 downloader.
 
-`.github/workflows/fca-drift.yml` runs it every night and by hand. It then runs
-the opt-in live tests. If either fails, it opens an issue labeled `fca-drift`
-with the report, or adds a comment to the issue that is already open. It needs
-`contents: read` and `issues: write`. A maintainer then adds the zips to
-`data/fca-call-report/` and runs both generation scripts, as for any new
-quarter. That data pull request merges, the mirror workflow publishes a new
-snapshot, and the drift check passes again.
+With `--apply`, the script also downloads every new or changed zip into
+`data/fca-call-report/`, replacing the old file. It never deletes a zip, so a
+quarter FCA stops listing is only reported.
+
+`.github/workflows/fca-drift.yml` runs every night and by hand.
+
+1. It runs the drift check and the opt-in live tests.
+2. If either fails, it opens an issue labeled `fca-drift` with the report, or
+   adds a comment to the issue that is already open.
+3. If files differ, it then builds the data pull request on a branch named
+   `fca-drift/<YYYY-MM-DD>`:
+   - runs the drift check with `--apply`,
+   - runs both generation scripts. When only new quarters were added, they
+     extend the base as usual. When an existing quarter changed, they run with
+     a new `--rebuild` flag, which rebuilds the base from every quarter and
+     replaces it, logging each difference instead of refusing to write,
+   - adds a changelog entry naming the new and changed quarters,
+   - opens a pull request titled
+     `[MNT] Bring the FCA archive up to date with FCA's site (#<issue>)`, with
+     `Closes #<issue>` in its description and the `run-exhaustive` label.
+4. If a drift pull request is already open, it pushes to that branch and
+   updates its description instead of opening a second one.
+
+The pull request description lists the new quarters, the changed quarters,
+each schedule whose metadata changed, and each UNINUM whose name or address
+history changed. That last list is what a reviewer checks for values a
+regeneration backfilled into earlier quarters, which belong in the registry's
+override file. A person reviews and merges it. On merge, the mirror workflow
+publishes a new snapshot, and the next nightly run passes. Only a failing live
+test with no file difference, such as a Cloudflare refusal, gives an issue
+with no pull request.
+
+A pull request opened with the workflow's own `GITHUB_TOKEN` does not start
+other workflows, so CI would never run on it. The workflow therefore opens the
+pull request with a token from a repository secret, `FCA_DRIFT_TOKEN`, a
+fine-grained token or GitHub App token limited to this repository with
+contents, issues, and pull requests write access. A maintainer creates the
+secret once. Without it, the workflow still opens the issue and says the pull
+request could not be opened.
 
 If Cloudflare refuses the workflow's addresses, the run fails with the
 Cloudflare message and the issue says so. That is also a signal worth having.
@@ -1052,6 +1084,9 @@ Added:
   `metadata.zip` are built by `scripts/build_fca_mirror_manifest.py`. None of
   it is in the wheel.
 - `scripts/check_fca_drift.py`, which the nightly workflow runs.
+- A `--rebuild` flag on `scripts/generate_fca_schedule_metadata.py` and
+  `scripts/generate_fca_institution_registry.py`.
+- The `FCA_DRIFT_TOKEN` repository secret, created by a maintainer.
 - `tests/fca/data/download_page.html`, a trimmed copy of FCA's download page
   as of 2026-10-12. It keeps the markup around the zip links, plus one added
   zip link whose name does not parse and one absolute link.
@@ -1078,9 +1113,10 @@ order.
    of `LATEST_KNOWN_PERIOD`, and making `EARLIEST_PERIOD` private. `PackagedArchiveTransport` moves to
    `extract_zip`. The optional `curl_cffi` extra is added to `pyproject.toml`.
 2. **`[MNT] Mirror FCA release zips as GitHub releases and check for drift (#119)`.**
-   `scripts/build_fca_mirror_manifest.py`, `scripts/check_fca_drift.py`, their
-   tests, `.github/workflows/fca-mirror.yml`, and
-   `.github/workflows/fca-drift.yml`. After it merges, a maintainer runs the
+   `scripts/build_fca_mirror_manifest.py`, `scripts/check_fca_drift.py`, the
+   `--rebuild` flag on both generation scripts, their tests,
+   `.github/workflows/fca-mirror.yml`, and `.github/workflows/fca-drift.yml`.
+   After it merges, a maintainer creates the `FCA_DRIFT_TOKEN` secret, runs the
    mirror workflow once by hand to publish all 106 quarters, then runs the
    drift workflow once to confirm it passes.
 3. **`[ENH] Add FCAReleaseDownloader and DownloadTransport (#119)`.**
@@ -1274,6 +1310,14 @@ tests point at the local server.
 - Against a local server standing in for FCA and the mirror, the script exits
   zero when every file matches, and nonzero with a report that names a new
   quarter, a changed quarter, and a quarter FCA no longer lists.
+- With `--apply`, the new and changed zips are written to the data folder and
+  replace the old files, and a quarter FCA no longer lists is left in place.
+
+`tests/scripts/test_generate_fca_schedule_metadata.py` and
+`tests/scripts/test_generate_fca_institution_registry.py` (added to):
+
+- `--rebuild` with a changed archived quarter replaces the base and logs the
+  difference, where `--full` refuses to write.
 
 `tests/fca/test_download_regression.py`:
 
