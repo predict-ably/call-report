@@ -89,7 +89,12 @@ def test_a_zip_with_a_broken_directory_raises(tmp_path: Path) -> None:
     raw = archive.read_bytes().replace(b"PK\x01\x02", b"XX\x01\x02")
     archive.write_bytes(raw)
     target = tmp_path / "out"
-    with pytest.raises(ZipArchiveUnpackingError, match="could not be unpacked"):
+    # Python 3.14's zipfile.is_zipfile checks the central directory, so it
+    # rejects this file up front. Earlier versions accept it there and fail
+    # when the archive is opened.
+    with pytest.raises(
+        ZipArchiveUnpackingError, match=r"not a zip file|could not be unpacked"
+    ):
         extract_zip(archive=archive, target_dir=target)
     assert sorted(path.name for path in tmp_path.iterdir()) == ["a.zip"]
 
