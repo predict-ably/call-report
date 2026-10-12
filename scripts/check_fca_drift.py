@@ -681,6 +681,26 @@ def render_pull_request(
         listed = [f"- {item}" for item in items]
         return listed or ["None."]
 
+    # Each paragraph is built before the list, so the list holds one string
+    # per line and a missing comma cannot join two lines without notice.
+    why = (
+        "The nightly FCA drift check found releases on FCA's download page that "
+        "differ from `data/fca-call-report/`. This pull request copies FCA's "
+        "files into the archive and regenerates the shipped schedule metadata "
+        "and institution registry with the scripts in `scripts/`."
+    )
+    uninum_note = (
+        "UNINUMs whose name or address history changed in quarters the registry "
+        "already covered. A regeneration can backfill an institution's current "
+        "values into earlier quarters. Check each one, and add an entry to "
+        "`data/fca-institutions/overrides/registry.json` where the earlier "
+        "value should be kept, then run "
+        "`python scripts/generate_fca_institution_registry.py` again."
+    )
+    ai_usage = (
+        "- [x] I did not use AI tools for this pull request. It was opened by "
+        "the `fca-drift` workflow."
+    )
     lines = [
         "#### Reference issues and plan",
         "",
@@ -688,10 +708,7 @@ def render_pull_request(
         "",
         "#### What does this change, and why?",
         "",
-        "The nightly FCA drift check found releases on FCA's download page that "
-        "differ from `data/fca-call-report/`. This pull request copies FCA's "
-        "files into the archive and regenerates the shipped schedule metadata "
-        "and institution registry with the scripts in `scripts/`.",
+        why,
         "",
         "New quarters:",
         "",
@@ -705,12 +722,7 @@ def render_pull_request(
         "",
         *bullets(f"`{root}`" for root in schedules),
         "",
-        "UNINUMs whose name or address history changed in quarters the registry "
-        "already covered. A regeneration can backfill an institution's current "
-        "values into earlier quarters. Check each one, and add an entry to "
-        "`data/fca-institutions/overrides/registry.json` where the earlier "
-        "value should be kept, then run "
-        "`python scripts/generate_fca_institution_registry.py` again.",
+        uninum_note,
         "",
         *bullets(
             f"{uninum} ({name})" if name else str(uninum)
@@ -727,8 +739,7 @@ def render_pull_request(
         "",
         "#### AI usage",
         "",
-        "- [x] I did not use AI tools for this pull request. It was opened by "
-        "the `fca-drift` workflow.",
+        ai_usage,
         "",
         "#### Checklist",
         "",

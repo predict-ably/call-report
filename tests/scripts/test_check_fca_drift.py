@@ -457,8 +457,10 @@ def test_changed_schedules_finds_added_removed_and_changed_files(
         (
             ["2026-09-30"],
             ["2025-03-31", "2025-06-30", "2025-09-30"],
-            "The FCA archive now covers 2026Q3. It also holds FCA's new versions of "
-            "2025Q1, 2025Q2, and 2025Q3.",
+            (
+                "The FCA archive now covers 2026Q3. It also holds FCA's new "
+                "versions of 2025Q1, 2025Q2, and 2025Q3."
+            ),
         ),
     ],
 )
