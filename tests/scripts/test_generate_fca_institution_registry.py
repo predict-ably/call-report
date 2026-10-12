@@ -142,6 +142,37 @@ class TestOverrides:
         assert entry.value == ROW["ZIP"]
         assert entry.periods == PeriodRange(start=Q1, end=Q3)
 
+    def test_part_of_entry_corrected(self) -> None:
+        """A correction with period_end changes only the start of an entry.
+
+        This is how a value a regenerated release backfilled into earlier
+        quarters is put back for those quarters, while the later quarters keep
+        the value they reported.
+        """
+        overrides = {
+            "institutions": {
+                "722825": {
+                    "ZIP": [
+                        {
+                            "period_start": "2020-06-30",
+                            "period_end": "2020-06-30",
+                            "value": ROW["ZIP"],
+                        }
+                    ]
+                }
+            }
+        }
+        corrected = generate._apply_overrides(self.base(), overrides)
+        first, second = corrected[722825].zip_history
+        assert (first.value, first.periods) == (
+            ROW["ZIP"],
+            PeriodRange(start=Q1, end=Q2),
+        )
+        assert (second.value, second.periods) == (
+            "40223",
+            PeriodRange(start=Q3, end=Q3),
+        )
+
     @pytest.mark.parametrize(
         ("overrides", "match"),
         [
@@ -161,8 +192,29 @@ class TestOverrides:
                 },
                 "period_start '2020-09-30', but no entry starts there",
             ),
+            (
+                {
+                    "institutions": {
+                        "722825": {
+                            "ZIP": [
+                                {
+                                    "period_start": "2020-06-30",
+                                    "period_end": "2020-03-31",
+                                    "value": "",
+                                }
+                            ]
+                        }
+                    }
+                },
+                "period_end '2020-03-31', which is not a quarter of the entry",
+            ),
         ],
-        ids=["unknown-uninum", "not-a-name-or-address-column", "stale-start"],
+        ids=[
+            "unknown-uninum",
+            "not-a-name-or-address-column",
+            "stale-start",
+            "end-outside-entry",
+        ],
     )
     def test_bad_override_rejected(self, overrides: dict[str, Any], match: str) -> None:
         """A correction that does not match the base is an error."""

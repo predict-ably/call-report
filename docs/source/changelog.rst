@@ -33,9 +33,11 @@ Unreleased
 - The FCA archive now covers 2026Q2, and
   ``call_report.fca.catalog.LATEST_KNOWN_PERIOD`` is 2026Q2. It also
   holds FCA's 2026-08-31 regeneration of 2023Q2 through 2026Q1, which amends
-  a few values, leaves some fields empty that were ``0``, and changes six
-  institutions' addresses in those quarters. The shipped schedule metadata
-  and institution registry are regenerated to match (:issue:`130`).
+  a few values and leaves some fields empty that were ``0``. The shipped
+  schedule metadata and institution registry are regenerated to match. The
+  regenerated releases show six institutions' current addresses in every one
+  of those quarters. The registry keeps the addresses the institutions
+  reported at the time (:issue:`130`).
 
 .. _changelog_0.1.0:
 
