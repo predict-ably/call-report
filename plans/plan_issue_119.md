@@ -2,6 +2,10 @@
 
 Status: proposed
 
+Revised in #137, while pull request 2 was built. The catalog moved from pull
+request 3 to pull request 2, and the drift check now compares FCA with the
+archive. "Pull requests" lists every change.
+
 ## Goal
 
 Give an installed user a way to get FCA release files from the package itself.
@@ -16,7 +20,8 @@ In scope:
    changes, so a user can download exactly the files an earlier analysis used.
    A workflow keeps the mirror in step with `data/fca-call-report/`. A nightly
    check finds when FCA has published or changed a file, opens an issue, and
-   opens a data pull request linked to it.
+   opens a data pull request linked to it. The same check finds a mirror that
+   has fallen out of step with the archive.
 2. Two shared, standard library helpers in `call_report.core`. The HTTP helper
    retries transient failures and warns about plain `http` URLs. It can use
    `curl_cffi` instead of `urllib` through an optional extra. The zip
@@ -40,7 +45,8 @@ In scope:
    registry, published with the mirror, so a user can get a new quarter's
    metadata without upgrading the package.
 8. Tests that never touch the internet in the default suite, and opt-in tests
-   of the live mirror and the live FCA site. A nightly workflow runs both.
+   of the live mirror and the live FCA site. The nightly drift workflow runs
+   the live tests once pull request 3 adds them.
 9. A user guide page on downloading, and updates to the getting started page,
    the API reference, and the changelog. The page explains where downloaded
    files go, how to choose another folder, how to read them offline, how to
@@ -396,27 +402,51 @@ built from the tag and the stem with no lookup. The rolling tag is the default.
 every snapshot date, oldest first, so a user can see what can be pinned.
 
 **Script.** `scripts/build_fca_mirror_manifest.py` reads `data/fca-call-report/`
-and the shipped metadata. It writes `manifest.json` and `metadata.zip`. It uses
-`parse_fca_release_filename` and `construct_fca_download_url` from the package,
-so the mirror and the package agree on names. It reads `generated` from the
-`_G<YYYYMMDD>` part of a modern era zip's data filenames. It fails if a zip's
-name does not parse, if a zip has no `D_*.TXT` file, or if one zip's data files
-carry more than one generation date.
+and the shipped metadata. It takes the snapshot being published
+(`--snapshot`) and, when there is one, the rolling release's current manifest
+(`--previous-manifest`). It writes three files.
+
+- `manifest.json`. Its `snapshots` list is the previous manifest's list plus
+  this snapshot. A snapshot already in that list fails the build, since a
+  snapshot is never changed.
+- `metadata.zip`. Its members are stored uncompressed, in name order, with a
+  fixed timestamp and fixed permissions. So the same files always give the
+  same bytes, and the same SHA-256. Without that, every run would see a
+  changed bundle and cut a new snapshot.
+- `changes.json`. It says whether anything changed, lists the files the
+  rolling release needs uploaded (zips that are new or whose SHA-256 differs,
+  and `metadata.zip` when it differs), and lists the zips it needs removed.
+
+The script uses `parse_fca_release_filename`, `fca_release_stem`, and
+`construct_fca_download_url` from the package, so the mirror and the package
+agree on names. It checks each zip with `check_release_zip`, a private helper
+in `call_report.fca._discovery`, which also gives `generated` from the
+`_G<YYYYMMDD>` part of a modern era zip's data filenames. The pull request 3
+downloader uses the same helper. The script fails if a zip's name is not the
+exact name `fca_release_stem` gives its quarter, if a file is not a zip, if a
+zip has no `D_*.TXT` file, if one zip's data files carry more than one
+generation date, or if the shipped metadata stops before the newest archived
+quarter. Before it writes anything, it reads its own manifest back with
+`FCAReleaseCatalog.from_manifest_json`, so a manifest the package cannot read
+is never published.
 
 **Workflow.** `.github/workflows/fca-mirror.yml` runs on a push to `main` that
 changes `data/fca-call-report/**` or `src/call_report/fca/data/**`, and by hand
 (`workflow_dispatch`). It:
 
-1. builds `manifest.json` and `metadata.zip` with the script,
-2. compares them with the rolling release's current manifest and stops if no
-   zip and no metadata differ,
-3. creates the snapshot release `fca-data-<today>` with `--latest=false`,
-   holding every zip, the manifest, and `metadata.zip`,
-4. brings the rolling release in line: it creates the release if it does not
-   exist, uploads every zip whose name is not already an asset, and replaces
-   (`gh release upload --clobber`) any whose SHA-256 differs,
-5. uploads `manifest.json` and `metadata.zip` last, so the manifest never lists
-   a file that is not there yet.
+1. downloads the rolling release's current manifest, if there is one,
+2. picks the snapshot name, `<today>`, or `<today>-2` and so on when a
+   snapshot with that date already exists,
+3. builds the three files with the script, and stops if `changes.json` says
+   nothing changed,
+4. creates the snapshot release `fca-data-<snapshot>` with `--latest=false`
+   and `--target` set to the commit, holding every zip, the manifest, and
+   `metadata.zip`,
+5. brings the rolling release in line: it creates the release if it does not
+   exist, uploads (`gh release upload --clobber`) each zip `changes.json`
+   lists, and deletes each asset it says to remove,
+6. uploads `metadata.zip` and then `manifest.json` last, so the manifest never
+   lists a file that is not there yet.
 
 It needs `contents: write` and uses the workflow's own `GITHUB_TOKEN`, as
 `publish.yml` does. The first run, by hand after the implementation merges,
@@ -432,9 +462,16 @@ find out which files it read, and download those same files in October.
   bytes. The data changes a few times a year, and one snapshot is about 12 MB.
 - **A user pins a version.** `snapshot="2026-10-12"` on the catalog, the
   downloader, or the transport downloads from that snapshot. The default,
-  `snapshot="latest"`, uses the rolling release. Pinning applies only to
-  `source="github"`, because FCA does not keep earlier versions. Passing a
-  snapshot with `source="fca"` raises `ValueError`.
+  `snapshot="latest"`, reads the rolling release's manifest. Pinning applies
+  only to `source="github"`, because FCA does not keep earlier versions.
+  Passing a snapshot with `source="fca"` raises `ValueError`.
+- **Zips always come from a snapshot.** A catalog built from a manifest points
+  every URL at the snapshot release the manifest names, even when the
+  manifest came from the rolling release. The rolling release is updated one
+  asset at a time, and `--clobber` deletes an asset before uploading its
+  replacement. So for a while its zips and its manifest can disagree, or a
+  zip can be missing. A snapshot release never changes, so its zips always
+  match the manifest's checksums.
 - **A download remembers where it came from.** The record in each folder holds
   the snapshot, the checksum, and the generation date. The manifest's
   `snapshot` field says which snapshot "latest" meant at the time. So a folder
@@ -473,55 +510,95 @@ the wheel and the bundle always agree for the quarters they share.
 
 ### The nightly drift check
 
-`scripts/check_fca_drift.py` reads FCA's download page, downloads every zip it
-lists, and compares each SHA-256 with the rolling manifest. It prints the
-quarters FCA has published that the mirror lacks, the quarters whose bytes
-differ, and the quarters the mirror holds that FCA no longer lists. It exits
-nonzero if there is any difference. It sends the same `User-Agent` as the
-downloader.
+`scripts/check_fca_drift.py` has three commands.
 
-With `--apply`, the script also downloads every new or changed zip into
-`data/fca-call-report/`, replacing the old file. It never deletes a zip, so a
-quarter FCA stops listing is only reported.
+- **`check`** reads FCA's download page with `FCAReleaseCatalog.from_fca`,
+  downloads every zip it lists (four at a time), and compares each SHA-256
+  with the zip in `data/fca-call-report/`. It reports the quarters FCA has
+  published that the archive lacks, the quarters whose bytes differ, the
+  quarters the archive holds that FCA no longer lists, and any zip link whose
+  name is not a release. Each new or changed zip is checked with
+  `check_release_zip` and saved to a download folder. A zip that is not a
+  release is reported as an error and not saved. The command also reads the
+  mirror's manifest with `FCAReleaseCatalog.from_github` and compares it with
+  the archive. It reports quarters missing from the mirror, quarters whose
+  checksum differs, and quarters the mirror holds that the archive does not.
+  A mirror whose manifest cannot be read is reported as unavailable. It writes
+  a JSON report and a Markdown summary. It exits 0 when nothing differs, 1
+  when something does, and 2 when the check could not finish, such as when
+  FCA refuses a request.
+- **`apply`** copies the zips a `check` saved into the archive, after checking
+  each one's SHA-256 against the report. Either every zip is written or none
+  is. It never deletes a zip, so a quarter FCA stops listing is only reported.
+- **`describe`** writes the data pull request's description and adds its
+  changelog entry under "Unreleased". An entry it wrote earlier for the same
+  issue is replaced, so a second run leaves one entry.
+
+`check` compares FCA with the archive, not with the mirror. The data pull
+request changes the archive, so the archive is what has to match FCA. If the
+check compared FCA with the mirror, a mirror that had fallen behind `main`
+would produce a data pull request with nothing in it. The separate mirror
+comparison still reports a failed publish.
+
+Every request sends the same `User-Agent` as the downloader.
 
 `.github/workflows/fca-drift.yml` runs every night and by hand.
 
-1. It runs the drift check and the opt-in live tests.
-2. If either fails, it opens an issue labeled `fca-drift` with the report, or
-   adds a comment to the issue that is already open.
-3. If files differ, it then builds the data pull request on a branch named
-   `fca-drift/<YYYY-MM-DD>`:
-   - runs the drift check with `--apply`,
-   - runs both generation scripts. When only new quarters were added, they
-     extend the base as usual. When an existing quarter changed, they run with
+1. It keeps a copy of `src/call_report/fca/data/` from `main`, then runs
+   `check` on `main`.
+2. If anything differs, it opens an issue labeled `fca-drift` with the
+   summary, or comments on the issue that is already open. Each comment
+   carries a hidden fingerprint of the report, without its timestamp. A night
+   whose findings match an earlier comment adds no new one.
+3. If FCA's files differ from the archive, it builds the data pull request.
+   - If a drift pull request is already open, it checks out that branch and
+     merges `main` into it. Otherwise it creates `fca-drift/<YYYY-MM-DD>`
+     from `main`.
+   - It runs `apply` with the zips `check` saved. If the open drift branch
+     already holds them, it stops there.
+   - It runs both generation scripts. When only new quarters were added, they
+     extend the base as usual. When an archived quarter changed, they run with
      a new `--rebuild` flag, which rebuilds the base from every quarter and
-     replaces it, logging each difference instead of refusing to write,
-   - adds a changelog entry naming the new and changed quarters,
-   - opens a pull request titled
+     replaces it, logging each difference instead of refusing to write.
+     `--rebuild` and `--full` cannot be combined.
+   - It runs `describe`, commits, and pushes.
+   - It opens a pull request titled
      `[MNT] Bring the FCA archive up to date with FCA's site (#<issue>)`, with
-     `Closes #<issue>` in its description and the `run-exhaustive` label.
-4. If a drift pull request is already open, it pushes to that branch and
-   updates its description instead of opening a second one.
+     `Closes #<issue>` in its description and the `fca-drift` and
+     `run-exhaustive` labels. On an open drift pull request, it updates the
+     description instead.
+4. The run fails only when the check could not finish, or the pull request
+   could not be built. A difference alone is reported through the issue, so
+   the nightly run does not stay red while a drift pull request waits for
+   review.
 
-The pull request description lists the new quarters, the changed quarters,
-each schedule whose metadata changed, and each UNINUM whose name or address
-history changed. That last list is what a reviewer checks for values a
-regeneration backfilled into earlier quarters, which belong in the registry's
-override file. A person reviews and merges it. On merge, the mirror workflow
-publishes a new snapshot, and the next nightly run passes. Only a failing live
-test with no file difference, such as a Cloudflare refusal, gives an issue
-with no pull request.
+An open drift pull request gets a new commit rather than a rebuilt branch.
+Rebuilding it would mean force-pushing, which would drop any registry
+overrides a reviewer has added there.
+
+The pull request description follows the pull request template. It lists the
+new quarters, the changed quarters, each schedule whose shipped metadata
+changed, and each UNINUM whose name or address history changed in a quarter
+the registry already covered. Quarters the regeneration adds are not
+compared. That last list is what a reviewer checks for values a regeneration
+backfilled into earlier quarters, which belong in the registry's override
+file. A person reviews and merges it. On merge, the mirror workflow publishes
+a new snapshot, and the next nightly run passes.
 
 A pull request opened with the workflow's own `GITHUB_TOKEN` does not start
 other workflows, so CI would never run on it. The workflow therefore opens the
 pull request with a token from a repository secret, `FCA_DRIFT_TOKEN`, a
 fine-grained token or GitHub App token limited to this repository with
 contents, issues, and pull requests write access. A maintainer creates the
-secret once. Without it, the workflow still opens the issue and says the pull
-request could not be opened.
+secret once. Without it, the workflow still opens the issue, says on it that
+the pull request could not be opened, and fails.
 
-If Cloudflare refuses the workflow's addresses, the run fails with the
-Cloudflare message and the issue says so. That is also a signal worth having.
+If Cloudflare refuses the workflow's addresses, `check` exits 2, the issue
+carries the Cloudflare message, and the run fails. That is also a signal worth
+having.
+
+`test.yml` gains `scripts/**` in its `paths`, so a change to a script runs
+the tests in `tests/scripts/`.
 
 ### The default source and the manifest
 
@@ -653,13 +730,33 @@ create it. The downloader creates `<download folder>/fca/` on first use.
 - `parse_fca_release_filename(name)` turns a zip filename into a period, or
   returns `None`. It accepts both eras, any letter case, and `Sep` as well as
   `Sept`.
-- `FCAReleaseCatalog` is added (see "Public API").
+- `FCAReleaseCatalog` is added (see "Public API"). It lands in pull request 2,
+  because the drift check reads FCA's page and the mirror's manifest through
+  it.
 - The scrape uses a private `HTMLParser` subclass that collects every `href`
-  ending in `.zip`, resolved with `urllib.parse.urljoin`. Links whose
+  ending in `.zip`, resolved with `urllib.parse.urljoin`. The filename is
+  read from the URL's path, so a query string does not matter. Links whose
   filenames parse become catalog entries. Links that do not parse are kept on
-  `unmatched`.
+  `unmatched`. A link repeated with the same URL counts once.
 - A page with no parsable zip links raises `DownloadError` saying the page
-  layout may have changed. An empty catalog is never returned.
+  layout may have changed. So does a page that links two different URLs for
+  one quarter. An empty catalog is never returned.
+- `from_manifest_json` checks the manifest's `schema_version`, `snapshot`, and
+  `releases`. For each release, it checks the period, that `file` is the exact
+  name `fca_release_stem` gives that period, and that `sha256` is 64 lower
+  case hex digits. It rejects a period listed twice. A missing key raises
+  `DownloadError` naming the key. A `schema_version` newer than the package
+  reads asks the user to upgrade. Keys the catalog does not use, such as
+  `size` and `metadata`, are not checked.
+- The catalog stores sorted, read-only copies of its mappings, so `periods`
+  is oldest first and a mapping the caller keeps cannot change it. Its repr
+  gives the size, the span, and the snapshot, not every URL.
+- `DOWNLOAD_PAGE_URL` and `MIRROR_BASE_URL` are read when a method runs, not
+  when it is defined, so tests point them at the local server.
+- The two constants' docstrings cannot pass numpydoc's GL02 check, because
+  autodoc hands numpydoc the text without the line holding the closing
+  quotes. Both numpydoc configs (`docs/source/conf.py` and
+  `pyproject.toml`) therefore exclude names that are all capitals.
 - The page as of 2026-10-12 fits this. It lists 106 zip links, one per
   quarter from 2000Q1 to 2026Q2. Every `href` is relative
   (`/template-fca/bank/2026June.zip`,
@@ -877,8 +974,9 @@ class FCAReleaseCatalog:
 ```
 
 `url_for` raises `PeriodNotAvailableError` for a period the catalog does not
-hold. A catalog built from the mirror carries `sha256` and `snapshot`. One
-built from FCA's page carries neither. `LATEST_KNOWN_PERIOD` is removed from
+hold. A catalog built from the mirror carries `sha256` and `snapshot`, and
+every URL in it points at the snapshot release its manifest names. One built
+from FCA's page carries neither. `LATEST_KNOWN_PERIOD` is removed from
 this module, and `EARLIEST_PERIOD` becomes the private `_FIRST_RELEASE_PERIOD`.
 
 New in `call_report.exceptions`:
@@ -1088,8 +1186,9 @@ Added:
   `scripts/generate_fca_institution_registry.py`.
 - The `FCA_DRIFT_TOKEN` repository secret, created by a maintainer.
 - `tests/fca/data/download_page.html`, a trimmed copy of FCA's download page
-  as of 2026-10-12. It keeps the markup around the zip links, plus one added
-  zip link whose name does not parse and one absolute link.
+  as of 2026-10-12. It keeps the page's main content. Its Sept2014 link is
+  made absolute, and a zip link whose name does not parse and a link that is
+  not a zip are added.
 - `tests/fca/data/manifest.json`, a small manifest for parser tests.
 
 CLAUDE.md's repo layout section gains two lines. Adding a quarter's zip to
@@ -1106,27 +1205,41 @@ Four pull requests, all `Part of #119` except the last, landing in this
 order.
 
 1. **`[ENH] Add shared HTTP, archive, and directory helpers and transport periods (#119)`.**
+   Merged in #135.
    `core/_http.py`, `core/_archive.py`, `core/_dirs.py`,
    `ZipArchiveUnpackingError`, `InsecureConnectionWarning`, `fca_release_stem`,
    `parse_fca_release_filename`, `available_periods()` on the protocol and the
    two local transports, the `FCACallReport` validation change, the removal
    of `LATEST_KNOWN_PERIOD`, and making `EARLIEST_PERIOD` private. `PackagedArchiveTransport` moves to
    `extract_zip`. The optional `curl_cffi` extra is added to `pyproject.toml`.
-2. **`[MNT] Mirror FCA release zips as GitHub releases and check for drift (#119)`.**
+2. **`[ENH] Add the release catalog, FCA mirror, and drift check (#119)`.**
+   #137. `construct_fca_mirror_url`, `FCAReleaseCatalog`, `DOWNLOAD_PAGE_URL`,
+   `MIRROR_BASE_URL`, the private `check_release_zip` and
+   `release_generation_date` helpers in `call_report.fca._discovery`,
    `scripts/build_fca_mirror_manifest.py`, `scripts/check_fca_drift.py`, the
-   `--rebuild` flag on both generation scripts, their tests,
-   `.github/workflows/fca-mirror.yml`, and `.github/workflows/fca-drift.yml`.
-   After it merges, a maintainer creates the `FCA_DRIFT_TOKEN` secret, runs the
-   mirror workflow once by hand to publish all 106 quarters, then runs the
-   drift workflow once to confirm it passes.
+   `--rebuild` flag on both generation scripts, their tests, the saved
+   download page and manifest fixtures, `.github/workflows/fca-mirror.yml`,
+   `.github/workflows/fca-drift.yml`, `scripts/**` in `test.yml`, the
+   changelog and API reference entries for the catalog, and the CLAUDE.md
+   repo layout lines. After it merges, a maintainer creates the
+   `FCA_DRIFT_TOKEN` secret, runs the mirror workflow once by hand to publish
+   all 106 quarters, then runs the drift workflow once to confirm it passes.
 3. **`[ENH] Add FCAReleaseDownloader and DownloadTransport (#119)`.**
-   `construct_fca_mirror_url`, `FCAReleaseCatalog`, the downloader, the
-   transport, the live tests, the user guide page, and the doc, changelog,
-   CLAUDE.md, and API reference updates.
+   `FCASource`, the downloader, the transport, the live tests and their step
+   in `fca-drift.yml`, the user guide page, and the doc, changelog, and API
+   reference updates.
 4. **`[ENH] Download the shipped metadata and registry (#119)`.** The
    `metadata_dir` argument on the loaders and on `FCACallReport`,
    `FCAReleaseDownloader.download_metadata`, and the user guide section. This
    one closes #119 and sets this plan's status line.
+
+The catalog was first planned for pull request 3. It moved to pull request 2
+because the drift check has to read FCA's download page and the mirror's
+manifest, and the catalog is what parses both. Moving it avoids throwaway
+parsers in the scripts, and tests the manifest writer and the package's
+reader in the same pull request. Because it adds public API, pull request 2
+is `[ENH]` with a changelog entry, not the `[MNT]` and `no-changelog` first
+planned.
 
 The third pull request is not merged until the live tests pass against both
 the real mirror and the real FCA site. The author runs them with
@@ -1134,7 +1247,8 @@ the real mirror and the real FCA site. The author runs them with
 mirror, and puts the result in the pull request description. From then on the
 nightly workflow runs them. Pull requests 1, 3, and 4 carry the
 `run-exhaustive` label, because they change how archive releases are resolved
-or how metadata is read. Pull request 2 carries `no-changelog`.
+or how metadata is read. Pull request 2 changes neither the archive nor how a
+release is parsed, so it does not.
 
 ## Tests
 
@@ -1145,7 +1259,8 @@ temporary folder, can answer a path with a redirect, and can be told to
 answer a path with a given sequence of status codes. This runs the real
 `urllib` code end to end. Its helpers live in `tests/http_server.py`, not in
 `conftest.py`. The mirror and FCA base URLs are module attributes that the
-tests point at the local server.
+tests point at the local server, through the `mirror` and `fca_site`
+fixtures in `tests/conftest.py`.
 
 `tests/core/test_http.py`:
 
@@ -1200,21 +1315,43 @@ tests point at the local server.
   that do not parse. A `hypothesis` round trip:
   `parse(stem(p) + ".zip") == p` for every period.
 - `construct_fca_download_url` and `construct_fca_mirror_url` for both eras
-  and for a snapshot. A period before `_FIRST_RELEASE_PERIOD` or after the quarter
-  containing today (with `date.today` patched) raises
-  `PeriodNotAvailableError`.
+  and for a snapshot, including a `-2` snapshot. A period before
+  `_FIRST_RELEASE_PERIOD` or after the quarter containing today (with
+  `catalog._today` replaced) raises `PeriodNotAvailableError`. An invalid
+  snapshot raises `ValueError`.
 - Neither `LATEST_KNOWN_PERIOD` nor `EARLIEST_PERIOD` is importable from
   `call_report.fca.catalog`.
+
+`tests/fca/test_release_catalog.py` (new, for `FCAReleaseCatalog`):
+
+- The catalog sorts its periods, keeps read-only copies of its mappings,
+  refuses to be empty or to hold a checksum with no URL, and has a short
+  repr.
 - `from_manifest_json` on the fixture reads URLs, checksums, and the snapshot,
-  and rejects a manifest with an unknown `schema_version` or a missing key with
-  `DownloadError`.
-- `from_html` on the saved page: every period from 2000Q1 to 2026Q2 is
-  present, relative links are resolved, and an unparsable zip link lands in
-  `unmatched`.
-- `from_html` on a page with no zip links raises `DownloadError`.
-- `from_github` and `from_fca` against the local server.
-- `url_for` raises `PeriodNotAvailableError` outside the catalog. `periods`,
-  `earliest`, and `latest` are correct.
+  and every URL points at the snapshot release. Each way a manifest can be
+  wrong raises `DownloadError` saying why: not JSON, not an object, a missing
+  or unknown key value, a newer `schema_version` (asking for an upgrade), an
+  invalid snapshot, no releases, a bad period, a file name that is not that
+  period's, a bad checksum, and a period listed twice.
+- `from_html` on the saved page: every archived period from 2000Q1 is
+  present, relative and absolute links are resolved, and an unparsable zip
+  link lands in `unmatched`. Other links, repeated links, query strings, and
+  letter case are handled. Two URLs for one quarter, and a page with no
+  release links, raise `DownloadError`.
+- `from_github` reads the rolling or a pinned snapshot's manifest from the
+  local server. A manifest for another snapshot, one that is not UTF-8, and a
+  missing one raise `DownloadError`. `from_fca` reads the saved page from the
+  local server. Both pass `timeout`, `max_retries`, and `http_client` on.
+- `url_for` raises `PeriodNotAvailableError` outside the catalog, naming the
+  catalog's range.
+
+`tests/fca/test_discovery.py` (added to):
+
+- `release_generation_date` reads a modern release's date, gives `None` for a
+  legacy release, and rejects two dates.
+- `check_release_zip` returns the date, even for files in a folder inside the
+  zip. It raises `ZipArchiveUnpackingError` for a file that is not a zip, and
+  `ValueError` for a zip with no layout file or two generation dates.
 
 `tests/fca/test_download.py`:
 
@@ -1297,27 +1434,54 @@ tests point at the local server.
 
 `tests/scripts/test_build_fca_mirror_manifest.py`:
 
-- The manifest built from `data/fca-call-report/` lists all 106 quarters, with
-  checksums that match `hashlib`, and source URLs that match
-  `construct_fca_download_url`.
-- `metadata.zip` holds the shipped schedule files and registry, and the
-  manifest's `metadata` entry matches its checksum.
-- A zip whose name does not parse, and a zip with no `D_*.TXT`, fail the
-  script.
+- The manifest built from `data/fca-call-report/` lists every archived
+  quarter, with checksums and sizes that match the files, source URLs that
+  match `construct_fca_download_url`, and generation dates for modern
+  releases only.
+- `FCAReleaseCatalog.from_manifest_json` reads the manifest, with URLs in the
+  new snapshot's release.
+- `metadata.zip` holds the shipped schedule files and registry unchanged,
+  plus `metadata.json`, and the manifest's `metadata` entry matches it.
+- Two builds from the same files give the same `metadata.zip`, and every
+  member has the same timestamp, permissions, and compression.
+- `changes.json`: a first build uploads every file, an unchanged build
+  uploads nothing, and a changed zip, changed bundle, and dropped zip are
+  listed. `snapshots` accumulates, and a snapshot already published fails.
+- An invalid snapshot, an empty archive, a misnamed zip (wrong case, `Sep`,
+  or not a release), a file that is not a zip, a zip with no `D_*.TXT`, a zip
+  with two generation dates, metadata behind the archive, and a metadata
+  folder with no schedules each fail the script. The metadata covers the
+  earlier of the schedules and the registry.
+- `main` writes the three files and returns 0, or logs the reason and
+  returns 1 with nothing written.
 
 `tests/scripts/test_check_fca_drift.py`:
 
-- Against a local server standing in for FCA and the mirror, the script exits
-  zero when every file matches, and nonzero with a report that names a new
-  quarter, a changed quarter, and a quarter FCA no longer lists.
-- With `--apply`, the new and changed zips are written to the data folder and
-  replace the old files, and a quarter FCA no longer lists is left in place.
+- Against a local server standing in for FCA and the mirror, `check` is
+  clean when every file matches. It reports a new quarter, a changed quarter,
+  a quarter FCA no longer lists, and an unmatched zip link, and saves only
+  the zips that differ.
+- An unreadable download page, a failed zip download, and a zip that is not a
+  release are errors (exit 2). The other quarters are still compared.
+- A mirror missing a quarter, holding a different or an extra one, or with no
+  manifest is reported.
+- A report round trips through JSON.
+- `apply` writes the new and changed zips and leaves a quarter FCA no longer
+  lists in place. A saved zip that is missing or differs from the report
+  writes nothing.
+- The summary lists each kind of difference and always describes the mirror.
+- `describe`: changed UNINUMs (a backfilled value, a dropped quarter, a
+  dropped UNINUM, and not a new quarter), changed schedule files, the
+  changelog entry's wording and wrapping, and adding then replacing the entry
+  for the same issue while keeping another issue's.
+- `main` runs each command and returns its exit status.
 
 `tests/scripts/test_generate_fca_schedule_metadata.py` and
 `tests/scripts/test_generate_fca_institution_registry.py` (added to):
 
 - `--rebuild` with a changed archived quarter replaces the base and logs the
-  difference, where `--full` refuses to write.
+  difference, where `--full` refuses to write. `--full` and `--rebuild`
+  cannot be combined.
 
 `tests/fca/test_download_regression.py`:
 
