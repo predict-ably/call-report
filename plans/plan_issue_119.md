@@ -50,6 +50,10 @@ Out of scope:
 - Merger adjustment (version 0.3).
 - Opening a data pull request automatically when FCA changes a file. The
   nightly check opens an issue, and a maintainer refreshes the data.
+- Generating schedule metadata or the institution registry from a user's own
+  folder of releases. The generation scripts stay in `scripts/`. The nightly
+  drift check keeps the published metadata bundle current, so a user gets a
+  new quarter's metadata by downloading the bundle.
 - Downloading in parallel from inside `FCACallReport.fetch`. A user who wants
   parallel downloads calls the downloader first.
 - FFIEC, FDIC, and NCUA, though the shared helpers are written for them too.
@@ -1291,13 +1295,6 @@ needs the library installed.
 
 ## Open questions
 
-1. **Building metadata from a user's own releases.** This plan lets a user
-   download the metadata bundle we publish. A user cannot yet generate
-   metadata from their own folder of releases, because the generation scripts
-   live in `scripts/`, outside the package. Moving them into the package would
-   allow it, at the cost of shipping and supporting that code. The institution
-   registry can already be built from a user's own releases with
-   `FCAInstitutionRegistry.from_dataframe`.
-2. **Loopback exemption.** The warning for plain `http` skips loopback hosts so
+1. **Loopback exemption.** The warning for plain `http` skips loopback hosts so
    a local server does not warn. Warning for loopback too is stricter, and
    would make the test server's tests filter the warning.
