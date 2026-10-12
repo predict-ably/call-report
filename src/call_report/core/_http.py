@@ -33,9 +33,13 @@ from call_report.exceptions import DownloadError, InsecureConnectionWarning
 HttpClient = Literal["urllib", "curl_cffi"]
 
 USER_AGENT = f"call-report/{__version__} (+https://github.com/predict-ably/call-report)"
-"""str: The ``User-Agent`` header sent with every request."""
+"""str: The ``User-Agent`` header sent with every ``urllib`` request.
 
-_CURL_CFFI_MIN_VERSION = "0.6.0"
+With ``http_client="curl_cffi"``, the browser's own ``User-Agent`` is sent
+instead, so the header matches the browser's TLS fingerprint.
+"""
+
+_CURL_CFFI_MIN_VERSION = "0.6.2"
 _CURL_CFFI_INSTALL_MESSAGE = 'Install it with `pip install "call-report[curl_cffi]"`.'
 
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
@@ -125,7 +129,9 @@ def fetch_bytes(
     max_retries : int, default 3
         How many times to send a request again after a transient failure.
     headers : Mapping[str, str], optional
-        Extra request headers. Every request also sends `USER_AGENT`.
+        Extra request headers. With ``http_client="urllib"``, every request
+        also sends `USER_AGENT`. With ``"curl_cffi"``, every request sends
+        the impersonated browser's own ``User-Agent`` instead.
     http_client : {"urllib", "curl_cffi"}, default "urllib"
         The library used for HTTP requests. ``"urllib"`` uses the standard
         library. ``"curl_cffi"`` needs
@@ -197,7 +203,9 @@ def download_file(
     max_retries : int, default 3
         How many times to send a request again after a transient failure.
     headers : Mapping[str, str], optional
-        Extra request headers. Every request also sends `USER_AGENT`.
+        Extra request headers. With ``http_client="urllib"``, every request
+        also sends `USER_AGENT`. With ``"curl_cffi"``, every request sends
+        the impersonated browser's own ``User-Agent`` instead.
     http_client : {"urllib", "curl_cffi"}, default "urllib"
         The library used for HTTP requests. ``"urllib"`` uses the standard
         library. ``"curl_cffi"`` needs
@@ -320,7 +328,11 @@ def _request(
     """
     _check_url(url, stacklevel=4)
     opener = _opener_for(http_client)
-    request_headers = {"User-Agent": USER_AGENT, **(headers or {})}
+    # curl_cffi sends the impersonated browser's own User-Agent. Sending ours
+    # with a browser's TLS fingerprint would be a mismatch that Cloudflare can
+    # treat as a sign of a bot.
+    default_headers = {"User-Agent": USER_AGENT} if http_client == "urllib" else {}
+    request_headers = {**default_headers, **(headers or {})}
 
     attempt = 0
     while True:

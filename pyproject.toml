@@ -39,11 +39,12 @@ polars = ["polars>=1.0"]
 # pyarrow-stubs 20 requires pyarrow>=20, so the pyarrow floor matches it.
 pyarrow = ["pyarrow>=20.0", "pyarrow-stubs>=20.0"]
 # Used only when a caller passes http_client="curl_cffi". It presents a
-# browser's TLS fingerprint, for a server that refuses urllib's. 0.6.0 is the
-# oldest release with the "chrome" impersonation target, and its abi3 wheels
-# install on every supported Python. The floor is repeated in
-# call_report.core._http, which checks it at import time.
-curl_cffi = ["curl_cffi>=0.6.0"]
+# browser's TLS fingerprint, for a server that refuses urllib's. 0.6.2 is the
+# oldest release whose "chrome" impersonation also sends Chrome's headers,
+# User-Agent included (0.6.0 and 0.6.1 send none). Its abi3 wheels install
+# on every supported Python. The floor is repeated in call_report.core._http,
+# which checks it at import time.
+curl_cffi = ["curl_cffi>=0.6.2"]
 dev = [
     "pytest>=8",
     "pytest-cov>=5",
