@@ -38,6 +38,7 @@ guarantee that check only samples.
 from __future__ import annotations
 
 import functools
+from pathlib import Path
 
 import pytest
 
@@ -50,7 +51,11 @@ from call_report.fca import (
 from call_report.fca.catalog import _FIRST_RELEASE_PERIOD, parse_fca_release_filename
 from call_report.fca.institutions import INSTITUTIONS_ROOT
 from call_report.fca.transport import PackagedArchiveTransport
-from tests.helpers import archived_periods, load_generation_script
+from tests.helpers import (
+    archived_periods,
+    load_generation_script,
+    misnamed_release_zips,
+)
 
 generate = load_generation_script()
 
@@ -181,16 +186,48 @@ def test_the_archive_has_no_gaps() -> None:
 
 
 def test_every_archived_zip_names_a_release() -> None:
-    """Every zip in the archive is named the way FCA names a release.
+    """Every zip in the archive is named exactly the way FCA names a release.
 
-    A zip with any other name is invisible to the transport, so its
-    quarter would quietly drop out of every test that reads the archive.
+    A zip with any other name is invisible to the transport, so its quarter
+    would quietly drop out of every test that reads the archive. That
+    includes a name that differs only in letter case, or uses ``Sep`` for
+    ``Sept``, on a case-sensitive file system.
     """
     with PackagedArchiveTransport() as transport:
-        names = sorted(path.name for path in transport.archive_root.glob("*.zip"))
+        archive_root = transport.archive_root
+    names = sorted(path.name for path in archive_root.glob("*.zip"))
     unparsed = [name for name in names if parse_fca_release_filename(name) is None]
     assert not unparsed, f"archive holds zips that name no release: {unparsed}"
+    misnamed = misnamed_release_zips(archive_root)
+    assert not misnamed, (
+        f"archive holds zips whose names differ from the name FCA uses: {misnamed}. "
+        "Rename each to fca_release_stem(period=...) + '.zip'."
+    )
     assert len(names) == len(archived_periods())
+
+
+@pytest.mark.parametrize(
+    ("name", "misnamed"),
+    [
+        ("mar2000.zip", True),
+        ("Sep2014.zip", True),
+        ("2026MARCH.zip", True),
+        ("Mar2000.ZIP", True),
+        ("Mar2000.zip", False),
+        ("Sept2014.zip", False),
+        ("2026March.zip", False),
+        ("notes.zip", False),
+    ],
+)
+def test_misnamed_release_zips_reports_inexact_names(
+    tmp_path: Path, name: str, misnamed: bool
+) -> None:
+    """Only a name that parses but differs from the exact stem is reported.
+
+    ``notes.zip`` names no release, which the unparsed check reports instead.
+    """
+    (tmp_path / name).write_bytes(b"")
+    assert misnamed_release_zips(tmp_path) == ([name] if misnamed else [])
 
 
 def test_the_shipped_metadata_reaches_the_newest_archived_period() -> None:

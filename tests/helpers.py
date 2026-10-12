@@ -28,7 +28,7 @@ from typing import Any
 import narwhals as nw
 
 from call_report.core import ReportingPeriod
-from call_report.fca.catalog import parse_fca_release_filename
+from call_report.fca.catalog import fca_release_stem, parse_fca_release_filename
 
 ENCODING = "windows-1252"
 
@@ -116,6 +116,36 @@ def archived_periods() -> tuple[ReportingPeriod, ...]:
         parse_fca_release_filename(path.name) for path in _ARCHIVE_ROOT.glob("*.zip")
     )
     return tuple(sorted(period for period in periods if period is not None))
+
+
+def misnamed_release_zips(folder: Path) -> list[str]:
+    """Return the zips in a folder that name a release but not exactly.
+
+    `parse_fca_release_filename` ignores letter case and reads ``Sep`` as
+    ``Sept``, but the transports look for the exact name
+    `fca_release_stem` gives. So ``mar2000.zip`` names 2000Q1, yet on a
+    case-sensitive file system the transport cannot find it.
+
+    Parameters
+    ----------
+    folder : pathlib.Path
+        The folder of release zips to check.
+
+    Returns
+    -------
+    list[str]
+        The names that parse to a period but differ from
+        ``fca_release_stem(period=...) + ".zip"``, sorted.
+    """
+    # iterdir and a lower-cased suffix, not glob("*.zip"), which matches
+    # letter case differently on Windows and Linux.
+    return sorted(
+        path.name
+        for path in folder.iterdir()
+        if path.suffix.lower() == ".zip"
+        and (period := parse_fca_release_filename(path.name)) is not None
+        and path.name != f"{fca_release_stem(period=period)}.zip"
+    )
 
 
 def newest_archived_period() -> ReportingPeriod:

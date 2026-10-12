@@ -114,14 +114,29 @@ def client(request: pytest.FixtureRequest) -> HttpClient:
     return request.param
 
 
-def _fake_opener(responses: Mapping[str, _Response]) -> Any:
-    """Return an opener that answers from `responses` and sends nothing."""
+def _fake_opener(
+    responses: Mapping[str, _Response],
+    sent: list[tuple[str, dict[str, str]]] | None = None,
+) -> Any:
+    """Return an opener that answers from `responses` and sends nothing.
+
+    If `sent` is given, each request's URL and headers are appended to it.
+    """
 
     @contextmanager
-    def opener(url: str, **kwargs: Any) -> Iterator[_Response]:
+    def opener(
+        url: str, *, headers: Mapping[str, str], **kwargs: Any
+    ) -> Iterator[_Response]:
+        if sent is not None:
+            sent.append((url, dict(headers)))
         yield responses[url]
 
     return opener
+
+
+def _redirect(to: str) -> _Response:
+    """Return a 302 response pointing at `to`, for the fake opener."""
+    return _Response(status=302, headers={"location": to}, chunks=iter([]))
 
 
 def _ok(body: bytes = b"ok", **headers: str) -> _Response:
@@ -820,3 +835,33 @@ def test_python_312_skips_every_frame_in_the_package(
     assert Path(_http.__file__).is_relative_to(prefix)
     assert not Path(__file__).is_relative_to(prefix)
     assert prefix.endswith(os.sep)
+
+
+@pytest.mark.parametrize(
+    ("start", "target", "keeps"),
+    [
+        ("https://localhost:8000/a.zip", "http://localhost:8000/b.zip", False),
+        ("http://localhost:8000/a.zip", "https://localhost:8000/b.zip", True),
+        ("https://localhost:8000/a.zip", "https://localhost:8000/b.zip", True),
+    ],
+    ids=["https-to-http", "http-to-https", "https-to-https"],
+)
+def test_a_same_host_redirect_drops_credentials_only_when_leaving_https(
+    monkeypatch: pytest.MonkeyPatch, start: str, target: str, keeps: bool
+) -> None:
+    """A redirect from https to plain http drops credentials, even on one host.
+
+    Otherwise Authorization and Cookie would go out unencrypted. A redirect
+    that stays on https, or moves up from http to https, keeps them.
+    """
+    sent: list[tuple[str, dict[str, str]]] = []
+    responses = {start: _redirect(target), target: _ok()}
+    monkeypatch.setattr(_http, "_urllib_open", _fake_opener(responses, sent))
+    fetch_bytes(
+        start, headers={"Authorization": "token secret", "Cookie": "a=1", "X-Keep": "1"}
+    )
+    (_, first), (_, second) = sent
+    assert first["Authorization"] == "token secret"
+    assert ("Authorization" in second) is keeps
+    assert ("Cookie" in second) is keeps
+    assert second["X-Keep"] == "1"
