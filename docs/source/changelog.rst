@@ -58,6 +58,12 @@ Unreleased
 - New :func:`~call_report.fca.catalog.fca_release_stem` and
   :func:`~call_report.fca.catalog.parse_fca_release_filename` convert between
   a period and the name of its FCA release zip (:issue:`119`).
+- New :class:`~call_report.fca.catalog.FCAReleaseCatalog` lists the FCA
+  release zips a source holds and the URL of each. It reads FCA's download
+  page, or this project's GitHub mirror of every release, which also gives
+  each zip's SHA-256. New
+  :func:`~call_report.fca.catalog.construct_fca_mirror_url` builds the mirror
+  URL of a period's zip (:issue:`119`).
 - New :func:`~call_report.core.default_download_dir` gives the folder
   downloaded files are kept in. Set the ``CALL_REPORT_DOWNLOAD_DIR``
   environment variable to choose another (:issue:`119`).

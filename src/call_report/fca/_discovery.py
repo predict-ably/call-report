@@ -10,8 +10,17 @@ use ``<ROOT><MM><YY>.TXT`` with no separator at all.
 from __future__ import annotations
 
 import re
+import zipfile
+from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
+
+from call_report.exceptions import ZipArchiveUnpackingError
+
+# The generation date a modern release stamps on each data file name, as in
+# RCB_Q202603_G20260507.TXT.
+_GENERATION_DATE = re.compile(r"_G(\d{8})\.TXT$", re.IGNORECASE)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -152,3 +161,97 @@ def _match_data_file(*, root: str, candidates: list[Path]) -> Path | None:
             return candidate
 
     return None
+
+
+def release_generation_date(names: Iterable[str]) -> date | None:
+    """Return the date FCA generated a release, read from its file names.
+
+    Modern releases (2015 onward) end each data file name with
+    ``_G<YYYYMMDD>``, the date FCA generated the file. Legacy releases have
+    no such date.
+
+    Parameters
+    ----------
+    names : Iterable[str]
+        The names of the files in one release, with no folder.
+
+    Returns
+    -------
+    datetime.date or None
+        The generation date, or ``None`` if no name carries one.
+
+    Raises
+    ------
+    ValueError
+        If the names carry more than one generation date.
+
+    Examples
+    --------
+    >>> release_generation_date(["D_RCB.TXT", "RCB_Q202603_G20260507.TXT"])
+    datetime.date(2026, 5, 7)
+    >>> release_generation_date(["D_RCB.TXT", "RCB0300.TXT"]) is None
+    True
+    """
+    stamps = {match[1] for name in names if (match := _GENERATION_DATE.search(name))}
+    if len(stamps) > 1:
+        raise ValueError(
+            f"The release carries more than one generation date: "
+            f"{', '.join(sorted(stamps))}."
+        )
+    if not stamps:
+        return None
+    return date.fromisoformat(stamps.pop())
+
+
+def check_release_zip(path: Path) -> date | None:
+    """Check a file is an FCA release zip, and return its generation date.
+
+    A release zip holds at least one ``D_*.TXT`` layout file, and its data
+    files carry at most one generation date. Folders inside the zip are
+    ignored.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        The zip file to check.
+
+    Returns
+    -------
+    datetime.date or None
+        The date FCA generated the release, or ``None`` for a legacy
+        release, which records none.
+
+    Raises
+    ------
+    ZipArchiveUnpackingError
+        If the file is not a zip.
+    ValueError
+        If the zip holds no ``D_*.TXT`` layout file, or its data files carry
+        more than one generation date.
+
+    Examples
+    --------
+    >>> import tempfile, zipfile
+    >>> from pathlib import Path
+    >>> with tempfile.TemporaryDirectory() as folder:
+    ...     path = Path(folder) / "2026March.zip"
+    ...     with zipfile.ZipFile(path, "w") as archive:
+    ...         archive.writestr("D_RCB.TXT", "layout")
+    ...         archive.writestr("RCB_Q202603_G20260507.TXT", "data")
+    ...     check_release_zip(path)
+    datetime.date(2026, 5, 7)
+    """
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = [Path(name).name for name in archive.namelist()]
+    except zipfile.BadZipFile as error:
+        raise ZipArchiveUnpackingError(f"{path.name} is not a zip file.") from error
+    if not any(
+        name.upper().startswith("D_") and name.upper().endswith(".TXT")
+        for name in names
+    ):
+        raise ValueError(f"{path.name} holds no D_*.TXT layout file.")
+    try:
+        return release_generation_date(names)
+    except ValueError as error:
+        raise ValueError(f"{path.name}: {error}") from error

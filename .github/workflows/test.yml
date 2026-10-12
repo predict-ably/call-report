@@ -14,6 +14,9 @@ on:
       # tests/fca/test_release_archive.py regression-tests every release zip
       # checked in here, so adding a quarter's archive needs the suite too.
       - "data/**"
+      # tests/scripts/ tests the maintainer scripts, so changing one needs
+      # the suite too.
+      - "scripts/**"
       - ".github/workflows/**"
       - "pyproject.toml"
 

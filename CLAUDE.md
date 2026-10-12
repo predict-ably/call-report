@@ -398,12 +398,17 @@ synthetic data cannot reproduce.
   in the wheel. The test suite regression-tests against it. Add each new
   quarter's zip as FCA publishes it. `data/fca-schedule-metadata/` and
   `data/fca-institutions/` hold the `base/` and `overrides/` inputs of the
-  two generation scripts.
+  two generation scripts. On a merge to `main`, the `fca-mirror` workflow
+  publishes the archive and the shipped metadata as GitHub release assets.
+  The newest quarter is read from the newest zip, so no constant changes.
 - `docs/` — Sphinx documentation.
 - `scripts/` — maintainer scripts, including
   `generate_fca_schedule_metadata.py` and
   `generate_fca_institution_registry.py`, which produce the shipped data
-  above. Re-run both after adding a quarter's zip to `data/fca-call-report/`.
+  above. Re-run both after adding a quarter's zip to `data/fca-call-report/`,
+  with `--rebuild` when FCA has replaced an archived quarter.
+  `build_fca_mirror_manifest.py` builds the GitHub mirror's files, and
+  `check_fca_drift.py` is the nightly check of FCA's site against the archive.
 - `plans/` — one `plan_issue_<N>.md` per planned issue (see "Workflow"
   below). Not shipped in the built wheel.
 - `pyproject.toml` — build, dependencies, and all tool configuration.

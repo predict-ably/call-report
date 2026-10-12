@@ -174,6 +174,8 @@ exclude = [
     "^test_",
     "\\.test_",
     "\\.__init__$",
+    # Module constants. See numpydoc_validation_exclude in docs/source/conf.py.
+    "\\.[A-Z][A-Z0-9_]*$",
 ]
 
 [tool.doc8]

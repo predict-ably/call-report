@@ -312,6 +312,32 @@ class TestMain:
         assert generate.main(["--full"], read_roster=FakeArchive(self.rosters())) == 1
         assert not generate._SHIPPED_PATH.exists()
 
+    def test_rebuild_writes_over_a_different_base(
+        self, paths: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """--rebuild logs the difference, writes both files, and returns 0.
+
+        FCA can republish an archived quarter. Without this flag the only way
+        to bring the base up to date would be to delete it by hand.
+        """
+        stale = registry((newest_archived_period(), [{**ROW, "CITY": "X"}]))
+        generate._write_json(generate._BASE_PATH, stale)
+        read = FakeArchive(self.rosters())
+        assert generate.main(["--rebuild"], read_roster=read) == 0
+        assert read.reads[0] == generate._FIRST_RELEASE_PERIOD
+        assert "Different histories: [722825]" in caplog.text
+        assert "--rebuild" in caplog.text
+        base = FCAInstitutionRegistry.from_json(
+            text=generate._BASE_PATH.read_text(encoding="utf-8")
+        )
+        assert base == registry(*self.rosters().items())
+        assert generate._SHIPPED_PATH.is_file()
+
+    def test_full_and_rebuild_cannot_be_combined(self) -> None:
+        """Only one of --full and --rebuild can be given."""
+        with pytest.raises(SystemExit):
+            generate._parse_args(["--full", "--rebuild"])
+
     def test_first_run(self, paths: Path) -> None:
         """Before any base exists, every quarter is read."""
         assert generate.main([], read_roster=FakeArchive(self.rosters())) == 0

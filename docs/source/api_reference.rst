@@ -144,9 +144,13 @@ for example to parse a single layout or data file.
    call_report.fca.get_institutions_file_metadata
    call_report.fca.get_fca_institution_registry
    call_report.fca.all_fca_file_metadata
+   call_report.fca.catalog.FCAReleaseCatalog
    call_report.fca.catalog.construct_fca_download_url
+   call_report.fca.catalog.construct_fca_mirror_url
    call_report.fca.catalog.fca_release_stem
    call_report.fca.catalog.parse_fca_release_filename
+   call_report.fca.catalog.DOWNLOAD_PAGE_URL
+   call_report.fca.catalog.MIRROR_BASE_URL
    call_report.fca.layout.parse_layout
    call_report.fca.layout.FCALayout
    call_report.fca.layout.infer_field_dtype
