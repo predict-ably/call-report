@@ -723,7 +723,7 @@ class FCACallReport(BaseCallReport):
         >>> metadata.first_period.label
         '2000Q1'
         >>> metadata.last_period.label
-        '2026Q1'
+        '2026Q2'
         """
         return get_fca_file_metadata(schedule=FCASchedule.coerce(value=schedule))
 
@@ -751,7 +751,7 @@ class FCACallReport(BaseCallReport):
         >>> periods[0].label
         '2000Q1'
         >>> periods[-1].label
-        '2026Q1'
+        '2026Q2'
         """
         from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
 

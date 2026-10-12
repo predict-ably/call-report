@@ -237,7 +237,7 @@ def test_available_periods_and_schedules_do_not_require_fetch(tmp_path: Path) ->
     )
     periods = report.available_periods()
     assert periods[0] == ReportingPeriod.from_period_end(value="2000-03-31")
-    assert periods[-1] == ReportingPeriod.from_period_end(value="2026-03-31")
+    assert periods[-1] == ReportingPeriod.from_period_end(value="2026-06-30")
     assert FCASchedule.RCB in report.available_schedules()
 
 

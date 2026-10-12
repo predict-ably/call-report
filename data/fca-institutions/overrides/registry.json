@@ -1,0 +1,90 @@
+{
+  "institutions": {
+    "710985": {
+      "ZIP": [
+        {
+          "period_start": "2023-06-30",
+          "period_end": "2025-12-31",
+          "value": "35056"
+        }
+      ]
+    },
+    "720033": {
+      "MAIL_ADDR": [
+        {
+          "period_start": "2023-06-30",
+          "period_end": "2025-12-31",
+          "value": "260 Trace Colony Park Drive"
+        }
+      ],
+      "STREET_ADDR": [
+        {
+          "period_start": "2023-06-30",
+          "period_end": "2025-12-31",
+          "value": "260 Trace Colony Park Drive"
+        }
+      ]
+    },
+    "720376": {
+      "MAIL_ADDR": [
+        {
+          "period_start": "2023-06-30",
+          "period_end": "2025-12-31",
+          "value": "P.O. Box 213069"
+        }
+      ]
+    },
+    "725676": {
+      "MAIL_ADDR": [
+        {
+          "period_start": "2023-06-30",
+          "period_end": "2025-09-30",
+          "value": "PO Box 13069"
+        }
+      ],
+      "ZIP": [
+        {
+          "period_start": "2023-06-30",
+          "period_end": "2025-09-30",
+          "value": "93794-3069"
+        }
+      ]
+    },
+    "2000002": {
+      "MAIL_ADDR": [
+        {
+          "period_start": "2023-06-30",
+          "period_end": "2026-03-31",
+          "value": "101 Hudson Street, Suite 3505"
+        }
+      ],
+      "STREET_ADDR": [
+        {
+          "period_start": "2023-06-30",
+          "period_end": "2026-03-31",
+          "value": "101 Hudson Street, Suite 3505"
+        }
+      ]
+    },
+    "2000011": {
+      "MAIL_ADDR": [
+        {
+          "period_start": "2023-06-30",
+          "value": "30 East 7th Street, Suite 3000"
+        }
+      ],
+      "STREET_ADDR": [
+        {
+          "period_start": "2023-06-30",
+          "value": "30 East 7th Street, Suite 3000"
+        }
+      ],
+      "ZIP": [
+        {
+          "period_start": "2023-06-30",
+          "value": "55101-1810"
+        }
+      ]
+    }
+  }
+}

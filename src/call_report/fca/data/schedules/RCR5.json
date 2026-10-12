@@ -3,7 +3,7 @@
   "periods": [
     {
       "start": "2017-03-31",
-      "end": "2026-03-31"
+      "end": "2026-06-30"
     }
   ],
   "fields": {
@@ -13,7 +13,7 @@
           "dtype": "Int64",
           "definition": "System Code",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -23,7 +23,7 @@
           "dtype": "Int64",
           "definition": "District Code",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -33,7 +33,7 @@
           "dtype": "Int64",
           "definition": "Association Code",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -43,7 +43,7 @@
           "dtype": "Int64",
           "definition": "Month of Report",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -53,7 +53,7 @@
           "dtype": "Int64",
           "definition": "Year of Report",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -63,7 +63,7 @@
           "dtype": "Int64",
           "definition": "System, District, and Association codes concatenated",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -73,7 +73,7 @@
           "dtype": "Int64",
           "definition": "Total Average Assets for the Leverage Ratio Average total assets",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -83,7 +83,7 @@
           "dtype": "Int64",
           "definition": "Total Average Assets for the Leverage Ratio Less: Deductions from CET1 and AT1 capital (Sch. RC-R.4, sum of items 6a through 6i, and 9d)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -93,7 +93,7 @@
           "dtype": "Int64",
           "definition": "Total Average Assets for the Leverage Ratio Less: Other adjustments required by FCA",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -103,7 +103,7 @@
           "dtype": "Int64",
           "definition": "Total Average Assets for the Leverage Ratio Total average assets for Leverage Ratio",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -113,7 +113,7 @@
           "dtype": "Int64",
           "definition": "URE and URE equivalents Paid-in-Capital (includes APIC)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -123,7 +123,7 @@
           "dtype": "Int64",
           "definition": "URE and URE equivalents URE",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -133,7 +133,7 @@
           "dtype": "Int64",
           "definition": "URE and URE equivalents Nonqualified allocated surplus not subject to retirement",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -143,7 +143,7 @@
           "dtype": "Int64",
           "definition": "URE and URE equivalents Less: Amount of equities that are allocated to other System institutions",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -153,7 +153,7 @@
           "dtype": "Int64",
           "definition": "URE and URE equivalents Less: Deductions & adjustments from CET1 capital (RC-R4 item 6l)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -163,7 +163,7 @@
           "dtype": "Int64",
           "definition": "URE and URE equivalents Total URE and URE equivalents",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     }

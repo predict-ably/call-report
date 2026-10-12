@@ -3,7 +3,7 @@
   "periods": [
     {
       "start": "2000-03-31",
-      "end": "2026-03-31"
+      "end": "2026-06-30"
     }
   ],
   "fields": {
@@ -13,7 +13,7 @@
           "dtype": "Int64",
           "definition": "System Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -23,7 +23,7 @@
           "dtype": "Int64",
           "definition": "District Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -33,7 +33,7 @@
           "dtype": "Int64",
           "definition": "Association Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -43,7 +43,7 @@
           "dtype": "Int64",
           "definition": "Month of Report",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -53,7 +53,7 @@
           "dtype": "Int64",
           "definition": "Year of Report",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -63,7 +63,7 @@
           "dtype": "Int64",
           "definition": "System, District, and Association codes concatenated",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -73,7 +73,7 @@
           "dtype": "Int64",
           "definition": "Net Gains or Losses on Sales of Securities",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -83,7 +83,7 @@
           "dtype": "Int64",
           "definition": "Gains on Sales of Securities",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -93,7 +93,7 @@
           "dtype": "Int64",
           "definition": "Losses on Sales of Securities",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -103,7 +103,7 @@
           "dtype": "Int64",
           "definition": "Net Gains or Losses on Sales of Other Property Owned",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -113,7 +113,7 @@
           "dtype": "Int64",
           "definition": "Gains on Sales of Other Property Owned",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -123,7 +123,7 @@
           "dtype": "Int64",
           "definition": "Losses on Sales of Other Property Owned",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -133,7 +133,7 @@
           "dtype": "Int64",
           "definition": "Net Gains or Losses on Sales of Other Assets",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -143,7 +143,7 @@
           "dtype": "Int64",
           "definition": "Gains on Sales of Other Assets",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -153,7 +153,7 @@
           "dtype": "Int64",
           "definition": "Losses on Sales of Other Assets",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -163,7 +163,7 @@
           "dtype": "Int64",
           "definition": "Net Gains or Losses on Other Transactions",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -173,7 +173,7 @@
           "dtype": "Int64",
           "definition": "Gains on Other Transactions",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -183,7 +183,7 @@
           "dtype": "Int64",
           "definition": "Losses on Other Transactions",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -193,7 +193,7 @@
           "dtype": "Int64",
           "definition": "Total Gains or Losses",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -231,7 +231,7 @@
           "dtype": "Int64",
           "definition": "Impairment on available-for-sale debt securities",
           "period_start": "2015-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -241,7 +241,7 @@
           "dtype": "Int64",
           "definition": "Net gains (or losses(-)) on sales of loans and leases",
           "period_start": "2013-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -251,7 +251,7 @@
           "dtype": "Int64",
           "definition": "Gains",
           "period_start": "2013-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -261,7 +261,7 @@
           "dtype": "Int64",
           "definition": "Losses",
           "period_start": "2013-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     }
