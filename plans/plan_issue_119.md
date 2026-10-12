@@ -237,8 +237,13 @@ third party pure Python client would add dependencies without changing the
 outcome. Only `curl_cffi`, which copies a browser's TLS fingerprint, would.
 
 So `urllib` is the default, and `curl_cffi` is an optional extra,
-`call-report[curl]`. The HTTP helper loads it with `import_optional`, as the
-dependency rules require, and uses it only when the caller passes
+`call-report[curl_cffi]`. The extra is named after the library, as the
+`pandas`, `polars`, and `pyarrow` extras are. pip normalizes extra names, so
+`call-report[curl-cffi]` installs the same thing. Its floor is the oldest
+`curl_cffi` release with wheels for every Python version the package supports,
+confirmed in the first pull request. The HTTP helper loads it with
+`import_optional`, as the dependency rules require, and uses it only when the
+caller passes
 `http_client="curl_cffi"`. Choosing by an argument rather than by what happens
 to be installed keeps behavior the same on every machine. Without the extra,
 that argument raises an error that gives the `pip install` line. The mirror is
@@ -544,7 +549,7 @@ def download_file(
   that names Cloudflare, and is not retried.
 - With `http_client="curl_cffi"`, requests go through `curl_cffi.requests`
   with `impersonate="chrome"`. The library is loaded with `import_optional`,
-  so a missing one raises an error with the `pip install "call-report[curl]"`
+  so a missing one raises an error with the `pip install "call-report[curl_cffi]"`
   line. Status handling, retries, and the Cloudflare check are the same code
   for both clients.
 - The sleep function is a module attribute, so tests replace it and never
@@ -974,7 +979,7 @@ parameter appears.
   quarters whose files differ from the mirror's. `"all"` replaces every
   quarter in the range."
 - `http_client`: "The library used for HTTP requests. `"urllib"` uses the
-  standard library. `"curl_cffi"` needs `pip install "call-report[curl]"`."
+  standard library. `"curl_cffi"` needs `pip install "call-report[curl_cffi]"`."
 
 Usage, as the user guide will show it:
 
@@ -1053,7 +1058,7 @@ order.
    `parse_fca_release_filename`, `available_periods()` on the protocol and the
    two local transports, the `FCACallReport` validation change, and the removal
    of `LATEST_KNOWN_PERIOD`. `PackagedArchiveTransport` moves to
-   `extract_zip`. The optional `curl` extra is added to `pyproject.toml`.
+   `extract_zip`. The optional `curl_cffi` extra is added to `pyproject.toml`.
 2. **`[MNT] Mirror FCA release zips as GitHub releases and check for drift (#119)`.**
    `scripts/build_fca_mirror_manifest.py`, `scripts/check_fca_drift.py`, their
    tests, `.github/workflows/fca-mirror.yml`, and
@@ -1114,7 +1119,7 @@ tests point at the local server.
   passed. A real `curl_cffi` test against the local server is skipped with
   `pytest.importorskip` when the library is absent.
 - `http_client="curl_cffi"` with the library missing raises an error that
-  gives the `pip install "call-report[curl]"` line.
+  gives the `pip install "call-report[curl_cffi]"` line.
 
 `tests/core/test_archive.py`:
 
@@ -1286,25 +1291,13 @@ needs the library installed.
 
 ## Open questions
 
-1. **The optional extra.** This plan adds `call-report[curl]` for `curl_cffi`
-   and loads it with `import_optional`. The extra's name and the minimum
-   `curl_cffi` version need approval, because the project asks before any new
-   dependency. The floor would be the oldest release that supports the
-   `impersonate` argument.
-2. **An automatic data pull request.** When the nightly check finds a change,
-   this plan opens an issue and a maintainer refreshes the data. The
-   alternative is for the workflow to download the changed zips, run both
-   generation scripts, and open the data pull request itself. That would keep
-   the repository within a day of FCA with no manual step. It also means
-   maintaining more automation, and a person would still review the pull
-   request.
-3. **Building metadata from a user's own releases.** This plan lets a user
+1. **Building metadata from a user's own releases.** This plan lets a user
    download the metadata bundle we publish. A user cannot yet generate
    metadata from their own folder of releases, because the generation scripts
    live in `scripts/`, outside the package. Moving them into the package would
    allow it, at the cost of shipping and supporting that code. The institution
    registry can already be built from a user's own releases with
    `FCAInstitutionRegistry.from_dataframe`.
-4. **Loopback exemption.** The warning for plain `http` skips loopback hosts so
+2. **Loopback exemption.** The warning for plain `http` skips loopback hosts so
    a local server does not warn. Warning for loopback too is stricter, and
    would make the test server's tests filter the warning.
