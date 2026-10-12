@@ -9,39 +9,6 @@ permissions:
   contents: read
 
 jobs:
-  pre-commit-autoupdate:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Setup Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Auto-update pre-commit hook revisions
-        uses: browniebroke/pre-commit-autoupdate-action@v1.0.1
-
-      - name: Create GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ secrets.CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
-      - name: Open a PR with updated hooks
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          commit-message: "Update pre-commit hooks"
-          title: "[MNT] Update pre-commit hooks"
-          body: "Automated weekly update of `.pre-commit-config.yaml` hook revisions."
-          branch: chore/pre-commit-autoupdate
-          labels: maintenance, full-pre-commit, no-changelog
-
   scorecard:
     runs-on: ubuntu-latest
     permissions:
