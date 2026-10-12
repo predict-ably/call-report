@@ -61,8 +61,6 @@ Unreleased
 - New :func:`~call_report.core.default_download_dir` gives the folder
   downloaded files are kept in. Set the ``CALL_REPORT_DOWNLOAD_DIR``
   environment variable to choose another (:issue:`119`).
-- New optional extra, ``call-report[curl_cffi]``, for downloading from a
-  server that refuses the standard library's HTTP client (:issue:`119`).
 
 .. _changelog_0.1.0:
 

@@ -11,7 +11,9 @@ code for both clients.
 from __future__ import annotations
 
 import email.utils
+import functools
 import http.client
+import random
 import ssl
 import tempfile
 import time
@@ -46,6 +48,9 @@ _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _MAX_REDIRECTS = 10
 _RETRY_AFTER_STATUSES = frozenset({429, 503})
 _BACKOFF_SECONDS = 1.0
+# Each backoff is lengthened by up to this fraction at random, so several
+# downloads that fail together do not all retry at the same moment.
+_BACKOFF_JITTER = 0.25
 _MAX_RETRY_AFTER_SECONDS = 60.0
 _CHUNK_SIZE = 64 * 1024
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -55,8 +60,23 @@ _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 _CLOUDFLARE_BODY_PREFIX = b"error code: 1"
 _CLOUDFLARE_SNIFF_BYTES = 512
 
-# Replaced by tests, so a retry never waits in the test suite.
+# Replaced by tests, so a retry never waits in the test suite and every wait
+# is predictable.
 _sleep: Callable[[float], None] = time.sleep
+_jitter: Callable[[], float] = random.random
+
+# Request headers that carry credentials. They are not sent on to another
+# host when a redirect leaves the one the caller asked for.
+_CREDENTIAL_HEADERS = frozenset({"authorization", "cookie"})
+
+# curl's code for a TLS certificate that cannot be verified,
+# CURLE_PEER_FAILED_VERIFICATION. A retry fails the same way.
+_CURL_CERTIFICATE_ERROR = 60
+
+# How far up the stack an InsecureConnectionWarning points, so it names the
+# caller of fetch_bytes or download_file. A test checks both values.
+_WARN_STACKLEVEL = 4
+_WARN_STACKLEVEL_ON_REDIRECT = 5
 
 _T = TypeVar("_T")
 
@@ -115,10 +135,12 @@ def fetch_bytes(
 ) -> bytes:
     """Download a URL and return its body.
 
-    Redirects are followed. Connection errors, timeouts, HTTP 429, and HTTP
-    5xx responses are retried with exponential backoff starting at one
-    second, or after the wait a ``Retry-After`` header asks for. Any other
-    failure is raised at once.
+    Redirects are followed. A redirect to another host is sent without the
+    ``Authorization`` and ``Cookie`` headers. Connection errors, timeouts,
+    HTTP 429, and HTTP 5xx responses are retried. The wait before each retry
+    doubles from one second, with up to a quarter added at random, unless a
+    ``Retry-After`` header asks for a different wait. Any other failure is
+    raised at once.
 
     Parameters
     ----------
@@ -326,7 +348,7 @@ def _request(
     ValueError
         If `http_client` is not a known client.
     """
-    _check_url(url, stacklevel=4)
+    _check_url(url, stacklevel=_WARN_STACKLEVEL)
     opener = _opener_for(http_client)
     # curl_cffi sends the impersonated browser's own User-Agent. Sending ours
     # with a browser's TLS fingerprint would be a mismatch that Cloudflare can
@@ -353,7 +375,7 @@ def _request(
             delay = (
                 error.retry_after
                 if error.retry_after is not None
-                else _BACKOFF_SECONDS * 2**attempt
+                else _BACKOFF_SECONDS * 2**attempt * (1 + _BACKOFF_JITTER * _jitter())
             )
             _sleep(delay)
             attempt += 1
@@ -369,9 +391,10 @@ def _request_once(
 ) -> _T:
     """Send one GET request, follow its redirects, and consume the body.
 
-    Each redirect is checked by `_check_url` before it is followed. The
-    final response is checked by `_check_response` before `consume` reads
-    it.
+    Each redirect is checked by `_check_url` before it is followed. A
+    redirect to another host is sent without the ``Authorization`` and
+    ``Cookie`` headers. The final response is checked by `_check_response`
+    before `consume` reads it.
 
     Parameters
     ----------
@@ -403,8 +426,15 @@ def _request_once(
         with opener(current, headers=headers, timeout=timeout) as response:
             location = response.headers.get("location")
             if response.status in _REDIRECT_STATUSES and location:
-                current = urljoin(current, location)
-                _check_url(current, stacklevel=5)
+                target = urljoin(current, location)
+                _check_url(target, stacklevel=_WARN_STACKLEVEL_ON_REDIRECT)
+                if urlsplit(target).netloc.lower() != urlsplit(current).netloc.lower():
+                    headers = {
+                        name: value
+                        for name, value in headers.items()
+                        if name.lower() not in _CREDENTIAL_HEADERS
+                    }
+                current = target
                 continue
             _check_response(response, requested=url, current=current)
             return consume(response)
@@ -582,8 +612,7 @@ def _opener_for(http_client: HttpClient) -> _Opener:
     if http_client == "urllib":
         return _urllib_open
     if http_client == "curl_cffi":
-        _import_curl_cffi()
-        return _curl_open
+        return functools.partial(_curl_open, curl_cffi=_import_curl_cffi())
     raise ValueError(
         f'http_client must be "urllib" or "curl_cffi", not {http_client!r}.'
     )
@@ -650,7 +679,9 @@ def _urllib_open(
     request = urllib.request.Request(url, headers=dict(headers))  # noqa: S310
     try:
         # The scheme was checked to be http or https by `_check_url`.
-        raw: Any = _URLLIB_OPENER.open(request, timeout=timeout)
+        raw: http.client.HTTPResponse | urllib.error.HTTPError = _URLLIB_OPENER.open(
+            request, timeout=timeout
+        )
     except urllib.error.HTTPError as error:
         # urllib raises a 3xx, 4xx, or 5xx response as an error. It is still
         # a response, and its status decides what happens next.
@@ -664,10 +695,12 @@ def _urllib_open(
         raise _TransientError(f"{url} could not be reached: {error.reason}") from error
     except (OSError, http.client.HTTPException) as error:
         raise _TransientError(f"{url} could not be reached: {error!r}") from error
+    # An HTTPError's status is typed as optional, but its code is always set.
+    status = raw.code if isinstance(raw, urllib.error.HTTPError) else raw.status
     with raw:
         response_headers = {name.lower(): value for name, value in raw.headers.items()}
         yield _Response(
-            status=raw.status,
+            status=status,
             headers=response_headers,
             chunks=_read_chunks(
                 raw.read,
@@ -778,7 +811,7 @@ def _import_curl_cffi() -> Any:
 
 @contextmanager
 def _curl_open(
-    url: str, *, headers: Mapping[str, str], timeout: float
+    url: str, *, headers: Mapping[str, str], timeout: float, curl_cffi: Any
 ) -> Iterator[_Response]:
     """Send one GET request with ``curl_cffi`` and yield the response.
 
@@ -794,6 +827,8 @@ def _curl_open(
         The request headers.
     timeout : float
         Seconds to wait for the server before the request fails.
+    curl_cffi : Any
+        The ``curl_cffi`` module, from `_import_curl_cffi`.
 
     Yields
     ------
@@ -802,10 +837,11 @@ def _curl_open(
 
     Raises
     ------
+    DownloadError
+        If the server's TLS certificate cannot be verified.
     _TransientError
         If no complete response arrives.
     """
-    curl_cffi = _import_curl_cffi()
     try:
         # The whole body is read before returning. The files this package
         # downloads are a few megabytes at most, and reading in one call
@@ -818,6 +854,11 @@ def _curl_open(
             impersonate="chrome",
         )
     except curl_cffi.CurlError as error:
+        if getattr(error, "code", None) == _CURL_CERTIFICATE_ERROR:
+            raise DownloadError(
+                f"Could not download {url}: the server's certificate could not "
+                f"be verified ({error})."
+            ) from error
         raise _TransientError(f"{url} could not be reached: {error}") from error
     yield _Response(
         status=raw.status_code,

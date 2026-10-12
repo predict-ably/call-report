@@ -1,7 +1,8 @@
 """Property-based tests for the FCA download-URL catalog.
 
 ``tests/fca/test_catalog.py`` checks a handful of specific URLs and the
-2014/2015 era boundary. These cover the whole published range instead.
+2014/2015 era boundary. These cover every quarter from FCA's first release
+through the current one instead, so they need no archived data.
 
 The uniqueness property is the one worth having. Two periods mapping to the
 same URL would not raise anything, it would quietly hand a caller another
@@ -15,19 +16,20 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
-from call_report.core import Quarter, ReportingPeriod
+from call_report.core import PeriodRange, Quarter, ReportingPeriod
 from call_report.fca.catalog import (
+    _FIRST_RELEASE_PERIOD,
+    _current_period,
     construct_fca_download_url,
     fca_release_stem,
     parse_fca_release_filename,
 )
-from tests.helpers import archived_periods
 
 MODERN_ERA_FIRST_YEAR = 2015
 MODERN_BASE = "https://www.fca.gov/template-fca/bank/"
 LEGACY_BASE = "https://www.fca.gov/template-fca/download/CallReportData/"
 
-ALL_PERIODS = archived_periods()
+ALL_PERIODS = tuple(PeriodRange(start=_FIRST_RELEASE_PERIOD, end=_current_period()))
 published_periods = st.sampled_from(ALL_PERIODS)
 
 
@@ -104,3 +106,56 @@ def test_parsing_a_stem_gives_back_its_period(period: ReportingPeriod) -> None:
     assert parse_fca_release_filename(fca_release_stem(period=period) + ".zip") == (
         period
     )
+
+
+_MONTH_WORDS = (
+    "mar",
+    "Mar",
+    "MARCH",
+    "march",
+    "jun",
+    "June",
+    "sep",
+    "Sept",
+    "SEPT",
+    "september",
+    "September",
+    "dec",
+    "December",
+    "jan",
+    "Feb",
+    "spring",
+)
+
+
+def _normalized_stem(name: str) -> str:
+    """Return a zip name's stem in lower case, with ``sep`` read as ``sept``."""
+    stem = name[: -len(".zip")].lower()
+    if stem.startswith("sep") and not stem.startswith("sept"):
+        stem = "sept" + stem.removeprefix("sep")
+    return stem
+
+
+@given(
+    month=st.sampled_from(_MONTH_WORDS),
+    year=st.integers(min_value=0, max_value=9999),
+    year_first=st.booleans(),
+    extension=st.sampled_from((".zip", ".ZIP", ".Zip")),
+)
+def test_every_name_that_parses_is_its_periods_stem(
+    month: str, year: int, year_first: bool, extension: str
+) -> None:
+    """A name parses only when it is the stem FCA gives the period it parses to.
+
+    The reverse of the round trip above. Without it, a name in the wrong
+    era's convention, such as ``Mar2020.zip``, would parse to a period whose
+    real zip has another name, and the two would disagree about the file.
+    """
+    name = (
+        f"{year:04d}{month}{extension}"
+        if year_first
+        else f"{month}{year:04d}{extension}"
+    )
+    period = parse_fca_release_filename(name)
+    if period is not None:
+        assert fca_release_stem(period=period).lower() == _normalized_stem(name)

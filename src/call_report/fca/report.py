@@ -166,7 +166,7 @@ class FCACallReport(BaseCallReport):
         period inside the range whose files cannot be resolved is skipped
         and recorded in `errors_` rather than aborting the whole call. A
         range outside the transport's periods, or one missing `end`, is an
-        immediate error, since neither is a partial-data situation.
+        immediate error.
 
         Returns
         -------
@@ -205,6 +205,8 @@ class FCACallReport(BaseCallReport):
                 "for a single quarter."
             )
         periods = PeriodRange(start=self.start, end=self.end)
+        # A range outside the transport's periods is a bad request, not
+        # partial data, so it raises rather than landing in errors_.
         self._check_range(periods)
 
         releases: dict[ReportingPeriod, FCAReleaseManifest] = {}

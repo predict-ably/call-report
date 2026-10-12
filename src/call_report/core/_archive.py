@@ -22,7 +22,7 @@ def extract_zip(*, archive: Path, target_dir: Path) -> Path:
 
     The archive is checked before anything is written. A file that is not a
     zip, a zip with a corrupt member, or a member whose path is absolute or
-    climbs out of the target with ``..`` raises an error. Members are
+    contains a ``..`` part raises an error. Members are
     extracted into a temporary folder beside `target_dir`, which is renamed
     to `target_dir` only once every member is written. So a folder at
     `target_dir` always holds a complete extraction, and a failed

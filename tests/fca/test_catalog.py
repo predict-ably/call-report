@@ -224,10 +224,23 @@ def test_parse_fca_release_filename_reads_both_eras(name: str, period_end: str) 
         "bank/2026March.zip",
         "2026March.zip.bak",
         "",
+        "Mar2020.zip",
+        "Sept2015.zip",
+        "2014March.zip",
+        "2000March.zip",
+        "0001March.zip",
+        "Mar0001.zip",
+        "Sep2020.zip",
+        "Septe2014.zip",
     ],
 )
 def test_parse_fca_release_filename_rejects_other_names(name: str) -> None:
-    """A name that follows neither convention gives None."""
+    """A name that is not the release zip name FCA uses gives None.
+
+    That includes a real month and year written in the other era's
+    convention, such as ``Mar2020.zip``. FCA names 2020Q1's zip
+    ``2020March.zip``, so accepting both would let the two disagree.
+    """
     assert parse_fca_release_filename(name) is None
 
 

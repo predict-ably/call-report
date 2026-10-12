@@ -475,3 +475,24 @@ def test_packaged_archive_transport_refuses_a_member_outside_its_folder(
         pytest.raises(ZipArchiveUnpackingError, match="outside its folder"),
     ):
         transport.resolve(period=period)
+
+
+def test_packaged_archive_transport_two_periods_with_one_name_raise_download_error(
+    tmp_path: Path,
+) -> None:
+    """A dirname_for that names two periods alike fails as DownloadError.
+
+    The second period would extract into the first one's folder. Without
+    the conversion, the FileExistsError from extract_zip would escape
+    FCACallReport.fetch, which records only DownloadError and
+    ZipArchiveUnpackingError.
+    """
+    with zipfile.ZipFile(tmp_path / "same.zip", "w") as archive:
+        archive.writestr("D_RC.TXT", "placeholder layout")
+    first = ReportingPeriod.from_period_end(value="2026-03-31")
+    with PackagedArchiveTransport(
+        archive_root=tmp_path, dirname_for=lambda period: "same"
+    ) as transport:
+        transport.resolve(period=first)
+        with pytest.raises(DownloadError, match="another period already uses"):
+            transport.resolve(period=first.next())

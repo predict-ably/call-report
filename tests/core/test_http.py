@@ -44,7 +44,11 @@ ZIP_BYTES = b"PK\x05\x06" + b"\x00" * 18
 
 
 class _StubCurlError(Exception):
-    """Stands in for ``curl_cffi.CurlError``."""
+    """Stands in for ``curl_cffi.CurlError``, which carries curl's error code."""
+
+    def __init__(self, message: str, code: int = 0) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -109,17 +113,14 @@ def client(request: pytest.FixtureRequest) -> HttpClient:
     return request.param
 
 
-@contextmanager
-def _fake_opener(
-    responses: Mapping[str, _Response],
-) -> Iterator[Any]:
+def _fake_opener(responses: Mapping[str, _Response]) -> Any:
     """Return an opener that answers from `responses` and sends nothing."""
 
     @contextmanager
     def opener(url: str, **kwargs: Any) -> Iterator[_Response]:
         yield responses[url]
 
-    yield opener
+    return opener
 
 
 def _ok(body: bytes = b"ok", **headers: str) -> _Response:
@@ -464,17 +465,19 @@ def test_a_url_that_is_not_http_raises_before_any_request(
 
 def test_plain_http_to_another_host_warns(monkeypatch: pytest.MonkeyPatch) -> None:
     """A plain http URL to a host that is not this machine warns, then proceeds."""
-    with _fake_opener({"http://example.com/a.zip": _ok()}) as opener:
-        monkeypatch.setattr(_http, "_urllib_open", opener)
-        with pytest.warns(InsecureConnectionWarning, match="plain HTTP"):
-            assert fetch_bytes("http://example.com/a.zip") == b"ok"
+    opener = _fake_opener({"http://example.com/a.zip": _ok()})
+    monkeypatch.setattr(_http, "_urllib_open", opener)
+    with pytest.warns(InsecureConnectionWarning, match="plain HTTP") as record:
+        assert fetch_bytes("http://example.com/a.zip") == b"ok"
+    # The warning points at the caller, not inside the helper.
+    assert record[0].filename == __file__
 
 
 def test_https_does_not_warn(monkeypatch: pytest.MonkeyPatch) -> None:
     """An https URL issues no warning (warnings are errors in this suite)."""
-    with _fake_opener({"https://example.com/a.zip": _ok()}) as opener:
-        monkeypatch.setattr(_http, "_urllib_open", opener)
-        assert fetch_bytes("https://example.com/a.zip") == b"ok"
+    opener = _fake_opener({"https://example.com/a.zip": _ok()})
+    monkeypatch.setattr(_http, "_urllib_open", opener)
+    assert fetch_bytes("https://example.com/a.zip") == b"ok"
 
 
 @pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]"])
@@ -483,9 +486,8 @@ def test_plain_http_to_this_machine_does_not_warn(
 ) -> None:
     """A loopback host is exempt, so a local server does not warn."""
     url = f"http://{host}:8000/a.zip"
-    with _fake_opener({url: _ok()}) as opener:
-        monkeypatch.setattr(_http, "_urllib_open", opener)
-        assert fetch_bytes(url) == b"ok"
+    monkeypatch.setattr(_http, "_urllib_open", _fake_opener({url: _ok()}))
+    assert fetch_bytes(url) == b"ok"
 
 
 def test_a_redirect_to_plain_http_warns(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -498,10 +500,11 @@ def test_a_redirect_to_plain_http_warns(monkeypatch: pytest.MonkeyPatch) -> None
         ),
         "http://example.com/b.zip": _ok(),
     }
-    with _fake_opener(responses) as opener:
-        monkeypatch.setattr(_http, "_urllib_open", opener)
-        with pytest.warns(InsecureConnectionWarning, match="b.zip"):
-            assert fetch_bytes("https://example.com/a.zip") == b"ok"
+    monkeypatch.setattr(_http, "_urllib_open", _fake_opener(responses))
+    with pytest.warns(InsecureConnectionWarning, match="b.zip") as record:
+        assert fetch_bytes("https://example.com/a.zip") == b"ok"
+    # The warning points at the caller, not inside the helper.
+    assert record[0].filename == __file__
 
 
 # ---------------------------------------------------------------------------
@@ -655,3 +658,108 @@ def test_the_curl_cffi_floor_matches_pyproject() -> None:
     extras = tomllib.loads(pyproject.read_text())["project"]["optional-dependencies"]
     (requirement,) = extras["curl_cffi"]
     assert requirement == f"curl_cffi>={_http._CURL_CFFI_MIN_VERSION}"
+
+
+# ---------------------------------------------------------------------------
+# Review follow-ups: credentials on redirects, curl certificates, jitter
+# ---------------------------------------------------------------------------
+
+
+def test_a_redirect_to_another_host_drops_credentials(
+    http_server: LocalHTTPServer, client: HttpClient
+) -> None:
+    """Authorization and Cookie are not sent on to a different host.
+
+    ``localhost`` and ``127.0.0.1`` reach the same test server under two
+    host names, so the server sees both requests. Other headers still go.
+    """
+    (http_server.root / "b.txt").write_bytes(b"b")
+    other_host = http_server.url("b.txt").replace("127.0.0.1", "localhost")
+    http_server.redirect("a.txt", to=other_host)
+    fetch_bytes(
+        http_server.url("a.txt"),
+        headers={"Authorization": "token secret", "cookie": "a=1", "X-Keep": "1"},
+        http_client=client,
+    )
+    first, second = http_server.requests
+    assert first.headers["authorization"] == "token secret"
+    assert first.headers["cookie"] == "a=1"
+    assert "authorization" not in second.headers
+    assert "cookie" not in second.headers
+    assert second.headers["x-keep"] == "1"
+
+
+def test_a_redirect_on_the_same_host_keeps_credentials(
+    http_server: LocalHTTPServer,
+) -> None:
+    """A redirect that stays on the host keeps every header."""
+    (http_server.root / "b.txt").write_bytes(b"b")
+    http_server.redirect("a.txt", to="/b.txt")
+    fetch_bytes(http_server.url("a.txt"), headers={"Authorization": "token secret"})
+    _, second = http_server.requests
+    assert second.headers["authorization"] == "token secret"
+
+
+def test_curl_cffi_certificate_failure_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch,
+    curl_calls: list[dict[str, Any]],
+    recorded_sleeps: list[float],
+) -> None:
+    """A curl certificate error (60) raises at once, as urllib's does."""
+
+    def refuse(url: str, **kwargs: Any) -> None:
+        raise _StubCurlError("SSL certificate problem", code=60)
+
+    monkeypatch.setattr(sys.modules["curl_cffi"].requests, "get", refuse)
+    with pytest.raises(DownloadError, match="certificate could not be verified"):
+        fetch_bytes("https://example.com/a.zip", http_client="curl_cffi")
+    assert recorded_sleeps == []
+
+
+def test_curl_cffi_other_errors_are_retried(
+    monkeypatch: pytest.MonkeyPatch,
+    curl_calls: list[dict[str, Any]],
+    recorded_sleeps: list[float],
+) -> None:
+    """Any other curl error, such as a refused connection (7), is retried."""
+
+    def refuse(url: str, **kwargs: Any) -> None:
+        raise _StubCurlError("Failed to connect", code=7)
+
+    monkeypatch.setattr(sys.modules["curl_cffi"].requests, "get", refuse)
+    with pytest.raises(DownloadError, match=r"after 2 attempt\(s\)"):
+        fetch_bytes("https://example.com/a.zip", max_retries=1, http_client="curl_cffi")
+    assert recorded_sleeps == [1.0]
+
+
+def test_backoff_adds_up_to_a_quarter_at_random(
+    http_server: LocalHTTPServer,
+    recorded_sleeps: list[float],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The jitter lengthens each backoff by up to 25 percent.
+
+    Without it, several downloads that fail together would retry together.
+    """
+    monkeypatch.setattr(_http, "_jitter", lambda: 1.0)
+    (http_server.root / "a.txt").write_bytes(b"a")
+    http_server.respond(
+        "a.txt", ScriptedResponse(status=503), ScriptedResponse(status=503)
+    )
+    fetch_bytes(http_server.url("a.txt"))
+    assert recorded_sleeps == [1.25, 2.5]
+
+
+def test_retry_after_is_not_jittered(
+    http_server: LocalHTTPServer,
+    recorded_sleeps: list[float],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A server's requested wait is used exactly."""
+    monkeypatch.setattr(_http, "_jitter", lambda: 1.0)
+    (http_server.root / "a.txt").write_bytes(b"a")
+    http_server.respond(
+        "a.txt", ScriptedResponse(status=429, headers={"Retry-After": "3"})
+    )
+    fetch_bytes(http_server.url("a.txt"))
+    assert recorded_sleeps == [3.0]

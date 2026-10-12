@@ -321,7 +321,9 @@ class PackagedArchiveTransport:
         Raises
         ------
         DownloadError
-            If no zip exists at the expected location under `archive_root`.
+            If no zip exists at the expected location under `archive_root`,
+            or `dirname_for` gave this period the same name as a period
+            already resolved.
         ZipArchiveUnpackingError
             If the zip is not a valid archive, or has a corrupt member or a
             member whose path would land outside its folder.
@@ -345,9 +347,16 @@ class PackagedArchiveTransport:
             self._finalizer = weakref.finalize(
                 self, shutil.rmtree, root, ignore_errors=True
             )
-        target_dir = extract_zip(
-            archive=archive_path, target_dir=self._extract_root / archive_path.stem
-        )
+        try:
+            target_dir = extract_zip(
+                archive=archive_path, target_dir=self._extract_root / archive_path.stem
+            )
+        except FileExistsError as error:
+            raise DownloadError(
+                f"Cannot resolve {period.label}: dirname_for gave it the name "
+                f"{archive_path.stem!r}, which another period already uses. Each "
+                "period needs its own name."
+            ) from error
         self._extracted[period] = target_dir
         return target_dir
 
