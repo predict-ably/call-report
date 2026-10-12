@@ -172,22 +172,30 @@ def test_download_file_replaces_an_existing_file(
     assert destination.read_bytes() == ZIP_BYTES
 
 
-def test_every_request_sends_the_package_user_agent(
-    http_server: LocalHTTPServer, client: HttpClient
+def test_every_urllib_request_sends_the_package_user_agent(
+    http_server: LocalHTTPServer,
 ) -> None:
-    """Every request names this package in its User-Agent.
+    """Every urllib request names this package in its User-Agent.
 
     FCA's Cloudflare refuses Python's default User-Agent, so a request
     without this header fails.
     """
     (http_server.root / "a.txt").write_bytes(b"a")
-    fetch_bytes(
-        http_server.url("a.txt"), headers={"X-Extra": "yes"}, http_client=client
-    )
+    fetch_bytes(http_server.url("a.txt"), headers={"X-Extra": "yes"})
     (request,) = http_server.requests
     assert request.headers["user-agent"] == USER_AGENT
     assert request.headers["x-extra"] == "yes"
     assert USER_AGENT.startswith("call-report/")
+
+
+def test_a_caller_user_agent_replaces_the_package_one(
+    http_server: LocalHTTPServer,
+) -> None:
+    """A User-Agent passed in headers is sent in place of the package's."""
+    (http_server.root / "a.txt").write_bytes(b"a")
+    fetch_bytes(http_server.url("a.txt"), headers={"User-Agent": "mine/1.0"})
+    (request,) = http_server.requests
+    assert request.headers["user-agent"] == "mine/1.0"
 
 
 @pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
@@ -538,7 +546,22 @@ def test_curl_cffi_impersonates_a_browser_and_does_not_follow_redirects(
     assert call["impersonate"] == "chrome"
     assert call["allow_redirects"] is False
     assert call["timeout"] == 5.0
-    assert call["headers"]["User-Agent"] == USER_AGENT
+
+
+def test_curl_cffi_leaves_the_user_agent_to_the_browser_it_copies(
+    http_server: LocalHTTPServer, curl_calls: list[dict[str, Any]]
+) -> None:
+    """curl_cffi is not given the package's User-Agent.
+
+    It sends the impersonated browser's own, so the header matches the TLS
+    fingerprint. Extra headers are still passed on.
+    """
+    (http_server.root / "a.txt").write_bytes(b"a")
+    fetch_bytes(
+        http_server.url("a.txt"), headers={"X-Extra": "yes"}, http_client="curl_cffi"
+    )
+    (call,) = curl_calls
+    assert call["headers"] == {"X-Extra": "yes"}
 
 
 def test_curl_cffi_missing_gives_the_install_line(
@@ -554,8 +577,8 @@ def test_curl_cffi_too_old_is_refused(
     monkeypatch: pytest.MonkeyPatch, curl_calls: list[dict[str, Any]]
 ) -> None:
     """A curl_cffi older than the supported floor raises before any request."""
-    monkeypatch.setattr(sys.modules["curl_cffi"], "__version__", "0.5.10")
-    with pytest.raises(ModuleUpgradeRequiredError, match=r"curl_cffi 0\.6\.0"):
+    monkeypatch.setattr(sys.modules["curl_cffi"], "__version__", "0.6.1")
+    with pytest.raises(ModuleUpgradeRequiredError, match=r"curl_cffi 0\.6\.2"):
         fetch_bytes("https://example.com/a.zip", http_client="curl_cffi")
     assert curl_calls == []
 
@@ -586,7 +609,9 @@ def test_the_real_curl_cffi_downloads_from_the_local_server(
         "/moved.zip",
         "/real.zip",
     ]
-    assert http_server.requests[0].headers["user-agent"] == USER_AGENT
+    user_agent = http_server.requests[0].headers["user-agent"]
+    assert user_agent.startswith("Mozilla/5.0")
+    assert "Chrome/" in user_agent
 
 
 # ---------------------------------------------------------------------------
