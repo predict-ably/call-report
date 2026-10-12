@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
+import zipfile
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -14,7 +17,7 @@ import pyarrow as pa
 import pytest
 
 from call_report.config import config_context
-from call_report.core import FieldSchema, ReportingPeriod
+from call_report.core import FieldSchema, PeriodRange, ReportingPeriod
 from call_report.core._backend import DataFrameType, date_dtype
 from call_report.exceptions import (
     DomainDatasetNotFoundError,
@@ -24,11 +27,13 @@ from call_report.exceptions import (
     PeriodNotAvailableError,
     ReshapeError,
     ScheduleNotFoundError,
+    ZipArchiveUnpackingError,
 )
 from call_report.fca import (
     FCACallReport,
     FCADomainDataset,
     FCASchedule,
+    catalog,
     convert_long_format_to_code_grain_format,
     convert_long_format_to_wide_format,
     convert_wide_format_to_long_format,
@@ -129,15 +134,90 @@ def test_fetch_invalid_quarter_end_raises(tmp_path: Path) -> None:
         report.fetch()
 
 
-def test_fetch_out_of_catalog_bounds_raises(tmp_path: Path) -> None:
+@dataclass(kw_only=True)
+class _UnreliableTransport:
+    """A transport that lists periods it then fails to resolve."""
+
+    periods: tuple[ReportingPeriod, ...]
+
+    def resolve(self, *, period: ReportingPeriod) -> Path:
+        raise DownloadError(f"{period.label} could not be resolved.")
+
+    def available_periods(self) -> tuple[ReportingPeriod, ...]:
+        return self.periods
+
+
+def test_fetch_before_fca_first_release_raises(data_dir: Path) -> None:
     """fetch() raises PeriodNotAvailableError for a range FCA has never published."""
     report = FCACallReport(
         start="1999-12-31",
         end="1999-12-31",
-        transport=LocalDirectoryTransport(data_dir=tmp_path),
+        transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     with pytest.raises(PeriodNotAvailableError):
         report.fetch()
+
+
+def test_fetch_rejects_an_end_after_the_transports_latest_period(
+    data_dir: Path,
+) -> None:
+    """An end after the transport's newest period raises, naming its range."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2026-06-30",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(PeriodNotAvailableError, match="2003Q1 through 2026Q1"):
+        report.fetch()
+
+
+def test_fetch_rejects_a_start_before_the_transports_earliest_period(
+    data_dir: Path,
+) -> None:
+    """A start before the transport's oldest period raises, naming its range."""
+    report = FCACallReport(
+        start="2002-12-31",
+        end="2003-03-31",
+        transport=LocalDirectoryTransport(data_dir=data_dir),
+    )
+    with pytest.raises(PeriodNotAvailableError, match="2002Q4-2003Q1"):
+        report.fetch()
+
+
+def test_fetch_accepts_a_quarter_newer_than_the_shipped_metadata(
+    tmp_path: Path, release_2026q1: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A quarter the transport holds is read even if no constant knows of it yet.
+
+    Without this, a new quarter extracted into a folder could not be read
+    until a package release.
+    """
+    monkeypatch.setattr(catalog, "_today", lambda: date(2027, 2, 1))
+    shutil.copytree(release_2026q1, tmp_path / "2027March")
+    newest_metadata = max(
+        get_fca_file_metadata(schedule=schedule).last_period for schedule in FCASchedule
+    )
+    report = FCACallReport(
+        start="2027-03-31",
+        end="2027-03-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    ).fetch()
+    (period,) = report.periods_
+    assert period > newest_metadata
+    assert set(report.releases_) == {period}
+    assert FCASchedule.RC in report.schedules_
+
+
+def test_fetch_with_a_transport_that_has_no_periods_raises(tmp_path: Path) -> None:
+    """A transport with nothing to supply raises DownloadError naming it."""
+    report = FCACallReport(
+        start="2025-09-30",
+        end="2025-12-31",
+        transport=LocalDirectoryTransport(data_dir=tmp_path),
+    )
+    with pytest.raises(DownloadError, match="no FCA releases available") as error:
+        report.fetch()
+    assert str(tmp_path) in str(error.value)
 
 
 def test_constructor_requires_transport() -> None:
@@ -171,34 +251,58 @@ def test_fetch_returns_self_and_populates_fitted_state(
 
 
 def test_fetch_records_missing_period_directory_without_failing_whole_request(
-    tmp_path: Path, release_2025q3: Path, release_2025q4: Path
+    tmp_path: Path, release_2025q3: Path, release_2026q1: Path
 ) -> None:
     """Skip period with no resolvable local directory."""
-    # tmp_path has Sept & Dec 2025 on disk, but the requested range also
-    # includes June 2025, which was never built.
+    # tmp_path has Sept 2025 and March 2026 on disk, but the requested range
+    # also includes December 2025, which was never built.
     report = FCACallReport(
-        start="2025-06-30",
-        end="2025-12-31",
+        start="2025-09-30",
+        end="2026-03-31",
         transport=LocalDirectoryTransport(data_dir=tmp_path),
     )
     report.fetch()
 
     assert len(report.periods_) == 3
     assert len(report.releases_) == 2
-    june = ReportingPeriod.from_period_end(value="2025-06-30")
+    december = ReportingPeriod.from_period_end(value="2025-12-31")
     assert len(report.errors_) == 1
     issue = report.errors_[0]
-    assert issue.period == june
+    assert issue.period == december
     assert issue.schedule is None
     assert isinstance(issue.error, DownloadError)
 
 
-def test_fetch_raises_download_error_when_every_period_fails(tmp_path: Path) -> None:
+def test_fetch_records_a_corrupt_zip_without_failing_whole_request(
+    tmp_path: Path, release_2025q3: Path, release_2026q1: Path
+) -> None:
+    """A packaged zip that cannot be unpacked is recorded in errors_."""
+    archive_root = tmp_path / "archive"
+    archive_root.mkdir()
+    for release in (release_2025q3, release_2026q1):
+        with zipfile.ZipFile(archive_root / f"{release.name}.zip", "w") as archive:
+            for file in release.iterdir():
+                archive.write(file, arcname=file.name)
+    (archive_root / "2025December.zip").write_bytes(b"<html>not a zip</html>")
+
+    with PackagedArchiveTransport(archive_root=archive_root) as transport:
+        report = FCACallReport(
+            start="2025-09-30", end="2026-03-31", transport=transport
+        ).fetch()
+
+    assert len(report.releases_) == 2
+    (issue,) = report.errors_
+    assert issue.period == ReportingPeriod.from_period_end(value="2025-12-31")
+    assert isinstance(issue.error, ZipArchiveUnpackingError)
+
+
+def test_fetch_raises_download_error_when_every_period_fails() -> None:
     """If not a single requested period can be resolved, fetch() raises."""
+    periods = tuple(PeriodRange(start="2025-09-30", end="2025-12-31"))
     report = FCACallReport(
         start="2025-09-30",
         end="2025-12-31",
-        transport=LocalDirectoryTransport(data_dir=tmp_path),
+        transport=_UnreliableTransport(periods=periods),
     )
     with pytest.raises(DownloadError, match="requested period"):
         report.fetch()
@@ -225,19 +329,24 @@ def test_fetch_ignores_unrecognized_root_name(
     assert all(name != "ZZZTEST" for name in {s.value for s in report.schedules_})
 
 
-def test_available_periods_and_schedules_do_not_require_fetch(tmp_path: Path) -> None:
-    """available_periods()/available_schedules() reflect catalog totals.
+def test_available_periods_and_schedules_do_not_require_fetch(data_dir: Path) -> None:
+    """available_periods() follows the transport, and needs no fetch().
 
-    No fetch() needed.
+    available_schedules() reflects every schedule the package knows.
     """
     report = FCACallReport(
         start="2025-09-30",
         end="2025-12-31",
-        transport=LocalDirectoryTransport(data_dir=tmp_path),
+        transport=LocalDirectoryTransport(data_dir=data_dir),
     )
     periods = report.available_periods()
-    assert periods[0] == ReportingPeriod.from_period_end(value="2000-03-31")
-    assert periods[-1] == ReportingPeriod.from_period_end(value="2026-06-30")
+    assert [period.label for period in periods] == [
+        "2003Q1",
+        "2025Q3",
+        "2025Q4",
+        "2026Q1",
+    ]
+    assert not hasattr(report, "periods_")
     assert FCASchedule.RCB in report.available_schedules()
 
 

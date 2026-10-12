@@ -15,18 +15,19 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
-from call_report.core import PeriodRange, ReportingPeriod
+from call_report.core import Quarter, ReportingPeriod
 from call_report.fca.catalog import (
-    EARLIEST_PERIOD,
-    LATEST_KNOWN_PERIOD,
     construct_fca_download_url,
+    fca_release_stem,
+    parse_fca_release_filename,
 )
+from tests.helpers import archived_periods
 
 MODERN_ERA_FIRST_YEAR = 2015
 MODERN_BASE = "https://www.fca.gov/template-fca/bank/"
 LEGACY_BASE = "https://www.fca.gov/template-fca/download/CallReportData/"
 
-ALL_PERIODS = tuple(PeriodRange(start=EARLIEST_PERIOD, end=LATEST_KNOWN_PERIOD))
+ALL_PERIODS = archived_periods()
 published_periods = st.sampled_from(ALL_PERIODS)
 
 
@@ -84,3 +85,22 @@ def test_url_filename_has_no_path_separators_or_spaces(
     assert " " not in filename
     assert ".." not in filename
     assert "\\" not in filename
+
+
+@given(
+    period=st.builds(
+        ReportingPeriod,
+        year=st.integers(min_value=1000, max_value=9999),
+        quarter=st.sampled_from(Quarter),
+    )
+)
+def test_parsing_a_stem_gives_back_its_period(period: ReportingPeriod) -> None:
+    """parse_fca_release_filename inverts fca_release_stem for every period.
+
+    The mirror and the catalog both turn filenames back into periods, so a
+    stem that parsed to a different quarter would file its data under the
+    wrong one.
+    """
+    assert parse_fca_release_filename(fca_release_stem(period=period) + ".zip") == (
+        period
+    )

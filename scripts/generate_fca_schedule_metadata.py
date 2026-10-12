@@ -33,7 +33,7 @@ roster, ``"INST"``):
 
 Notes
 -----
-Incrementally extend every schedule through the latest known period::
+Incrementally extend every schedule through the newest quarter in the archive::
 
     python scripts/generate_fca_schedule_metadata.py
 
@@ -64,7 +64,7 @@ from call_report.core._periods import PeriodRange, ReportingPeriod
 from call_report.core._schema import _dtype_from_repr
 from call_report.exceptions import SchemaError
 from call_report.fca._discovery import scan_release
-from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
+from call_report.fca.catalog import _FIRST_RELEASE_PERIOD
 from call_report.fca.enums import FCASchedule
 from call_report.fca.institutions import INSTITUTIONS_ROOT
 from call_report.fca.layout import infer_field_dtype, parse_layout
@@ -289,7 +289,7 @@ def _generate_bases(
     roots_filter: frozenset[str] | None,
     seed: dict[str, FileMetadata],
 ) -> dict[str, FileMetadata]:
-    """Scan every period from `resume_period` through the latest known one.
+    """Scan every period from `resume_period` through the newest archived one.
 
     The core of the generation pipeline: for each period, every schedule
     root FCA actually published that quarter is discovered via
@@ -316,15 +316,14 @@ def _generate_bases(
     builders = {
         root: _builder_from_file_metadata(metadata) for root, metadata in seed.items()
     }
-    if resume_period > LATEST_KNOWN_PERIOD:
-        _log.info(
-            "Already up to date through %s; nothing to do.",
-            LATEST_KNOWN_PERIOD.label,
-        )
+    transport = PackagedArchiveTransport()
+    # The newest zip in the checked-in archive is the newest quarter to scan.
+    latest = transport.available_periods()[-1]
+    if resume_period > latest:
+        _log.info("Already up to date through %s; nothing to do.", latest.label)
         return {root: _finalize(b) for root, b in builders.items()}
 
-    transport = PackagedArchiveTransport()
-    for period in PeriodRange(start=resume_period, end=LATEST_KNOWN_PERIOD):
+    for period in PeriodRange(start=resume_period, end=latest):
         release_dir = transport.resolve(period=period)
         manifest = scan_release(release_dir=release_dir)
         for root, files in manifest.items():
@@ -586,13 +585,13 @@ def main(argv: list[str] | None = None) -> int:
     previous_bases = _load_existing_bases()
     if args.full:
         seed: dict[str, FileMetadata] = {}
-        resume_period = EARLIEST_PERIOD
+        resume_period = _FIRST_RELEASE_PERIOD
     else:
         seed = previous_bases
         resume_period = (
             max(metadata.last_period for metadata in seed.values()).next()
             if seed
-            else EARLIEST_PERIOD
+            else _FIRST_RELEASE_PERIOD
         )
 
     bases = _generate_bases(

@@ -4,7 +4,7 @@ Unlike the rest of the test suite (hand-built, hermetic fixtures confirmed
 against specific structural quirks -- see ``tests/conftest.py``), this test
 deliberately exercises real FCA Call Report data: every quarterly release
 shipped in ``data/fca-call-report/``, spanning FCA's entire known
-publication history (``EARLIEST_PERIOD`` through ``LATEST_KNOWN_PERIOD``).
+publication history, from 2000Q1 through the newest archived quarter.
 For each release, it drives the public :class:`~call_report.fca.FCACallReport`
 interface to load metadata (the layout) and data for every schedule the
 release contains, plus the institution roster -- catching real-world parsing
@@ -46,19 +46,18 @@ from call_report.fca import (
     get_fca_file_metadata,
     get_institutions_file_metadata,
 )
-from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
 from call_report.fca.institutions import INSTITUTIONS_ROOT, read_institutions
 from call_report.fca.layout import FCALayout
 from call_report.fca.reader import read_schedule_file
 from call_report.fca.transport import PackagedArchiveTransport
-from tests.helpers import ALL_BACKENDS
+from tests.helpers import ALL_BACKENDS, archived_periods
 
 # This whole module drives real archived releases end to end and dominates
 # the suite's runtime. Marked so a contributor iterating on unit tests can
 # run `pytest -m "not slow"`; CI still runs everything.
 pytestmark = pytest.mark.slow
 
-ALL_KNOWN_PERIODS = tuple(PeriodRange(start=EARLIEST_PERIOD, end=LATEST_KNOWN_PERIOD))
+ALL_KNOWN_PERIODS = archived_periods()
 
 # FCA's download URL/file conventions changed in 2015 (see
 # call_report.fca.catalog); pre/post-2015 is a reasonable proxy for
@@ -184,8 +183,8 @@ def archive_report() -> FCACallReport:
         )
 
     report = FCACallReport(
-        start=EARLIEST_PERIOD.period_end,
-        end=LATEST_KNOWN_PERIOD.period_end,
+        start=ALL_KNOWN_PERIODS[0].period_end,
+        end=ALL_KNOWN_PERIODS[-1].period_end,
         transport=transport,
     )
     report.fetch()
@@ -211,8 +210,8 @@ def _fetched_full_history_report() -> FCACallReport:
             f"No archived FCA release zips found under {transport.archive_root}."
         )
     report = FCACallReport(
-        start=EARLIEST_PERIOD.period_end,
-        end=LATEST_KNOWN_PERIOD.period_end,
+        start=ALL_KNOWN_PERIODS[0].period_end,
+        end=ALL_KNOWN_PERIODS[-1].period_end,
         transport=transport,
     )
     report.fetch()

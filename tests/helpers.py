@@ -27,6 +27,9 @@ from typing import Any
 
 import narwhals as nw
 
+from call_report.core import ReportingPeriod
+from call_report.fca.transport import PackagedArchiveTransport
+
 ENCODING = "windows-1252"
 
 _SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -91,6 +94,33 @@ def load_institution_registry_script() -> ModuleType:
 
 ALL_BACKENDS = ("pandas", "polars", "pyarrow")
 """The dataframe backends every cross-backend test runs against."""
+
+
+@functools.cache
+def archived_periods() -> tuple[ReportingPeriod, ...]:
+    """Return every quarter with a release zip in ``data/fca-call-report/``.
+
+    The newest zip decides the newest quarter, so adding a quarter's zip
+    needs no constant changed anywhere. Cached, since every caller asks
+    about the same checked-in folder.
+
+    Returns
+    -------
+    tuple[ReportingPeriod, ...]
+        The archived quarters, oldest first.
+    """
+    return PackagedArchiveTransport().available_periods()
+
+
+def newest_archived_period() -> ReportingPeriod:
+    """Return the newest quarter with a release zip in ``data/fca-call-report/``.
+
+    Returns
+    -------
+    ReportingPeriod
+        The newest archived quarter.
+    """
+    return archived_periods()[-1]
 
 
 def _write(path: Path, text: str) -> Path:

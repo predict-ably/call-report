@@ -52,6 +52,7 @@ source-specific entry point implements.
    call_report.core.FieldSchemaDiff
    call_report.core.FileMetadata
    call_report.core.FileMetadataDiff
+   call_report.core.default_download_dir
 
 Dataframe types
 ---------------
@@ -104,7 +105,9 @@ The exception hierarchy shared across sources.
    call_report.exceptions.LayoutParseError
    call_report.exceptions.InstitutionError
    call_report.exceptions.DownloadError
+   call_report.exceptions.ZipArchiveUnpackingError
    call_report.exceptions.ReshapeError
+   call_report.exceptions.InsecureConnectionWarning
 
 FCA Call Report
 ================
@@ -142,6 +145,8 @@ parsing an individual layout or data file.
    call_report.fca.get_fca_institution_registry
    call_report.fca.all_fca_file_metadata
    call_report.fca.catalog.construct_fca_download_url
+   call_report.fca.catalog.fca_release_stem
+   call_report.fca.catalog.parse_fca_release_filename
    call_report.fca.layout.parse_layout
    call_report.fca.layout.FCALayout
    call_report.fca.layout.infer_field_dtype

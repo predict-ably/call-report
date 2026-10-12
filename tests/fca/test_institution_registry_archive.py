@@ -16,9 +16,8 @@ import pytest
 
 from call_report.core import PeriodRange
 from call_report.fca import FCACallReport, FCAInstitutionRegistry
-from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
 from call_report.fca.transport import PackagedArchiveTransport
-from tests.helpers import rows_of
+from tests.helpers import archived_periods, rows_of
 
 pytestmark = pytest.mark.slow
 
@@ -41,8 +40,8 @@ def stacked_roster() -> Iterator[Any]:
     """Load every archived roster once, stacked with a period column."""
     with PackagedArchiveTransport() as transport:
         report = FCACallReport(
-            start=EARLIEST_PERIOD.period_end,
-            end=LATEST_KNOWN_PERIOD.period_end,
+            start=archived_periods()[0].period_end,
+            end=archived_periods()[-1].period_end,
             transport=transport,
         )
         yield report.load_institutions(dataframe_type="polars_dataframe")
@@ -57,8 +56,8 @@ def archive_registry(stacked_roster: Any) -> FCAInstitutionRegistry:
 def test_counts(archive_registry: FCAInstitutionRegistry) -> None:
     """The archive holds 344 UNINUMs across 2000Q1 to the latest release."""
     assert len(archive_registry) == 344
-    assert archive_registry.first_period == EARLIEST_PERIOD
-    assert archive_registry.last_period == LATEST_KNOWN_PERIOD
+    assert archive_registry.first_period == archived_periods()[0]
+    assert archive_registry.last_period == archived_periods()[-1]
 
 
 def test_frame_reproduces_roster(

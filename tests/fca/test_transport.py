@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import gc
 import zipfile
+from datetime import date
 from pathlib import Path
 
 import pytest
 
-from call_report.core import ReportingPeriod
-from call_report.exceptions import DownloadError
+from call_report.core import PeriodRange, ReportingPeriod
+from call_report.exceptions import DownloadError, ZipArchiveUnpackingError
+from call_report.fca import catalog
+from call_report.fca.catalog import parse_fca_release_filename
 from call_report.fca.transport import LocalDirectoryTransport, PackagedArchiveTransport
 
 REPO_DATA_ROOT = Path(__file__).resolve().parents[2] / "data" / "fca-call-report"
@@ -351,3 +354,124 @@ def test_garbage_collection_cleans_up_without_a_resourcewarning(
 
     assert not resolved.exists()
     assert [w for w in recwarn if issubclass(w.category, ResourceWarning)] == []
+
+
+# ---------------------------------------------------------------------------
+# available_periods
+# ---------------------------------------------------------------------------
+
+
+def _labels(periods: tuple[ReportingPeriod, ...]) -> list[str]:
+    """Return each period's label, for readable assertions."""
+    return [period.label for period in periods]
+
+
+def test_local_directory_available_periods_lists_the_folders_present(
+    tmp_path: Path,
+) -> None:
+    """Each quarter with a release folder is listed, oldest first, gaps and all."""
+    for name in ("2026March", "Dec2014", "Mar2000", "2015March"):
+        (tmp_path / name).mkdir()
+    (tmp_path / "notes.txt").write_text("not a release")
+    (tmp_path / "2026June.zip").write_bytes(b"a zip, not a folder")
+    transport = LocalDirectoryTransport(data_dir=tmp_path)
+    assert _labels(transport.available_periods()) == [
+        "2000Q1",
+        "2014Q4",
+        "2015Q1",
+        "2026Q1",
+    ]
+
+
+def test_local_directory_available_periods_uses_dirname_for(tmp_path: Path) -> None:
+    """A custom dirname_for decides which folder names count as releases."""
+    (tmp_path / "q-2025-4").mkdir()
+    (tmp_path / "2025December").mkdir()
+    transport = LocalDirectoryTransport(
+        data_dir=tmp_path,
+        dirname_for=lambda period: f"q-{period.year}-{period.quarter.value}",
+    )
+    assert _labels(transport.available_periods()) == ["2025Q4"]
+
+
+def test_local_directory_available_periods_of_an_empty_folder(tmp_path: Path) -> None:
+    """An empty folder, or one that does not exist, has no periods."""
+    assert LocalDirectoryTransport(data_dir=tmp_path).available_periods() == ()
+    missing = LocalDirectoryTransport(data_dir=tmp_path / "missing")
+    assert missing.available_periods() == ()
+
+
+def test_local_directory_available_periods_reaches_the_current_quarter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A folder for a quarter newer than any shipped data is still found."""
+    monkeypatch.setattr(catalog, "_today", lambda: date(2027, 2, 1))
+    (tmp_path / "2027March").mkdir()
+    (tmp_path / "2027June").mkdir()
+    transport = LocalDirectoryTransport(data_dir=tmp_path)
+    assert _labels(transport.available_periods()) == ["2027Q1"]
+
+
+def test_packaged_archive_available_periods_lists_the_zips_present(
+    tmp_path: Path,
+) -> None:
+    """Each quarter with a release zip is listed, and no zip is opened."""
+    for name in ("Sept2014.zip", "2015March.zip"):
+        (tmp_path / name).write_bytes(b"not opened")
+    (tmp_path / "2015June").mkdir()
+    with PackagedArchiveTransport(archive_root=tmp_path) as transport:
+        assert _labels(transport.available_periods()) == ["2014Q3", "2015Q1"]
+        assert transport._extract_root is None
+
+
+def test_packaged_archive_available_periods_of_an_empty_folder(tmp_path: Path) -> None:
+    """An archive folder with no release zips has no periods."""
+    with PackagedArchiveTransport(archive_root=tmp_path) as transport:
+        assert transport.available_periods() == ()
+
+
+@pytest.mark.skipif(
+    not REPO_DATA_ROOT.is_dir(), reason="No packaged FCA archive checked out."
+)
+def test_packaged_archive_available_periods_spans_the_real_archive() -> None:
+    """The checked-in archive runs from 2000Q1 through its newest zip, with no gaps."""
+    with PackagedArchiveTransport() as transport:
+        periods = transport.available_periods()
+    newest = max(
+        period
+        for path in REPO_DATA_ROOT.glob("*.zip")
+        if (period := parse_fca_release_filename(path.name)) is not None
+    )
+    assert periods == tuple(PeriodRange(start="2000-03-31", end=newest.period_end))
+
+
+# ---------------------------------------------------------------------------
+# A corrupt packaged zip
+# ---------------------------------------------------------------------------
+
+
+def test_packaged_archive_transport_corrupt_zip_raises_unpacking_error(
+    tmp_path: Path,
+) -> None:
+    """A zip that is not a valid archive raises ZipArchiveUnpackingError."""
+    (tmp_path / "2026March.zip").write_bytes(b"<html>not a zip</html>")
+    period = ReportingPeriod.from_period_end(value="2026-03-31")
+    with (
+        PackagedArchiveTransport(archive_root=tmp_path) as transport,
+        pytest.raises(ZipArchiveUnpackingError, match="not a zip file"),
+    ):
+        transport.resolve(period=period)
+
+
+def test_packaged_archive_transport_refuses_a_member_outside_its_folder(
+    tmp_path: Path,
+) -> None:
+    """A zip whose member would land outside the extraction folder is refused."""
+    with zipfile.ZipFile(tmp_path / "2026March.zip", "w") as archive:
+        archive.writestr("../escape.txt", "escaped")
+    period = ReportingPeriod.from_period_end(value="2026-03-31")
+    with (
+        PackagedArchiveTransport(archive_root=tmp_path) as transport,
+        pytest.raises(ZipArchiveUnpackingError, match="outside its folder"),
+    ):
+        transport.resolve(period=period)
