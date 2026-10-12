@@ -83,7 +83,7 @@ Alternatives considered for the mirror:
   URL then needs a lookup of which tag holds which quarter, and the release
   list fills with data tags.
 - **A snapshot release per package version.** Every snapshot repeats all
-  105 zips, and a quarter added between package releases is not mirrored
+  106 zips, and a quarter added between package releases is not mirrored
   until the next one.
 - **Azure Blob Storage.** Reliable, but it needs an account, credentials for
   uploads, and someone to pay for it.
@@ -92,27 +92,77 @@ Alternatives considered for the mirror:
 
 ### Cloudflare findings
 
-PENDING. The development container's network policy still blocks
-`www.fca.gov`, so the probe has not run. This section will record, for a
-modern era (`2026March.zip`) and a legacy era (`Sept2014.zip`) URL and for the
-download page:
+The probe ran on 2026-10-12 with Python 3.13's `urllib.request`, against two
+modern era zips (`2026March.zip`, `2026June.zip`), two legacy era zips
+(`Sept2014.zip`, `Mar2000.zip`), and the download page.
 
-- the status code and headers from plain `urllib.request`,
-- whether a browser-like `User-Agent` and `Accept` header change the result,
-- whether the response is the zip or a Cloudflare challenge page
-  (`cf-mitigated: challenge`, or HTML where a zip is expected).
-
-The finding no longer decides whether downloads work, because the mirror is
-the default. It decides how well `source="fca"` works.
-
-| Probe result | What `source="fca"` does |
+| Request | Result |
 |---|---|
-| Plain `urllib` gets the zip | Uses it as is. |
-| Only browser-like headers get the zip | The shared HTTP helper sends those headers. |
-| Challenged or blocked either way | Raises a `DownloadError` that names Cloudflare and suggests `source="github"`. The docs say so. |
+| Default `urllib` (`User-Agent: Python-urllib/3.13`) | 403, `text/plain`, body `error code: 1010`, for every URL |
+| No `User-Agent` header at all | 403, `error code: 1010` |
+| Default `User-Agent` with a browser `Accept` header | 403, an HTML error page |
+| A browser `User-Agent` | 200, the zip (`application/zip`) or the page |
+| `call-report/0.2 (+https://github.com/predict-ably/call-report)` | 200 |
+| `curl/8.5.0` or `python-requests/2.32.3` | 200 |
 
-In every case the shared HTTP helper detects a challenge page and raises,
-rather than writing an HTML page to disk as if it were a zip.
+Cloudflare error 1010 means the request was refused because of its client
+signature. Here the signature is only the `User-Agent` header. Cloudflare
+refuses Python's default value and an empty one, and accepts any other value
+tried. There is no JavaScript challenge and no `cf-mitigated` header. Each
+request took under a second.
+
+So `source="fca"` works with the standard library, as long as the HTTP
+helper sends its own `User-Agent`. It sends
+`call-report/<version> (+https://github.com/predict-ably/call-report)`, which
+names the package honestly rather than posing as a browser. A 403 whose body
+is `error code: 1010`, or any HTML response where a zip is expected, still
+raises a `DownloadError` that names Cloudflare and suggests
+`source="github"`, in case Cloudflare's rules change. It is not retried.
+
+### FCA republishes past quarters
+
+The probe also downloaded all 106 zips FCA lists and compared them with
+`data/fca-call-report/`.
+
+- 93 are byte for byte the same.
+- 2026June.zip (2026Q2) is new. `LATEST_KNOWN_PERIOD` is still 2026Q1.
+- 12 quarters, 2023Q2 through 2026Q1, were regenerated on 2026-08-31. Their
+  data filenames carry `_G20260831` in place of the original generation date.
+  The layout (`D_*.TXT`) files did not change. The data changed in a handful
+  of rows per quarter. Some values were amended, some zeros became empty
+  fields, and the INST roster now shows six institutions' current addresses
+  in every regenerated quarter, rather than the address they reported at the
+  time.
+
+The FCA call report disclosures page also describes FCA removing and
+reposting corrected releases (see "FCA call report disclosures" below). So a
+quarter's release is not fixed once published. This changes the design in
+four places.
+
+1. **The cache can go stale.** The downloader writes a small
+   `.call_report_release.json` into each folder it extracts, recording the
+   source URL, the zip's SHA-256, and the download time. With
+   `source="github"`, a cached quarter whose recorded checksum differs from the
+   manifest is listed in `outdated_`. It is not replaced unless the user asks
+   (see "Open questions"). A hand-extracted folder has no record, so it is
+   never reported as outdated.
+2. **The mirror records which generation it holds.** Each manifest entry
+   carries `generated`, the `_G<YYYYMMDD>` date from the modern era data
+   filenames, or null for the legacy era, which has none.
+3. **The mirror keeps the current release only.** A republished quarter
+   replaces its asset. Earlier versions stay in this repository's git
+   history, because the zips in `data/fca-call-report/` are committed. See
+   "Open questions" for keeping every version as a release asset too.
+4. **Drift needs a check.** The opt-in live test compares FCA's current
+   files with the manifest, so a regeneration or a new quarter is noticed.
+   This plan now recommends running it weekly (see "Open questions").
+
+Bringing the 13 changed or new zips into `data/fca-call-report/`, and
+regenerating the shipped metadata and registry, is a separate data pull
+request. It is not part of #119. The two generation scripts assume an
+archived quarter never changes, and resume from their last quarter by
+default. That assumption is now false, so changing their default is a
+follow-up issue.
 
 ### Two layers over one implementation
 
@@ -255,7 +305,8 @@ built from the stem with no lookup.
       "period": "2026-03-31",
       "file": "2026March.zip",
       "sha256": "…",
-      "size": 123456,
+      "size": 135858,
+      "generated": "2026-08-31",
       "source_url": "https://www.fca.gov/template-fca/bank/2026March.zip"
     }
   ]
@@ -265,8 +316,10 @@ built from the stem with no lookup.
 **Script.** `scripts/build_fca_mirror_manifest.py` reads `data/fca-call-report/`
 and writes `manifest.json`. It uses `parse_fca_release_filename` and
 `construct_fca_download_url` from the package, so the mirror and the package
-agree on names. It fails if a zip's name does not parse, or if a zip has no
-`D_*.TXT` file.
+agree on names. It reads `generated` from the `_G<YYYYMMDD>` part of a modern
+era zip's data filenames. It fails if a zip's name does not parse, if a zip
+has no `D_*.TXT` file, or if one zip's data files carry more than one
+generation date.
 
 **Workflow.** `.github/workflows/fca-mirror.yml` runs on a push to `main` that
 changes `data/fca-call-report/**`, and by hand (`workflow_dispatch`). It:
@@ -282,15 +335,17 @@ changes `data/fca-call-report/**`, and by hand (`workflow_dispatch`). It:
 
 It needs `contents: write` and uses the workflow's own `GITHUB_TOKEN`, as
 `publish.yml` does. The first run, by hand after the implementation merges,
-uploads all 105 quarters.
+uploads all 106 quarters.
 
 ### The default source and the manifest
 
 With `source="github"` (the default), the downloader reads `manifest.json`
-once per downloader instance, and uses it for two things.
+once per downloader instance, and uses it for three things.
 
 - **Verification.** Each zip's SHA-256 must match the manifest, or the quarter
   is recorded as an error and nothing is extracted.
+- **Freshness.** A cached quarter whose recorded checksum differs from the
+  manifest is listed in `outdated_`.
 - **Range.** If the user passed no catalog, the snapshot is extended with any
   newer quarter the manifest lists. So a quarter added to the mirror after a
   package release is downloadable without opt-in discovery. This is the one
@@ -328,6 +383,10 @@ def download_file(
 ) -> Path: ...
 ```
 
+- Every request sends
+  `User-Agent: call-report/<version> (+https://github.com/predict-ably/call-report)`.
+  Without it, FCA's Cloudflare refuses every request (see "Cloudflare
+  findings").
 - Only `http` and `https` URLs are accepted, checked before `urlopen` is
   called. That check is what makes the narrow `# noqa: S310` on the `urlopen`
   line correct.
@@ -392,8 +451,14 @@ create it. The downloader creates `<cache>/fca/` on first use.
   the page omits keeps its predicted URL.
 - A page with no parsable zip links raises `DownloadError` saying the page
   layout may have changed. An empty catalog is never returned.
-- PENDING: the scraper is checked against the real page markup once the
-  probe runs.
+- The page as of 2026-10-12 fits this. It lists 106 zip links, one per
+  quarter from 2000Q1 to 2026Q2. Every `href` is relative
+  (`/template-fca/bank/2026June.zip`,
+  `/template-fca/download/CallReportData/Mar2000.zip`), every filename
+  matches one of the two era patterns, and each link's text names its
+  quarter ("June 2026"). The page also gives a file count per quarter
+  ("(72 files)") and a "Page updated" date. The scraper does not depend on
+  either.
 
 ### New public module: `src/call_report/fca/download.py`
 
@@ -483,10 +548,20 @@ def download(self, *, start, end) -> Self:
 
 ### FCA call report disclosures
 
-PENDING. The disclosures page is blocked from the development container too.
-This section will list each disclosed issue that changes what a downloaded
-release contains or how it parses, and say whether the downloader, the
-parser, or the documentation handles it.
+The [disclosures page](https://www.fca.gov/bank-oversight/call-report-disclosures)
+(last updated 2019-08-13) lists four issues.
+
+| Disclosure | Quarters | Effect on this work |
+|---|---|---|
+| AgFirst Farm Credit Bank revised its young, beginning, and small farmer (YBS) data, reposted 2019-08-09 | 2009 to 2017 | None. YBS data is not one of the schedules in the call report releases. |
+| Lone Star ACA. FCA removed the affected call reports, then posted corrected ones | 2016Q1 to 2017Q1 | Shows that FCA replaces published releases. Handled by the cache freshness check and the manifest's checksums. |
+| FCS Southwest ACA corrected its call reports. Earlier periods should not be relied on | 2013Q1 to 2015Q3, and earlier | None for downloading. The user guide notes it. |
+| Loan classification errors. The corrected values are only in a separate spreadsheet, not in the releases | Before 2015Q4, schedules RC.1 (lines 1.a.i to 1.a.xii), RC-F1, RC-F2, and RI-E | None for downloading. The downloader fetches the releases as published. The user guide notes it and links the spreadsheet. |
+
+None of them changes how a release parses. The user guide's downloading page
+gets a short "Known issues in FCA's data" section that links the
+disclosures page and lists the last three rows above. Applying the
+spreadsheet's corrections is out of scope.
 
 ## Public API
 
@@ -603,6 +678,7 @@ class FCAReleaseDownloader:
     downloaded_: tuple[ReportingPeriod, ...]
     skipped_: tuple[ReportingPeriod, ...]
     errors_: list[FCAIssue]
+    outdated_: tuple[ReportingPeriod, ...]
 ```
 
 `data_dir` is `<cache_dir>/fca`, the folder to hand to
@@ -689,13 +765,17 @@ Added:
 - The `fca-call-report-data` GitHub release, filled by the new workflow from
   `data/fca-call-report/`, with `manifest.json` built by
   `scripts/build_fca_mirror_manifest.py`. It is not in the wheel.
-- `tests/fca/data/download_page.html`, a trimmed copy of FCA's download page,
-  saved once the probe runs. It keeps the markup around the zip links and adds
-  one link that does not parse and one relative link.
+- `tests/fca/data/download_page.html`, a trimmed copy of FCA's download page
+  as of 2026-10-12. It keeps the markup around the zip links, plus one added
+  zip link whose name does not parse and one absolute link.
 - `tests/fca/data/manifest.json`, a small manifest for parser tests.
 
 CLAUDE.md's repo layout section gains one line: adding a quarter's zip to
 `data/fca-call-report/` also updates the mirror, through the workflow.
+
+Bringing the archive up to date with FCA (2026Q2, and the 12 quarters FCA
+regenerated on 2026-08-31) is a separate data pull request. This plan
+assumes it lands first, so the mirror starts with 106 current quarters.
 
 ## Pull requests
 
@@ -710,7 +790,7 @@ order.
 2. **`[MNT] Mirror FCA release zips as a GitHub release (#119)`.**
    `scripts/build_fca_mirror_manifest.py` and its tests, and
    `.github/workflows/fca-mirror.yml`. After it merges, a maintainer runs the
-   workflow once by hand to publish all 105 quarters.
+   workflow once by hand to publish all 106 quarters.
 3. **`[ENH] Add FCAReleaseDownloader and DownloadTransport (#119)`.**
    `construct_fca_mirror_url`, `FCAReleaseCatalog`, the downloader, the
    transport, the user guide page, and the doc, changelog, CLAUDE.md, and API
@@ -735,6 +815,7 @@ tests point at the local server.
 `tests/core/test_http.py`:
 
 - A 200 response returns the body, and `download_file` writes it.
+- Every request carries the package's `User-Agent` (the server records it).
 - A redirect is followed.
 - A 503 then a 200 succeeds after one retry. A 429 with `Retry-After: 2`
   sleeps 2 seconds (the sleep is replaced, so the test does not wait).
@@ -742,8 +823,9 @@ tests point at the local server.
   `DownloadError`.
 - A 404 raises at once, with no retry.
 - A connection refused and a timeout are retried.
-- An HTML challenge page, and a `cf-mitigated: challenge` header, raise a
-  `DownloadError` naming Cloudflare.
+- A 403 with the body `error code: 1010`, an HTML page where a zip is
+  expected, and a `cf-mitigated: challenge` header each raise a
+  `DownloadError` naming Cloudflare, with no retry.
 - A `file://` or `ftp://` URL raises before any request is made.
 - A failed `download_file` leaves no file behind.
 
@@ -799,6 +881,10 @@ tests point at the local server.
 - With `overwrite=False`, a cached quarter is in `skipped_` and is not
   requested.
 - With `overwrite=True`, it is downloaded again and its contents replaced.
+- Each extracted folder holds a `.call_report_release.json` with the URL and
+  checksum. A cached quarter whose recorded checksum differs from the
+  manifest is in `outdated_` and is not downloaded again. A folder with no
+  record is never in `outdated_`.
 - With `overwrite=True` and a failing download, the cached folder is
   untouched.
 - One quarter returning 404 lands in `errors_`, and the others download.
@@ -837,7 +923,7 @@ tests point at the local server.
 
 `tests/scripts/test_build_fca_mirror_manifest.py`:
 
-- The manifest built from `data/fca-call-report/` lists all 105 quarters, with
+- The manifest built from `data/fca-call-report/` lists all 106 quarters, with
   checksums that match `hashlib`, and source URLs that match
   `construct_fca_download_url`.
 - A zip whose name does not parse, and a zip with no `D_*.TXT`, fail the
@@ -862,6 +948,8 @@ tests point at the local server.
 - `FCAReleaseCatalog.from_fca()` lists every snapshot period.
 - One legacy and one modern quarter, downloaded from each source, match the
   checked-in zips.
+- Every zip FCA lists matches the mirror's checksum. A failure here means FCA
+  has published or regenerated a quarter the mirror does not have.
 - Not run on pull requests.
 
 Branch coverage stays at 100%, including both values of `overwrite` and both
@@ -869,23 +957,35 @@ sources on the downloader and on the transport.
 
 ## Open questions
 
-1. **Cloudflare outcome.** PENDING the probe. It now only affects
-   `source="fca"`.
-2. **Unreadable manifest.** This plan falls back to the snapshot and skips
+1. **Outdated cached quarters.** FCA replaces published releases, so a
+   cached quarter can fall behind the mirror. This plan lists such quarters in
+   `outdated_` and leaves them alone. The user refreshes them with
+   `overwrite=True`, which downloads the whole range again. A narrower
+   option is a third value, `overwrite="outdated"`, that downloads again only
+   the quarters in `outdated_`. That makes the parameter more than the boolean
+   the issue asks for.
+2. **Every version on the mirror.** This plan keeps only the current release
+   of each quarter as an asset, with earlier versions in git history. Keeping
+   each superseded version as an extra asset (`2026March_G20260507.zip`) would
+   let a user download exactly the release an earlier analysis used. Legacy
+   era zips carry no generation date, so they would need another suffix.
+3. **Unreadable manifest.** This plan falls back to the snapshot and skips
    checksum verification when the manifest cannot be read. The stricter
    choice is to raise, so a `source="github"` download is always verified.
-3. **Protocol change.** This plan adds `available_periods()` to
+4. **Protocol change.** This plan adds `available_periods()` to
    `FCATransport`, which breaks a user's own transport. The alternative is for
    `fetch` to fall back to the snapshot when a transport has no such method.
    That keeps old transports working at the cost of a `getattr` check.
-4. **Live test schedule.** Should `weekly-maintenance.yml` run the `network`
-   tests? It would show when FCA changes its page or blocks downloads, and
-   when FCA publishes a quarter the mirror does not have yet.
-5. **Default cache location.** This plan uses the platform's user cache
+5. **Live test schedule.** This plan recommends that `weekly-maintenance.yml`
+   runs the `network` tests and opens an issue when they fail. The
+   regeneration of 2023Q2 to 2026Q1 went unnoticed for six weeks. A weekly
+   run would have caught it, along with any change to FCA's page or its
+   Cloudflare rules.
+6. **Default cache location.** This plan uses the platform's user cache
    folder, overridable by `CALL_REPORT_CACHE_DIR`. A cache folder can be
    cleared by the operating system or by cleanup tools. If users should keep
    downloads for good, a data folder (`~/.local/share/call-report`) is the
    alternative.
-6. **Default worker count.** 4 is proposed. A lower number is kinder to the
-   servers, and a higher one is faster for a first full download of about 105
+7. **Default worker count.** 4 is proposed. A lower number is kinder to the
+   servers, and a higher one is faster for a first full download of 106
    quarters.
