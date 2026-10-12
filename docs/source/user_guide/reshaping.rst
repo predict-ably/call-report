@@ -248,7 +248,7 @@ so the column is complete either way.
 sums accruing loans 90 or more days past due and the two nonaccrual columns.
 ``non_performing_with_restructured`` adds formally restructured accruing
 loans. Neither name asserts that it matches FCA's own definition of a
-nonperforming loan; each states its components plainly.
+nonperforming loan. Each states its components plainly.
 
 Reported subtotals
 ------------------

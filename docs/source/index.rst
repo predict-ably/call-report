@@ -6,8 +6,8 @@ call-report
 
 ``call-report`` provides a consistent Python interface for retrieving,
 parsing, and analyzing regulatory **call report** data filed by regulated
-U.S. financial institutions -- Farm Credit System institutions (FCA),
-banks (FFIEC/FDIC), and credit unions (NCUA).
+U.S. financial institutions. That includes Farm Credit System institutions
+(FCA), banks (FFIEC and FDIC), and credit unions (NCUA).
 
 Currently implemented: the package-level configuration and shared
 object-oriented interface, and the Farm Credit Administration (FCA) Call
