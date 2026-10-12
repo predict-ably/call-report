@@ -46,7 +46,7 @@ even before any file has been read:
    >>> metadata.name
    'RI'
    >>> metadata.first_period.label, metadata.last_period.label
-   ('2000Q1', '2026Q1')
+   ('2000Q1', '2026Q2')
    >>> len(metadata.file_schema)
    46
 

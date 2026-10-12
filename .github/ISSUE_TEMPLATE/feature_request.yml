@@ -1,0 +1,53 @@
+name: Feature request
+description: Suggest a new feature or an improvement to an existing one.
+title: "[ENH] "
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Thanks for suggesting an improvement. The
+        [release roadmap](https://github.com/predict-ably/call-report/blob/main/CLAUDE.md)
+        shows what is already planned for each release.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Describe the problem
+      description: >
+        What are you trying to do, and what makes it hard today? A
+        description of the analysis you want to run is often more useful
+        than a proposed solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe the solution you would like
+      description: >
+        How would you like it to work? Example code showing how you would
+        call it is welcome.
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+      description: Any other approaches you have tried or thought about.
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Data source
+      description: Which call report source does this relate to?
+      multiple: true
+      options:
+        - FCA
+        - FFIEC
+        - FDIC
+        - NCUA
+        - Not specific to one source

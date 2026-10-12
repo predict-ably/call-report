@@ -3,7 +3,7 @@
   "periods": [
     {
       "start": "2018-03-31",
-      "end": "2026-03-31"
+      "end": "2026-06-30"
     }
   ],
   "fields": {
@@ -13,7 +13,7 @@
           "dtype": "Int64",
           "definition": "System Code",
           "period_start": "2018-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -23,7 +23,7 @@
           "dtype": "Int64",
           "definition": "District Code",
           "period_start": "2018-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -33,7 +33,7 @@
           "dtype": "Int64",
           "definition": "Association Code",
           "period_start": "2018-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -43,7 +43,7 @@
           "dtype": "Int64",
           "definition": "Month of Report",
           "period_start": "2018-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -53,7 +53,7 @@
           "dtype": "Int64",
           "definition": "Year of Report",
           "period_start": "2018-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -63,7 +63,7 @@
           "dtype": "Int64",
           "definition": "System, District, and Association codes concatenated",
           "period_start": "2018-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -73,7 +73,7 @@
           "dtype": "Int64",
           "definition": "DebtMaturity code for Demands on Liquidity 110 <8 days 120 8-15 days 130 16-30 days 140 31-45 days 150 46-90 days 160 91-120 day 170 121-150 days 180 >150 days 185 Unamortized discount or premium and unamortized debt issuance costs 190 Total",
           "period_start": "2018-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -83,7 +83,7 @@
           "dtype": "Int64",
           "definition": "Consolidated Systemwide Debt Obligation",
           "period_start": "2018-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -93,7 +93,7 @@
           "dtype": "Int64",
           "definition": "Other Bank Borrowings",
           "period_start": "2018-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -103,7 +103,7 @@
           "dtype": "Int64",
           "definition": "Total",
           "period_start": "2018-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     }

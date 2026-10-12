@@ -723,7 +723,7 @@ class FCACallReport(BaseCallReport):
         >>> metadata.first_period.label
         '2000Q1'
         >>> metadata.last_period.label
-        '2026Q1'
+        '2026Q2'
         """
         return get_fca_file_metadata(schedule=FCASchedule.coerce(value=schedule))
 
@@ -751,7 +751,7 @@ class FCACallReport(BaseCallReport):
         >>> periods[0].label
         '2000Q1'
         >>> periods[-1].label
-        '2026Q1'
+        '2026Q2'
         """
         from call_report.fca.catalog import EARLIEST_PERIOD, LATEST_KNOWN_PERIOD
 
@@ -1069,9 +1069,10 @@ class FCACallReport(BaseCallReport):
         ``False``. A field that repeats once per reported code has them set
         to the code's field name and value, with ``is_multiple`` ``True``,
         matching `~call_report.fca.layout.FCALayout`'s own
-        "single"/"multiple" scenario vocabulary. `value`, and `code_value`
-        when present, is always ``Float64``, the most generic type that
-        represents every schedule's measures. See
+        "single"/"multiple" scenario vocabulary. `value` is always
+        ``Float64``, the most generic type that represents every
+        schedule's measures. `code_value` is always ``Int64``, and null
+        for a plain field. See
         `~call_report.fca.convert_long_format_to_wide_format` to pivot this
         back to `to_wide_format`'s shape.
 
@@ -1513,7 +1514,7 @@ class FCACallReport(BaseCallReport):
         >>> list(loans.columns)[:4]
         ['UNINUM', 'period', 'code_column', 'code_value']
         >>> agribusiness = loans[
-        ...     (loans["UNINUM"] == 620000) & (loans["code_value"] == 110.0)
+        ...     (loans["UNINUM"] == 620000) & (loans["code_value"] == 110)
         ... ].iloc[0]
         >>> float(agribusiness["accruing"])
         3265454.0

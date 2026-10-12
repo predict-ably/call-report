@@ -30,7 +30,7 @@ _LEGACY_ABBREVIATION_BY_QUARTER_END_MONTH: dict[int, str] = {
 EARLIEST_PERIOD = ReportingPeriod.from_period_end(value="2000-03-31")
 """ReportingPeriod: The earliest quarter FCA is known to publish."""
 
-LATEST_KNOWN_PERIOD = ReportingPeriod.from_period_end(value="2026-03-31")
+LATEST_KNOWN_PERIOD = ReportingPeriod.from_period_end(value="2026-06-30")
 """ReportingPeriod: The latest quarter confirmed available as of this release.
 
 This is a point-in-time snapshot, not a live lookup. It needs bumping as

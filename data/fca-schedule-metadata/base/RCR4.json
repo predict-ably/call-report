@@ -3,7 +3,7 @@
   "periods": [
     {
       "start": "2017-03-31",
-      "end": "2026-03-31"
+      "end": "2026-06-30"
     }
   ],
   "fields": {
@@ -13,7 +13,7 @@
           "dtype": "Int64",
           "definition": "System Code",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -23,7 +23,7 @@
           "dtype": "Int64",
           "definition": "District Code",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -33,7 +33,7 @@
           "dtype": "Int64",
           "definition": "Association Code",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -43,7 +43,7 @@
           "dtype": "Int64",
           "definition": "Month of Report",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -53,7 +53,7 @@
           "dtype": "Int64",
           "definition": "Year of Report",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -63,7 +63,7 @@
           "dtype": "Int64",
           "definition": "System, District, and Association codes concatenated",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -73,7 +73,7 @@
           "dtype": "Int64",
           "definition": "Qualifying common cooperative equity (CCE) included in CET1",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -83,7 +83,7 @@
           "dtype": "Int64",
           "definition": "Paid-in capital (includes Additional Paid-In-Capital \u201cAPIC\u201d)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -93,7 +93,7 @@
           "dtype": "Int64",
           "definition": "Unallocated retained earnings (URE)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -103,7 +103,7 @@
           "dtype": "Int64",
           "definition": "Other CET1 capital items approved by FCA",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -113,7 +113,7 @@
           "dtype": "Int64",
           "definition": "Total CET1 before deductions",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -123,7 +123,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Less: Goodwill net of associated deferred tax liabilities (DTLs)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -133,7 +133,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Less: Intangible assets other than mortgage servicing assets, net of associated DTLs",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -143,7 +143,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Less: Deferred tax assets (DTAs) that arise from net operating losses and tax credit carryforward, net of any related valuation allowances and net of DTLs",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -153,7 +153,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Less: After-tax gain-on-sale in connection with securitization exposure, net of associated DTLs",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -163,7 +163,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Less: Defined benefit pension fund assets, net of associated DTLs. (Unless FCA has given permission to risk weight).",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -173,7 +173,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Less: Amount of allocated investments in other System institutions. Only the institution who allocated the equities may include those equities in its CET1",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -183,7 +183,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Less: Amount of purchased investments in other System institutions using the corresponding deduction approach (CDA)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -193,7 +193,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Less: CDA deductions applied to CET1 capital due to insufficient amounts of AT1 and Tier 2 capital to cover AT1 and Tier 2 deductions",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -203,7 +203,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Less: Other deductions required by FCA",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -213,7 +213,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Total deductions for CET1 capital (stopped collecting as of March 2022 quarter)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -223,7 +223,7 @@
           "dtype": "Int64",
           "definition": "Common Equity Tier 1 Capital (CET1)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -233,7 +233,7 @@
           "dtype": "Int64",
           "definition": "Additional Tier 1 Capital (AT1) Noncumulative perpetual preferred stock",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -243,7 +243,7 @@
           "dtype": "Int64",
           "definition": "Additional Tier 1 Capital (AT1) Other AT1 capital items and related surplus approved by FCA",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -253,7 +253,7 @@
           "dtype": "Int64",
           "definition": "Additional Tier 1 Capital (AT1) AT1 capital before deductions",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -263,7 +263,7 @@
           "dtype": "Int64",
           "definition": "AT1 deductions Less: CDA deductions applied to AT1 capital due to insufficient amounts of Tier 2 capital to cover Tier 2 deductions",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -273,7 +273,7 @@
           "dtype": "Int64",
           "definition": "AT1 deductions Less: Excess above third party capital limits",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -283,7 +283,7 @@
           "dtype": "Int64",
           "definition": "AT1 deductions Less: Other deductions required by FCA",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -293,7 +293,7 @@
           "dtype": "Int64",
           "definition": "AT1 deductions Total deductions for AT1 Capital",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -303,7 +303,7 @@
           "dtype": "Int64",
           "definition": "Total AT1 Capital",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -313,7 +313,7 @@
           "dtype": "Int64",
           "definition": "Total Tier 1 Capital",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -323,7 +323,7 @@
           "dtype": "Int64",
           "definition": "CCEs included in Tier 2 Capital",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -333,7 +333,7 @@
           "dtype": "Int64",
           "definition": "Other preferred stock and subordinated debt Cumulative perpetual preferred stock",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -343,7 +343,7 @@
           "dtype": "Int64",
           "definition": "Other preferred stock and subordinated debt Limited-life preferred stock = 5 years at issuance",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -353,7 +353,7 @@
           "dtype": "Int64",
           "definition": "Other preferred stock and subordinated debt Subordinated debt = 5 years at issuance",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -363,7 +363,7 @@
           "dtype": "Int64",
           "definition": "Other preferred stock and subordinated debt Total other preferred stock and subordinated debt",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -373,7 +373,7 @@
           "dtype": "Int64",
           "definition": "Amount of adjusted allowances for credit losses included in Tier 2 capital Adjusted allowances for credit losses, excluding reserves for unfunded commitments",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -383,7 +383,7 @@
           "dtype": "Int64",
           "definition": "Amount of adjusted allowances for credit losses included in Tier 2 capital Reserve for credit losses on off-balance sheet credit exposures",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -393,7 +393,7 @@
           "dtype": "Int64",
           "definition": "Amount of adjusted allowances for credit losses included in Tier 2 capital Total adjusted allowance",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -403,7 +403,7 @@
           "dtype": "Int64",
           "definition": "Amount of adjusted allowances for credit losses included in Tier 2 capital Risk-weighted assets multiplied by 0.0125",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -413,7 +413,7 @@
           "dtype": "Int64",
           "definition": "Amount of adjusted allowances for credit losses included in Tier 2 capital Amount included in Tier 2 capital",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -423,7 +423,7 @@
           "dtype": "Int64",
           "definition": "Other Tier 2 capital items approved by FCA",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -433,7 +433,7 @@
           "dtype": "Int64",
           "definition": "Tier 2 capital before deductions",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -443,7 +443,7 @@
           "dtype": "Int64",
           "definition": "Tier 2 deductions Less: Amount of purchased investments in other System institutions using the CDA",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -453,7 +453,7 @@
           "dtype": "Int64",
           "definition": "Tier 2 deductions Less: Excess above third party capital limits",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -463,7 +463,7 @@
           "dtype": "Int64",
           "definition": "Tier 2 deductions Less: Other deductions required by FCA",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -473,7 +473,7 @@
           "dtype": "Int64",
           "definition": "Tier 2 deductions Total deductions for Tier 2 capital",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -483,7 +483,7 @@
           "dtype": "Int64",
           "definition": "Less: Phased-out amount of limited life preferred stock and subordinated debt",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -493,7 +493,7 @@
           "dtype": "Int64",
           "definition": "Total Tier 2 capital",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -503,7 +503,7 @@
           "dtype": "Int64",
           "definition": "Total Regulatory Capital",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -513,7 +513,7 @@
           "dtype": "Int64",
           "definition": "Total deductions from regulatory capital",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -523,7 +523,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Less: Adjustments for patronage or dividend accrued receivables per \u00a7 628.22(b)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -533,7 +533,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Plus: Adjustments for patronage or dividend accrued payables per \u00a7 628.22(b)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -543,7 +543,7 @@
           "dtype": "Int64",
           "definition": "CET1 deductions and Adjustments Total deductions & adjustments for CET1 capital (sum of items 6a thru 6i minus 6j plus 6k)",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     }

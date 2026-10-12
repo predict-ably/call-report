@@ -3,7 +3,7 @@
   "periods": [
     {
       "start": "2000-03-31",
-      "end": "2026-03-31"
+      "end": "2026-06-30"
     }
   ],
   "fields": {
@@ -13,7 +13,7 @@
           "dtype": "Int64",
           "definition": "System Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -23,7 +23,7 @@
           "dtype": "Int64",
           "definition": "District Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -33,7 +33,7 @@
           "dtype": "Int64",
           "definition": "Association Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -43,7 +43,7 @@
           "dtype": "Int64",
           "definition": "Month of Report",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -53,7 +53,7 @@
           "dtype": "Int64",
           "definition": "Year of Report",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -63,7 +63,7 @@
           "dtype": "Int64",
           "definition": "System, District, and Association codes concatenated",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -73,7 +73,7 @@
           "dtype": "Int64",
           "definition": "Accrual loans, sales contracts, notes, and leases",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -83,7 +83,7 @@
           "dtype": "Int64",
           "definition": "Accrued interest receivable (loans)",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -127,7 +127,7 @@
           "dtype": "Int64",
           "definition": "Other Interest-Earning Assets",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -137,7 +137,7 @@
           "dtype": "Int64",
           "definition": "Total Interest-Earning Assets",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -147,7 +147,7 @@
           "dtype": "Int64",
           "definition": "Nonaccrual loans - Cash basis",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -157,7 +157,7 @@
           "dtype": "Int64",
           "definition": "Nonaccrual loans - Other",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -197,7 +197,7 @@
           "dtype": "Int64",
           "definition": "Other property owned",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -217,7 +217,7 @@
           "dtype": "Int64",
           "definition": "Total Assets",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -227,7 +227,7 @@
           "dtype": "Int64",
           "definition": "Systemwide notes and bonds",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -237,7 +237,7 @@
           "dtype": "Int64",
           "definition": "Notes payable to other FCS institutions",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -247,7 +247,7 @@
           "dtype": "Int64",
           "definition": "Other Interest-Bearing Liabilities",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -257,7 +257,7 @@
           "dtype": "Int64",
           "definition": "Total Interest-Bearing Liabilities",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -267,7 +267,7 @@
           "dtype": "Int64",
           "definition": "Total Liabilities",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -297,7 +297,7 @@
           "dtype": "Int64",
           "definition": "Total net worth",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -327,7 +327,7 @@
           "dtype": "Int64",
           "definition": "Loans and leases held for sale",
           "period_start": "2013-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -337,7 +337,7 @@
           "dtype": "Int64",
           "definition": "Investments: Debt securities",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -347,7 +347,7 @@
           "dtype": "Int64",
           "definition": "Investments: Equity investments in System institutions and Farmer Mac",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -357,7 +357,7 @@
           "dtype": "Int64",
           "definition": "Investments: Equity investments in non-System institutions",
           "period_start": "2017-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     }

@@ -8,6 +8,37 @@ All notable changes to ``call-report`` are documented on this page, newest
 release first. See the :ref:`release_process` for how this page fits into
 cutting a release.
 
+.. _changelog_unreleased:
+
+Unreleased
+==========
+
+- ``code_value`` is now a nullable ``Int64`` in long format, the code grain,
+  and domain datasets. It was ``Float64``. A plain field's ``code_value`` is
+  null. pandas shows it as ``<NA>`` rather than ``NaN``.
+  :func:`~call_report.fca.convert_long_format_to_wide_format` and
+  :func:`~call_report.fca.convert_long_format_to_code_grain_format` still
+  accept a ``Float64`` ``code_value`` holding whole numbers.
+- :meth:`~call_report.fca.FCACallReport.to_domain_dataset` with
+  ``include_totals=False`` no longer raises under polars 2.0 (:issue:`120`).
+- The minimum supported versions are now narwhals 2.10.1, pandas 2.2.0, and
+  pyarrow 20.0. polars stays at 1.0. Earlier versions do not work with this
+  package (:issue:`125`).
+- With pandas 2.x, :meth:`~call_report.fca.FCACallReport.to_long_format`
+  returns a null ``code_column`` when no requested schedule is coded. It
+  returned the text ``"None"``.
+  :func:`~call_report.fca.convert_long_format_to_code_grain_format` now raises
+  :class:`~call_report.exceptions.ReshapeError` for such a frame, as
+  documented (:issue:`125`).
+- The FCA archive now covers 2026Q2, and
+  ``call_report.fca.catalog.LATEST_KNOWN_PERIOD`` is 2026Q2. It also
+  holds FCA's 2026-08-31 regeneration of 2023Q2 through 2026Q1, which amends
+  a few values and leaves some fields empty that were ``0``. The shipped
+  schedule metadata and institution registry are regenerated to match. The
+  regenerated releases show six institutions' current addresses in every one
+  of those quarters. The registry keeps the addresses the institutions
+  reported at the time (:issue:`130`).
+
 .. _changelog_0.1.0:
 
 0.1.0 (2026-07-26)

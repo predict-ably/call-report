@@ -449,8 +449,8 @@ class DomainDataset:
         `dropped` marks a code the dataset excludes, whose rows are
         filtered out instead of rewritten.
 
-        Codes are carried as floats to match the melted frame's own
-        `code_value`, which `call_report.fca._reshape` casts to Float64
+        Codes are carried as integers to match the melted frame's own
+        `code_value`, which `call_report.fca._reshape` casts to Int64
         so that one join covers every backend.
 
         Plain Python rather than a dataframe, for the reason
@@ -472,8 +472,8 @@ class DomainDataset:
         >>> dataset = get_fca_domain_dataset(domain_dataset=FCADomainDataset.CAPITAL)
         >>> lookup = dataset._code_remap_lookup
         >>> rows = dict(zip(lookup["code_value"], lookup["remapped_code"]))
-        >>> rows[60.0]
-        35.0
+        >>> rows[60]
+        35
         """
         rows = [
             (
@@ -493,10 +493,8 @@ class DomainDataset:
         return MappingProxyType(
             {
                 "schedule": tuple(row[0] for row in rows),
-                "code_value": tuple(float(row[1]) for row in rows),
-                "remapped_code": tuple(
-                    None if row[2] is None else float(row[2]) for row in rows
-                ),
+                "code_value": tuple(row[1] for row in rows),
+                "remapped_code": tuple(row[2] for row in rows),
                 "split_value": tuple(row[3] for row in rows),
                 "dropped": tuple(row[4] for row in rows),
             }
@@ -556,9 +554,7 @@ class DomainDataset:
                 "schedule": tuple(row[0] for row in rows),
                 "variable_name": tuple(row[1] for row in rows),
                 "output_column": tuple(row[2] for row in rows),
-                "mapped_code": tuple(
-                    None if row[3] is None else float(row[3]) for row in rows
-                ),
+                "mapped_code": tuple(row[3] for row in rows),
             }
         )
 

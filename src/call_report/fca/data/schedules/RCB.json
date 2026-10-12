@@ -3,7 +3,7 @@
   "periods": [
     {
       "start": "2000-03-31",
-      "end": "2026-03-31"
+      "end": "2026-06-30"
     }
   ],
   "fields": {
@@ -13,7 +13,7 @@
           "dtype": "Int64",
           "definition": "System Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -23,7 +23,7 @@
           "dtype": "Int64",
           "definition": "District Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -33,7 +33,7 @@
           "dtype": "Int64",
           "definition": "Association Code",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -43,7 +43,7 @@
           "dtype": "Int64",
           "definition": "Month of Report",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -53,7 +53,7 @@
           "dtype": "Int64",
           "definition": "Year of Report",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -63,7 +63,7 @@
           "dtype": "Int64",
           "definition": "System, District, and Association codes concatenated",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -109,7 +109,7 @@
           "dtype": "Int64",
           "definition": "Investment Code for Marketable Investments: 10 U.S. Treasury securities 15 SBA securities 17 Other U.S. Gov\u2019t securities and Agency(excluding MBS) 25 Securities fully and unconditionally guaranteed by a GSE (excluding MBS and Farmer Mac securities) 29 Municipal securities 35 International and multilateral development bank obligations 40 Money market instruments:Federal funds sold 41 Money market instruments:Negotiable certificates of Deposit 60 Money market instruments:Banker acceptances 52 Money market instruments:Commercial paper 50 Money market instruments:Reverse repurchase agreements 51 Money market instruments:Other 62 RMBS fully and unconditionally guaranteed by U.S. government or its agencies 68 RMBS fully and unconditionally guaranteed by GSE 64 Non-Agency RMBS 69 Other RMBS 71 CMBS(excl. Farmer Mac sec.):CMBS fully and unconditionally guaranteed by U.S. government 72 CMBS(excl. Farmer Mac sec.):CMBS fully and unconditionally guaranteed by GSE 73 CMBS(excl. Farmer Mac sec.):Non-Agency CMBS 65 CMBS(excl. Farmer Mac sec.):Other CMBS 86 Farmer Mac guaranteed sec.:Farm and ranch securities (i.e., AMBS) 87 Farmer Mac guaranteed sec.:Rural utility securities 88 Farmer Mac guaranteed sec.:USDA securities 66 Farmer Mac guaranteed sec.:Other Farmer Mac debt securities 141 ABS(excl. Farmer Mac securities):Credit card receivables 142 ABS(excl. Farmer Mac securities):Home equity loans 143 ABS(excl. Farmer Mac securities):Auto Loans 144 ABS(excl. Farmer Mac securities):Student Loans 145 ABS(excl. Farmer Mac securities):Equipment loans 146 ABS(excl. Farmer Mac securities):Manufactured housing loans 95 ABS(excl. Farmer Mac securities):Other ABS 81 Other types of debt securities:Domestic debt securities 82 Other types of debt securities:Foreign debt securities 180 Allowance for Credit Losses on Debt Securities(start collecting on March 2023) 99 Total Debt Securities",
           "period_start": "2015-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -119,7 +119,7 @@
           "dtype": "Int64",
           "definition": "Amortized cost of Marketable Investments",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -129,7 +129,7 @@
           "dtype": "Int64",
           "definition": "Fair Value of Marketable Investments",
           "period_start": "2000-03-31",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -151,7 +151,7 @@
           "dtype": "Int64",
           "definition": "Available for Sale - Amortized cost",
           "period_start": "2008-09-30",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     },
@@ -173,7 +173,7 @@
           "dtype": "Int64",
           "definition": "Available for Sale - Fair Value",
           "period_start": "2008-09-30",
-          "period_end": "2026-03-31"
+          "period_end": "2026-06-30"
         }
       ]
     }

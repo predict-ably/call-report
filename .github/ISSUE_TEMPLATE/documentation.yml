@@ -1,0 +1,27 @@
+name: Documentation improvement
+description: Report something in the documentation that is wrong, missing, or unclear.
+title: "[DOC] "
+labels: ["documentation"]
+
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      description: A link to the page, or the name of the function or class whose docstring is affected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Describe the problem
+      description: What is wrong, missing, or confusing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested fix
+      description: How could the documentation be improved?

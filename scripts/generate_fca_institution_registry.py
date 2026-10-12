@@ -264,9 +264,24 @@ def _apply_overrides(
         }
 
     Each correction names a UNINUM, a name or address column, and the first
-    quarter of the history entry to change, and gives the new value. The
-    quarters an entry covers are never changed. If a correction leaves two
-    back-to-back entries with the same value, they are merged into one.
+    quarter of the history entry to change, and gives the new value. By
+    default the value changes for every quarter the entry covers. A correction
+    can also give ``period_end``, a quarter inside the entry. Then only the
+    quarters from ``period_start`` through ``period_end`` change, and the rest
+    of the entry keeps its value::
+
+        {
+            "ZIP": [
+                {
+                    "period_start": "2023-06-30",
+                    "period_end": "2025-12-31",
+                    "value": "35056",
+                }
+            ]
+        }
+
+    If a correction leaves two back-to-back entries with the same value, they
+    are merged into one.
 
     Parameters
     ----------
@@ -285,8 +300,9 @@ def _apply_overrides(
     ------
     InstitutionError
         If a correction names a UNINUM that is not in `registry`, a column
-        that is not a name or address column, or a starting quarter that
-        does not begin an entry in that column's history.
+        that is not a name or address column, a starting quarter that
+        does not begin an entry in that column's history, or an ending
+        quarter outside that entry.
     """
     if not overrides:
         return registry
@@ -310,7 +326,8 @@ def _apply_institution_overrides(
     """Apply one UNINUM's corrections.
 
     Each correction replaces the value of the entry that starts at the
-    named quarter. Back-to-back entries left with the same value are merged.
+    named quarter, either for the whole entry or through its ``period_end``.
+    Back-to-back entries left with the same value are merged.
 
     Parameters
     ----------
@@ -327,8 +344,9 @@ def _apply_institution_overrides(
     Raises
     ------
     InstitutionError
-        If a column is not a name or address column, or a correction's
-        ``period_start`` does not begin an entry in that column's history.
+        If a column is not a name or address column, a correction's
+        ``period_start`` does not begin an entry in that column's history, or
+        its ``period_end`` is not a quarter of that entry.
     """
     changes: dict[str, Any] = {}
     for column, patches in columns.items():
@@ -338,6 +356,9 @@ def _apply_institution_overrides(
                 f"which is not one of {', '.join(_VERSIONED_COLUMNS)}."
             )
         history = list(institution._history(column))
+        # One value per quarter of each entry, so a correction can change
+        # the first part of an entry and leave the rest.
+        values = [[version.value] * len(version.periods) for version in history]
         for patch in patches:
             start = patch["period_start"]
             index = next(
@@ -354,13 +375,24 @@ def _apply_institution_overrides(
                     f"period_start {start!r}, but no entry starts there. The base "
                     "may have changed since the override was written."
                 )
-            history[index] = replace(history[index], value=patch["value"])
+            quarters = [
+                period.period_end.isoformat() for period in history[index].periods
+            ]
+            end = patch.get("period_end", quarters[-1])
+            if end not in quarters:
+                raise InstitutionError(
+                    f"override for UNINUM {institution.uninum} {column} names "
+                    f"period_end {end!r}, which is not a quarter of the entry "
+                    f"starting {start!r}."
+                )
+            count = quarters.index(end) + 1
+            values[index][:count] = [patch["value"]] * count
         # Rebuilding from per-quarter values merges any back-to-back entries
         # a correction has made equal.
         observations = [
-            (quarter, version.value)
-            for version in history
-            for quarter in version.periods
+            (quarter, value)
+            for version, row in zip(history, values, strict=True)
+            for quarter, value in zip(version.periods, row, strict=True)
         ]
         changes[f"{_VERSIONED_COLUMNS[column]}_history"] = _build_history(observations)
     return replace(institution, **changes)
