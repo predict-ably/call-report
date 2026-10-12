@@ -210,14 +210,11 @@ def test_fetch_accepts_a_quarter_newer_than_the_shipped_metadata(
 
 def test_fetch_with_a_transport_that_has_no_periods_raises(tmp_path: Path) -> None:
     """A transport with nothing to supply raises DownloadError naming it."""
-    report = FCACallReport(
-        start="2025-09-30",
-        end="2025-12-31",
-        transport=LocalDirectoryTransport(data_dir=tmp_path),
-    )
+    transport = LocalDirectoryTransport(data_dir=tmp_path)
+    report = FCACallReport(start="2025-09-30", end="2025-12-31", transport=transport)
     with pytest.raises(DownloadError, match="no FCA releases available") as error:
         report.fetch()
-    assert str(tmp_path) in str(error.value)
+    assert repr(transport) in str(error.value)
 
 
 def test_constructor_requires_transport() -> None:
