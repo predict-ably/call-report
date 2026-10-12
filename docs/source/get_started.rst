@@ -29,21 +29,22 @@ Key Concepts
 ``call-report`` follows a `scikit-learn`_-style, object-oriented interface:
 each regulatory source has its own *estimator-like* entry point (for
 example :class:`~call_report.fca.FCACallReport`). Constructing one only
-stores its parameters; a ``fetch``/``load``-style method performs the actual
-work and populates trailing-underscore attributes (e.g. ``periods_``).
+stores its parameters. A ``fetch`` or ``load`` method does the actual work
+and fills in trailing-underscore attributes, such as ``periods_``.
 
 Two pieces of shared vocabulary are used across every source:
 
 - :class:`~call_report.core.ReportingPeriod` and
-  :class:`~call_report.core.PeriodRange` -- the validated, calendar-quarter
-  vocabulary every request and result is keyed by.
-- :func:`~call_report.config.get_config` / :func:`~call_report.config.set_config`
-  -- package-level configuration controlling which dataframe library every
-  reader returns native frames of, and whether they are returned eager or
-  lazy (see :ref:`api_ref` for the full configuration API).
+  :class:`~call_report.core.PeriodRange`. These are the validated,
+  calendar-quarter vocabulary every request and result is keyed by.
+- :func:`~call_report.config.get_config` and
+  :func:`~call_report.config.set_config`. This package-level configuration
+  controls which dataframe library every reader returns native frames of,
+  and whether they are returned eager or lazy. See :ref:`api_ref` for the
+  full configuration API.
 
-Every entry point also requires an explicit ``transport=`` -- an injectable
-:class:`~call_report.fca.transport.FCATransport` describing how to resolve
+Every entry point also requires an explicit ``transport=``. This is an
+:class:`~call_report.fca.transport.FCATransport` that says where to find
 each requested period's files. There is no implicit default, so it is
 always clear which files a given instance will read.
 
@@ -82,13 +83,37 @@ with no download or manual unzipping needed, using
    rcb = report.load(schedule="RCB")
 
 That archive is checked into the repository but is not included in the
-published wheel, so ``PackagedArchiveTransport`` only works from a source
-checkout (e.g. an editable install for local development); a ``pip``-installed
-package should use ``LocalDirectoryTransport`` instead.
+published wheel. So ``PackagedArchiveTransport`` only works from a source
+checkout, such as an editable install for local development. A
+``pip``-installed package should use ``LocalDirectoryTransport`` instead.
 
 ``load`` stacks the schedule across every requested period that has it,
 returning a native dataframe (of whichever backend is configured) with a
 ``period`` column identifying which quarter each row came from.
+
+The quarters you can request are the ones the transport holds.
+:meth:`~call_report.fca.FCACallReport.available_periods` lists them, oldest
+first. ``fetch`` raises
+:class:`~call_report.exceptions.PeriodNotAvailableError` for a range that
+starts before the first of them or ends after the last. A quarter inside the
+range that the transport is missing is skipped, and recorded in ``errors_``.
+
+.. doctest::
+
+   >>> from call_report.fca import FCACallReport
+   >>> from call_report.fca.transport import PackagedArchiveTransport
+   >>> report = FCACallReport(
+   ...     start="1999-12-31", end="2000-03-31", transport=PackagedArchiveTransport()
+   ... )
+   >>> report.available_periods()[0].label
+   '2000Q1'
+   >>> from call_report.exceptions import PeriodNotAvailableError
+   >>> try:
+   ...     report.fetch()
+   ... except PeriodNotAvailableError as error:
+   ...     print(error)  # doctest: +ELLIPSIS
+   ...
+   The requested range 1999Q4-2000Q1 is not available. The transport has ...
 
 Load every schedule found across the requested range at once:
 

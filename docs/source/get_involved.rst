@@ -5,7 +5,7 @@ Get Involved
 ============
 
 ``call-report`` is an early-stage, community-welcoming project. Contributions
-of any size -- bug reports, documentation fixes, or code -- are welcome. If
+of any size are welcome, including bug reports, documentation fixes, and code. If
 you run into trouble getting set up, please open a
 `GitHub issue <https://github.com/predict-ably/call-report/issues>`_.
 

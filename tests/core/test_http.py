@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import email.utils
 import http.client
+import os
 import socket
 import ssl
 import sys
@@ -763,3 +764,59 @@ def test_retry_after_is_not_jittered(
     )
     fetch_bytes(http_server.url("a.txt"))
     assert recorded_sleeps == [3.0]
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["http://example.com/a.zip", "https://example.com/redirect.zip"],
+    ids=["direct", "redirect"],
+)
+def test_the_python_311_warning_names_the_caller(
+    monkeypatch: pytest.MonkeyPatch, url: str
+) -> None:
+    """Without skip_file_prefixes, the fixed stacklevel still names the caller.
+
+    This forces the Python 3.11 path on every version, so a change to the
+    number of frames between fetch_bytes and warnings.warn fails here.
+    """
+    responses = {
+        "http://example.com/a.zip": _ok(),
+        "https://example.com/redirect.zip": _Response(
+            status=302,
+            headers={"location": "http://example.com/a.zip"},
+            chunks=iter([]),
+        ),
+    }
+    monkeypatch.setattr(_http, "_SKIP_FILE_PREFIXES_SUPPORTED", False)
+    monkeypatch.setattr(_http, "_urllib_open", _fake_opener(responses))
+    with pytest.warns(InsecureConnectionWarning) as record:
+        fetch_bytes(url)
+    assert record[0].filename == __file__
+
+
+def test_python_312_skips_every_frame_in_the_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """From Python 3.12, the warning skips the package's own frames by path.
+
+    warnings.warn is replaced so this runs on Python 3.11 too, where the
+    real function has no skip_file_prefixes argument.
+    """
+    calls: list[dict[str, Any]] = []
+
+    def record(message: str, category: type[Warning], **kwargs: Any) -> None:
+        calls.append({"category": category, **kwargs})
+
+    monkeypatch.setattr(_http, "_SKIP_FILE_PREFIXES_SUPPORTED", True)
+    monkeypatch.setattr(_http.warnings, "warn", record)
+    monkeypatch.setattr(
+        _http, "_urllib_open", _fake_opener({"http://example.com/a.zip": _ok()})
+    )
+    fetch_bytes("http://example.com/a.zip")
+    (call,) = calls
+    assert call["category"] is InsecureConnectionWarning
+    assert "stacklevel" not in call
+    (prefix,) = call["skip_file_prefixes"]
+    assert Path(_http.__file__).is_relative_to(prefix)
+    assert not Path(__file__).is_relative_to(prefix)
+    assert prefix.endswith(os.sep)

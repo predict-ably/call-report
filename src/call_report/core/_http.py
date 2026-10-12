@@ -13,8 +13,10 @@ from __future__ import annotations
 import email.utils
 import functools
 import http.client
+import os
 import random
 import ssl
+import sys
 import tempfile
 import time
 import urllib.error
@@ -73,10 +75,19 @@ _CREDENTIAL_HEADERS = frozenset({"authorization", "cookie"})
 # CURLE_PEER_FAILED_VERIFICATION. A retry fails the same way.
 _CURL_CERTIFICATE_ERROR = 60
 
-# How far up the stack an InsecureConnectionWarning points, so it names the
-# caller of fetch_bytes or download_file. A test checks both values.
-_WARN_STACKLEVEL = 4
-_WARN_STACKLEVEL_ON_REDIRECT = 5
+# An InsecureConnectionWarning should name the line outside this package that
+# asked for the download. Python 3.12 added warnings.warn(skip_file_prefixes=),
+# which skips every frame inside the package however deep the call is, so a
+# later caller such as the FCA downloader needs no change here. Python 3.11
+# falls back to a fixed stacklevel: the frames counted up from
+# warnings.warn to the caller of fetch_bytes or download_file. Tests check
+# both paths on every Python version.
+_SKIP_FILE_PREFIXES_SUPPORTED = sys.version_info >= (3, 12)
+# Not resolved, so it matches the filenames recorded in this package's frames,
+# which use the same path the module was imported from.
+_PACKAGE_DIR_PREFIX = f"{Path(__file__).parents[1]}{os.sep}"
+_WARN_STACKLEVEL = 5
+_WARN_STACKLEVEL_ON_REDIRECT = 6
 
 _T = TypeVar("_T")
 
@@ -452,7 +463,8 @@ def _check_url(url: str, *, stacklevel: int) -> None:
     url : str
         The URL about to be requested.
     stacklevel : int
-        Passed to `warnings.warn`, so the warning points at the caller.
+        The frame the warning names on Python 3.11, counted from
+        `warnings.warn`. See `_warn_from_caller`.
 
     Raises
     ------
@@ -468,12 +480,40 @@ def _check_url(url: str, *, stacklevel: int) -> None:
     if parts.scheme not in {"http", "https"}:
         raise DownloadError(f"Only http and https URLs can be downloaded, not {url!r}.")
     if parts.scheme == "http" and parts.hostname not in _LOOPBACK_HOSTS:
-        warnings.warn(
+        _warn_from_caller(
             f"{url} is plain HTTP, so the download is not private and could be "
             "altered on the way. Use an https URL if the server offers one.",
-            InsecureConnectionWarning,
             stacklevel=stacklevel,
         )
+
+
+def _warn_from_caller(message: str, *, stacklevel: int) -> None:
+    """Issue an `InsecureConnectionWarning` that names the caller's line.
+
+    On Python 3.12 and later, every frame inside this package is skipped,
+    so the warning names the first line outside it. On Python 3.11, the
+    warning names the frame `stacklevel` steps up from `warnings.warn`.
+
+    Parameters
+    ----------
+    message : str
+        The warning's text.
+    stacklevel : int
+        The frame to name on Python 3.11, counted from `warnings.warn`.
+
+    Warns
+    -----
+    InsecureConnectionWarning
+        Always.
+    """
+    if _SKIP_FILE_PREFIXES_SUPPORTED:
+        warnings.warn(
+            message,
+            InsecureConnectionWarning,
+            skip_file_prefixes=(_PACKAGE_DIR_PREFIX,),
+        )
+    else:
+        warnings.warn(message, InsecureConnectionWarning, stacklevel=stacklevel)
 
 
 def _check_response(response: _Response, *, requested: str, current: str) -> None:

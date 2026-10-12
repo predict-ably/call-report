@@ -115,9 +115,9 @@ FCA Call Report
 .. py:module:: call_report.fca
 .. py:currentmodule:: None
 
-``FCACallReport`` is the main entry point; the other members below are the
-lower-level building blocks it's composed from, useful on their own for
-parsing an individual layout or data file.
+``FCACallReport`` is the main entry point. The other members below are the
+lower-level building blocks it is built from. They are useful on their own,
+for example to parse a single layout or data file.
 
 .. autosummary::
    :toctree: generated
