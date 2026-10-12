@@ -412,16 +412,17 @@ class BaseCallReport(ABC):
 
     @abstractmethod
     def available_periods(self) -> tuple[ReportingPeriod, ...]:
-        """Return every period the source is known to publish.
+        """Return every period this instance can read.
 
-        This reflects the source's overall catalog, independent of
-        whatever `start`/`end` this particular instance was constructed
-        with.
+        The periods come from where this instance reads its files, such as
+        an FCA transport, not from `start` and `end`. `fetch` accepts a range
+        that starts no earlier than the first of these periods and ends no
+        later than the last.
 
         Returns
         -------
         tuple[ReportingPeriod, ...]
-            The known-available periods, oldest first.
+            The available periods, oldest first.
 
         Examples
         --------
@@ -441,8 +442,8 @@ class BaseCallReport(ABC):
     def available_schedules(self) -> tuple[Any, ...]:
         """Return every schedule the source's format has ever used.
 
-        Like `available_periods`, this reflects the source's overall
-        catalog rather than what this particular instance requested.
+        This covers the source's whole history, not only the periods this
+        instance can read or requested.
 
         Returns
         -------

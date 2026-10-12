@@ -30,18 +30,13 @@ _LEGACY_ABBREVIATION_BY_QUARTER_END_MONTH: dict[int, str] = {
     12: "Dec",
 }
 
-_LEGACY_MONTH_BY_ABBREVIATION: dict[str, int] = {
-    "mar": 3,
-    "jun": 6,
-    "sep": 9,
-    "sept": 9,
-    "dec": 12,
-}
-_MODERN_MONTH_BY_NAME: dict[str, int] = {
-    name.lower(): month for month, name in _MONTH_NAME_BY_QUARTER_END_MONTH.items()
-}
-_MODERN_FILENAME = re.compile(r"(?P<year>\d{4})(?P<month>[a-z]+)\.zip", re.IGNORECASE)
-_LEGACY_FILENAME = re.compile(r"(?P<month>[a-z]+)(?P<year>\d{4})\.zip", re.IGNORECASE)
+# A release zip's name is four digits of year and some letters, in either
+# order. parse_fca_release_filename then keeps it only if it is the exact
+# stem fca_release_stem gives that year's quarter.
+_RELEASE_FILENAME = re.compile(
+    r"(?:[a-z]+(?P<legacy_year>\d{4})|(?P<modern_year>\d{4})[a-z]+)\.zip",
+    re.IGNORECASE,
+)
 
 # FCA's first release. The local transports check each quarter from here for a
 # release, and construct_fca_download_url rejects anything earlier.
@@ -100,6 +95,11 @@ def fca_release_stem(*, period: ReportingPeriod) -> str:
     str
         The release zip's filename without its ``.zip`` extension.
 
+    See Also
+    --------
+    parse_fca_release_filename : Turn a release zip's name back into its period.
+    construct_fca_download_url : Build the FCA URL of a period's release zip.
+
     Examples
     --------
     >>> fca_release_stem(period=ReportingPeriod.from_period_end(value="2026-03-31"))
@@ -116,9 +116,11 @@ def fca_release_stem(*, period: ReportingPeriod) -> str:
 def parse_fca_release_filename(name: str) -> ReportingPeriod | None:
     """Return the period an FCA release zip filename names, or None.
 
-    Both of FCA's naming conventions are read, in any letter case.
-    September may be abbreviated ``Sep`` or ``Sept`` in the legacy
-    convention. A name that follows neither convention gives ``None``.
+    A name is read only if it is the name `fca_release_stem` gives a
+    quarter, followed by ``.zip``. Letter case does not matter, and
+    September may be ``Sep`` as well as ``Sept``. Any other name gives
+    ``None``, including a name in the other era's convention, such as
+    ``"Mar2020.zip"`` for a 2020 quarter.
 
     Parameters
     ----------
@@ -132,28 +134,34 @@ def parse_fca_release_filename(name: str) -> ReportingPeriod | None:
         The period the file holds, or ``None`` if the name is not an FCA
         release zip.
 
+    See Also
+    --------
+    fca_release_stem : Return the name of a period's release zip.
+    construct_fca_download_url : Build the FCA URL of a period's release zip.
+
     Examples
     --------
     >>> parse_fca_release_filename("2026March.zip").label
     '2026Q1'
     >>> parse_fca_release_filename("sep2014.ZIP").label
     '2014Q3'
+    >>> parse_fca_release_filename("Mar2020.zip") is None
+    True
     >>> parse_fca_release_filename("instructions.pdf") is None
     True
     """
-    modern = _MODERN_FILENAME.fullmatch(name)
-    if modern is not None:
-        year = int(modern["year"])
-        month = _MODERN_MONTH_BY_NAME.get(modern["month"].lower())
-    else:
-        legacy = _LEGACY_FILENAME.fullmatch(name)
-        if legacy is None:
-            return None
-        year = int(legacy["year"])
-        month = _LEGACY_MONTH_BY_ABBREVIATION.get(legacy["month"].lower())
-    if month is None:
+    match = _RELEASE_FILENAME.fullmatch(name)
+    if match is None:
         return None
-    return ReportingPeriod(year=year, quarter=Quarter(month // 3))
+    year = int(match["legacy_year"] or match["modern_year"])
+    stem = name[: -len(".zip")].lower()
+    if stem.startswith("sep") and not stem.startswith("sept"):
+        stem = "sept" + stem.removeprefix("sep")
+    for quarter in Quarter:
+        period = ReportingPeriod(year=year, quarter=quarter)
+        if fca_release_stem(period=period).lower() == stem:
+            return period
+    return None
 
 
 def construct_fca_download_url(*, period: ReportingPeriod) -> str:
@@ -180,6 +188,11 @@ def construct_fca_download_url(*, period: ReportingPeriod) -> str:
         If `period` is before FCA's first release (2000Q1) or after the
         quarter containing today's date.
 
+    See Also
+    --------
+    fca_release_stem : Return the name of a period's release zip.
+    parse_fca_release_filename : Turn a release zip's name back into its period.
+
     Examples
     --------
     >>> construct_fca_download_url(
@@ -194,9 +207,9 @@ def construct_fca_download_url(*, period: ReportingPeriod) -> str:
     latest = _current_period()
     if period < _FIRST_RELEASE_PERIOD or period > latest:
         raise PeriodNotAvailableError(
-            f"FCA does not publish {period.label}. Its releases run from "
-            f"{_FIRST_RELEASE_PERIOD.label} through no later than the current "
-            f"quarter, {latest.label}."
+            f"FCA has no release for {period.label}. Releases start at "
+            f"{_FIRST_RELEASE_PERIOD.label}, and none can be later than the "
+            f"current quarter, {latest.label}."
         )
     base_url = (
         _MODERN_ERA_BASE_URL

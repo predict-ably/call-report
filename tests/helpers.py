@@ -28,11 +28,12 @@ from typing import Any
 import narwhals as nw
 
 from call_report.core import ReportingPeriod
-from call_report.fca.transport import PackagedArchiveTransport
+from call_report.fca.catalog import parse_fca_release_filename
 
 ENCODING = "windows-1252"
 
 _SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+_ARCHIVE_ROOT = Path(__file__).resolve().parents[1] / "data" / "fca-call-report"
 
 
 def _load_script(name: str) -> ModuleType:
@@ -101,15 +102,20 @@ def archived_periods() -> tuple[ReportingPeriod, ...]:
     """Return every quarter with a release zip in ``data/fca-call-report/``.
 
     The newest zip decides the newest quarter, so adding a quarter's zip
-    needs no constant changed anywhere. Cached, since every caller asks
-    about the same checked-in folder.
+    needs no constant changed anywhere. The zip names are read directly,
+    so the answer does not depend on today's date, which some tests
+    replace. Cached, since every caller asks about the same checked-in
+    folder.
 
     Returns
     -------
     tuple[ReportingPeriod, ...]
         The archived quarters, oldest first.
     """
-    return PackagedArchiveTransport().available_periods()
+    periods = (
+        parse_fca_release_filename(path.name) for path in _ARCHIVE_ROOT.glob("*.zip")
+    )
+    return tuple(sorted(period for period in periods if period is not None))
 
 
 def newest_archived_period() -> ReportingPeriod:

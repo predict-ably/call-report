@@ -159,8 +159,10 @@ def recorded_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     """Replace the HTTP helper's sleep, and record each wait it asks for.
 
     A retry backs off for real seconds. Without this a test of retries
-    would wait for them.
+    would wait for them. The random part of each backoff is set to zero, so
+    the recorded waits are exact.
     """
     sleeps: list[float] = []
     monkeypatch.setattr(_http, "_sleep", sleeps.append)
+    monkeypatch.setattr(_http, "_jitter", lambda: 0.0)
     return sleeps
