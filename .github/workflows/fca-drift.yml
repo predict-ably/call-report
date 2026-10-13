@@ -123,9 +123,15 @@ jobs:
             url=$(gh issue create --label fca-drift --body-file "$body" \
               --title "$title")
             number="${url##*/}"
-          elif ! gh issue view "$number" --json body,comments \
-              --jq '[.body] + [.comments[].body] | .[]' | grep -q "$fingerprint"; then
-            gh issue comment "$number" --body-file "$body"
+          else
+            # An open issue's title follows the latest status, so a night
+            # that could not finish is not filed under "differ", or the
+            # reverse. It changes only when the status does.
+            gh issue edit "$number" --title "$title"
+            if ! gh issue view "$number" --json body,comments \
+                --jq '[.body] + [.comments[].body] | .[]' | grep -q "$fingerprint"; then
+              gh issue comment "$number" --body-file "$body"
+            fi
           fi
           echo "number=$number" >> "$GITHUB_OUTPUT"
 

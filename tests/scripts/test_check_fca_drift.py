@@ -745,14 +745,18 @@ def test_main_check_that_fails_still_writes_a_report(
         raise OSError("disk full")
 
     monkeypatch.setattr(drift, "check", fail)
-    report = tmp_path / "drift.json"
+    report, summary = tmp_path / "drift.json", tmp_path / "drift.md"
     argv = ["check", "--report", str(report), "--download-dir", str(tmp_path)]
     with caplog.at_level(logging.ERROR):
-        assert drift.main(argv) == drift.EXIT_ERROR
+        status = drift.main([*argv, "--summary", str(summary)])
+    assert status == drift.EXIT_ERROR
     written = json.loads(report.read_text())
     assert written["status"] == "error"
     assert "disk full" in written["errors"][0]
     assert "The check failed." in caplog.text
+    # No mirror comparison ran, so the summary must not claim one differs.
+    assert "The mirror was not checked." in summary.read_text()
+    assert "differs from the archive" not in summary.read_text()
 
 
 def test_main_describe_failure_exits_2(

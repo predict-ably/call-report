@@ -753,16 +753,17 @@ create it. The downloader creates `<download folder>/fca/` on first use.
   filenames parse become catalog entries. Links that do not parse are kept on
   `unmatched`. A link repeated with the same URL counts once.
 - A page with no parsable zip links raises `ReleaseCatalogError` saying the
-  page layout may have changed. So does a page that links two different URLs for
-  one quarter. An empty catalog is never returned.
-- `from_manifest_json` checks the manifest's `schema_version`, `snapshot`, and
-  `releases`. For each release, it checks the period, that `file` is the exact
-  name `fca_release_stem` gives that period, and that `sha256` is 64 lower
-  case hex digits. It rejects a period listed twice. A `schema_version` must
-  be an integer, not `true`, and a period must be a date string. A missing
-  key raises `ReleaseCatalogError` naming the key. A `schema_version` newer than the package
-  reads asks the user to upgrade. Keys the catalog does not use, such as
-  `size` and `metadata`, are not checked.
+  page layout may have changed. So does a page that links two different
+  URLs for one quarter. An empty catalog is never returned.
+- `from_manifest_json` checks the manifest's `schema_version`, `snapshot`,
+  and `releases`. For each release, it checks the period, that `file` is the
+  exact name `fca_release_stem` gives that period, and that `sha256` is 64
+  lower case hex digits. It rejects a period listed twice. A
+  `schema_version` must be an integer, not `true`, and a period must be a
+  date string. A missing key raises `ReleaseCatalogError` naming the key. A
+  `schema_version` newer than the package reads asks the user to upgrade.
+  Keys the catalog does not use, such as `size` and `metadata`, are not
+  checked.
 - The catalog stores sorted, read-only copies of its mappings, so `periods`
   is oldest first and a mapping the caller keeps cannot change it. Its repr
   gives the size, the span, and the snapshot, not every URL. It sets

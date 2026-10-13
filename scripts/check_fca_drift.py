@@ -512,7 +512,8 @@ def _describe_file(report: DriftReport, key: str) -> str:
 def _describe_mirror(mirror: Mapping[str, Any]) -> list[str]:
     """Return the lines describing the mirror comparison.
 
-    Only the kinds of difference found are listed.
+    Only the kinds of difference found are listed. A report whose check
+    failed before it reached the mirror says the mirror was not checked.
 
     Parameters
     ----------
@@ -524,7 +525,9 @@ def _describe_mirror(mirror: Mapping[str, Any]) -> list[str]:
     list[str]
         One or more Markdown lines.
     """
-    if mirror.get("status") == "unavailable":
+    if "status" not in mirror:
+        return ["The mirror was not checked."]
+    if mirror["status"] == "unavailable":
         return [f"The mirror's manifest could not be read: {mirror['error']}"]
     if mirror.get("status") == "in_step":
         return [f"Snapshot {mirror['snapshot']} matches the archive."]
