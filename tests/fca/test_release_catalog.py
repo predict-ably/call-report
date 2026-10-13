@@ -7,6 +7,7 @@ the local server through the ``mirror`` and ``fca_site`` fixtures.
 from __future__ import annotations
 
 import json
+from collections.abc import Hashable
 from pathlib import Path
 from typing import Any
 
@@ -93,16 +94,18 @@ def test_catalog_rejects_a_checksum_with_no_url() -> None:
         FCAReleaseCatalog(urls={MAR2000: "a"}, sha256={JUN2026: "3"})
 
 
-def test_catalog_cannot_be_hashed() -> None:
-    """hash() raises at once, since a catalog holds mappings.
+def test_catalog_declares_itself_unhashable() -> None:
+    """A catalog says it cannot be hashed, since it holds mappings.
 
     A frozen dataclass invites use as a set member or a cache key. Without
-    an explicit opt out, the generated __hash__ would fail later, on the
-    mappings, with a message about a dict.
+    the class setting __hash__ to None, the generated __hash__ would fail
+    later, on the mappings, with a message about a dict. With it, the
+    catalog is not Hashable, and hash() fails at once naming the class.
+    Checking Hashable tests that without calling hash() on the catalog.
     """
     found = FCAReleaseCatalog(urls={MAR2000: "a"})
-    with pytest.raises(TypeError, match="FCAReleaseCatalog"):
-        hash(found)
+    assert FCAReleaseCatalog.__hash__ is None
+    assert not isinstance(found, Hashable)
     assert found == FCAReleaseCatalog(urls={MAR2000: "a"})
 
 
