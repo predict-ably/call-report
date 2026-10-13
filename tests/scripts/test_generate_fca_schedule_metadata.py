@@ -339,3 +339,61 @@ def test_parse_args_schedule_is_repeatable() -> None:
     """--schedule can be passed multiple times, collecting a list."""
     args = generate._parse_args(["--schedule", "RCB", "--schedule", "RC"])
     assert args.schedules == ["RCB", "RC"]
+
+
+def test_parse_args_rebuild_flag() -> None:
+    """--rebuild sets the rebuild flag, and cannot be combined with --full."""
+    assert generate._parse_args(["--rebuild"]).rebuild is True
+    with pytest.raises(SystemExit):
+        generate._parse_args(["--full", "--rebuild"])
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def drifted_rebuild(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Run main against temporary folders, with a rebuild that differs.
+
+    The previous base holds RCB with one definition, and the rebuild, which
+    stands in for scanning the real archive, gives it another.
+    """
+    span = PeriodRange(start="2000-03-31", end="2026-03-31")
+    previous = FileMetadata(
+        name="RCB", periods=(span,), file_schema=FieldSchema(fields=[_field("old")])
+    )
+    rebuilt = FileMetadata(
+        name="RCB", periods=(span,), file_schema=FieldSchema(fields=[_field("new")])
+    )
+    monkeypatch.setattr(generate, "_BASE_DIR", tmp_path / "base")
+    monkeypatch.setattr(generate, "_OVERRIDES_DIR", tmp_path / "overrides")
+    monkeypatch.setattr(generate, "_SHIPPED_DIR", tmp_path / "shipped")
+    generate._write_json(tmp_path / "base" / "RCB.json", previous)
+    monkeypatch.setattr(generate, "_generate_bases", lambda **_: {"RCB": rebuilt})
+    return tmp_path
+
+
+def test_main_full_refuses_to_write_a_different_rebuild(drifted_rebuild: Path) -> None:
+    """--full returns 1 and leaves the base and shipped files alone."""
+    before = (drifted_rebuild / "base" / "RCB.json").read_text(encoding="utf-8")
+    assert generate.main(["--full"]) == 1
+    assert (drifted_rebuild / "base" / "RCB.json").read_text(encoding="utf-8") == before
+    assert not (drifted_rebuild / "shipped").exists()
+
+
+def test_main_rebuild_writes_a_different_rebuild(
+    drifted_rebuild: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """--rebuild logs the difference, then writes the base and shipped files.
+
+    FCA can republish an archived quarter. Without this flag the only way to
+    bring the base up to date would be to delete it by hand.
+    """
+    assert generate.main(["--rebuild"]) == 0
+    assert "Drift detected for 'RCB'" in caplog.text
+    for folder in ("base", "shipped"):
+        text = (drifted_rebuild / folder / "RCB.json").read_text(encoding="utf-8")
+        written = FileMetadata.from_json(text=text)
+        assert written.file_schema["INV_CODE"].versions[0].definition == "new"

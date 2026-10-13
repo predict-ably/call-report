@@ -1,4 +1,4 @@
-"""Unpack zip archives and checksum files, using the standard library only.
+"""Unpack zip archives and checksum files and bytes, using the standard library only.
 
 These helpers are shared by every call report source. They work on files
 already on disk, so this module does not import the HTTP helpers in
@@ -148,3 +148,26 @@ def sha256_of(path: Path) -> str:
     """
     with Path(path).open("rb") as handle:
         return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
+def sha256_of_bytes(data: bytes) -> str:
+    """Return the SHA-256 digest of some bytes.
+
+    This is the digest `sha256_of` gives for a file holding the same bytes.
+
+    Parameters
+    ----------
+    data : bytes
+        The bytes to hash.
+
+    Returns
+    -------
+    str
+        The digest as 64 lowercase hexadecimal characters.
+
+    Examples
+    --------
+    >>> sha256_of_bytes(b"hello")
+    '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'
+    """
+    return hashlib.sha256(data).hexdigest()

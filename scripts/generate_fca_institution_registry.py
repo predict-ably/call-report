@@ -50,6 +50,12 @@ Extend the registry through the newest quarter in the archive::
 Rebuild from every quarter and check the result against the existing base::
 
     python scripts/generate_fca_institution_registry.py --full
+
+Rebuild from every quarter and write the result even where it differs from
+the existing base. Use this when FCA has republished an archived quarter.
+Each difference is logged for review::
+
+    python scripts/generate_fca_institution_registry.py --rebuild
 """
 
 from __future__ import annotations
@@ -455,7 +461,7 @@ def _audit(rebuilt: FCAInstitutionRegistry, previous: FCAInstitutionRegistry) ->
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse this script's command-line arguments.
 
-    The only option is ``--full``.
+    The options are ``--full`` and ``--rebuild``, and only one can be given.
 
     Parameters
     ----------
@@ -468,11 +474,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         The parsed arguments.
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--full",
         action="store_true",
         help="Rebuild from every quarter, ignoring the existing base, then check "
         "the result against that base.",
+    )
+    mode.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Rebuild from every quarter like --full, log each difference from "
+        "the existing base, and write the result anyway. Use it when FCA has "
+        "republished an archived quarter.",
     )
     return parser.parse_args(argv)
 
@@ -483,7 +497,8 @@ def main(
     """Run the three-stage pipeline described in the module docstring.
 
     Both the base and the shipped file are written, unless the ``--full``
-    check finds a difference.
+    check finds a difference. ``--rebuild`` logs the difference and writes
+    both files anyway.
 
     Parameters
     ----------
@@ -500,8 +515,9 @@ def main(
     """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = _parse_args(argv)
+    full = args.full or args.rebuild
     previous = _load_base()
-    seed = None if args.full else previous
+    seed = None if full else previous
     start = _FIRST_RELEASE_PERIOD if seed is None else seed.last_period.next()
     # The newest zip in the checked-in archive is the newest quarter to read.
     latest = PackagedArchiveTransport().available_periods()[-1]
@@ -515,9 +531,11 @@ def main(
     else:
         base = _generate_base(seed=seed, periods=periods, read_roster=read_roster)
 
-    if args.full and previous is not None and not _audit(base, previous):
-        _log.error("Review the difference before committing.")
-        return 1
+    if full and previous is not None and not _audit(base, previous):
+        if not args.rebuild:
+            _log.error("Review the difference before committing.")
+            return 1
+        _log.warning("Writing the rebuild over the existing base (--rebuild).")
 
     _write_json(_BASE_PATH, base)
     _write_json(_SHIPPED_PATH, _apply_overrides(base, _load_overrides()))

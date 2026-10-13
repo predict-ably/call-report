@@ -297,6 +297,10 @@ numpydoc_validation_exclude = {
     r"^test_",
     r"\.test_",
     r"\.__init__$",
+    # DOWNLOAD_PAGE_URL and MIRROR_BASE_URL. autodoc hands numpydoc a module
+    # constant's docstring without its closing-quote line, so GL02 always
+    # fails. Each constant is named, so no other object is exempt.
+    r"^call_report\.fca\.catalog\.(DOWNLOAD_PAGE_URL|MIRROR_BASE_URL)$",
 }
 
 # -- Options for sphinx-copybutton extension----------------------------------

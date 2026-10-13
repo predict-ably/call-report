@@ -12,6 +12,7 @@ from call_report.exceptions import PeriodNotAvailableError
 from call_report.fca import catalog
 from call_report.fca.catalog import (
     construct_fca_download_url,
+    construct_fca_mirror_url,
     fca_release_stem,
     parse_fca_release_filename,
 )
@@ -249,3 +250,49 @@ def test_construct_fca_download_url_is_keyword_only() -> None:
     period = ReportingPeriod.from_period_end(value="2026-03-31")
     with pytest.raises(TypeError):
         construct_fca_download_url(period)  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize(
+    ("period_end", "snapshot", "expected_url"),
+    [
+        ("2026-03-31", "latest", "fca-call-report-data/2026March.zip"),
+        ("2014-09-30", "latest", "fca-call-report-data/Sept2014.zip"),
+        ("2026-03-31", "2026-10-12", "fca-data-2026-10-12/2026March.zip"),
+        ("2000-03-31", "2026-10-12-2", "fca-data-2026-10-12-2/Mar2000.zip"),
+    ],
+)
+def test_construct_fca_mirror_url_names_the_release_and_file(
+    period_end: str, snapshot: str, expected_url: str
+) -> None:
+    """The mirror URL is the release tag for the snapshot and FCA's own zip name."""
+    period = ReportingPeriod.from_period_end(value=period_end)
+    url = construct_fca_mirror_url(period=period, snapshot=snapshot)
+    assert url == (
+        "https://github.com/predict-ably/call-report/releases/download/" + expected_url
+    )
+
+
+def test_construct_fca_mirror_url_defaults_to_the_rolling_release() -> None:
+    """Without a snapshot, the URL points at the release holding the current files."""
+    period = ReportingPeriod.from_period_end(value="2026-03-31")
+    assert "/fca-call-report-data/" in construct_fca_mirror_url(period=period)
+
+
+@pytest.mark.parametrize(
+    "snapshot", ["", "yesterday", "2026-13-01", "2026-10-12-0", "2026-10-12-x"]
+)
+def test_construct_fca_mirror_url_rejects_an_invalid_snapshot(snapshot: str) -> None:
+    """A snapshot that is neither "latest" nor a real date raises ValueError."""
+    period = ReportingPeriod.from_period_end(value="2026-03-31")
+    with pytest.raises(ValueError, match="snapshot must be 'latest'"):
+        construct_fca_mirror_url(period=period, snapshot=snapshot)
+
+
+@pytest.mark.parametrize("period_end", ["1999-12-31", "2027-03-31"])
+def test_construct_fca_mirror_url_has_the_same_bounds_as_fca(
+    today: date, period_end: str
+) -> None:
+    """A period no source can hold raises, as it does for FCA's own URL."""
+    period = ReportingPeriod.from_period_end(value=period_end)
+    with pytest.raises(PeriodNotAvailableError, match=period.label):
+        construct_fca_mirror_url(period=period)

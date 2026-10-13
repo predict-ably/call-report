@@ -1,0 +1,208 @@
+name: fca-drift
+
+# Checks every night whether FCA has published a new quarter or replaced an
+# archived one, and whether the GitHub mirror matches data/fca-call-report/.
+# scripts/check_fca_drift.py does the comparison.
+#
+# When anything differs, the run opens an issue labeled fca-drift, or
+# comments on the one already open. When FCA's files differ from the
+# archive, it also opens a data pull request that copies them in and
+# regenerates the shipped metadata. If a drift pull request is already open,
+# it adds a commit to that branch instead, so a maintainer's edits there
+# (registry overrides, for example) are kept.
+#
+# A pull request opened with the workflow's own GITHUB_TOKEN does not start
+# other workflows, so CI would never run on it. The pull request is
+# therefore opened with the FCA_DRIFT_TOKEN repository secret: a
+# fine-grained token, or a GitHub App token, limited to this repository with
+# contents, issues, and pull requests write access. Without the secret, the
+# run still opens the issue and says the pull request could not be opened.
+#
+# The run fails only when the check itself could not finish (FCA refusing
+# the request, or the mirror's manifest unreadable, for example) or the pull
+# request could not be built. A difference alone is reported through the
+# issue.
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fca-drift
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    name: check FCA for new or changed releases
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Name the working files
+        # runner.temp is not available in a job's env, so the paths are set
+        # here.
+        run: |
+          {
+            echo "REPORT=$RUNNER_TEMP/drift.json"
+            echo "SUMMARY=$RUNNER_TEMP/drift.md"
+            echo "ZIPS=$RUNNER_TEMP/fca-zips"
+            echo "PREVIOUS_DATA=$RUNNER_TEMP/previous-data"
+          } >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # The full history, so an open drift branch can be merged with main.
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install the package
+        # The generation scripts read the institution roster with pandas.
+        run: pip install -e ".[pandas]"
+
+      - name: Keep a copy of the shipped data on main
+        run: cp -r src/call_report/fca/data "$PREVIOUS_DATA"
+
+      - name: Check FCA and the mirror
+        id: check
+        run: |
+          set +e
+          python scripts/check_fca_drift.py check \
+            --report "$REPORT" --summary "$SUMMARY" --download-dir "$ZIPS"
+          status=$?
+          set -e
+          {
+            echo "status=$status"
+            echo "files=$(jq '.files | length' "$REPORT")"
+            echo "changed=$(jq '.changed | length' "$REPORT")"
+          } >> "$GITHUB_OUTPUT"
+          cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update the drift issue
+        id: issue
+        if: steps.check.outputs.status != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STATUS: ${{ steps.check.outputs.status }}
+        # A fingerprint of the report, without its timestamp, is hidden in
+        # each comment. The issue gets a new comment only when the findings
+        # change, not every night they stay the same. Exit status 2 means the
+        # check could not finish (FCA refused a request, or the mirror could
+        # not be read), so the issue says that rather than that files differ.
+        run: |
+          if [ "$STATUS" = "2" ]; then
+            title="The FCA drift check could not finish"
+          else
+            title="FCA's call report releases differ from the archive"
+          fi
+          fingerprint=$(jq -S 'del(.checked_at)' "$REPORT" | sha256sum | cut -c1-16)
+          body="$RUNNER_TEMP/issue.md"
+          {
+            echo "<!-- fca-drift-fingerprint: $fingerprint -->"
+            echo "Found by the nightly [fca-drift run]($RUN_URL)."
+            echo
+            cat "$SUMMARY"
+          } > "$body"
+          gh label create fca-drift --color D93F0B \
+            --description "Found by the nightly FCA drift check" --force
+          number=$(gh issue list --label fca-drift --state open --json number \
+            --jq '.[0].number // empty')
+          if [ -z "$number" ]; then
+            url=$(gh issue create --label fca-drift --body-file "$body" \
+              --title "$title")
+            number="${url##*/}"
+          else
+            # An open issue's title follows the latest status, so a night
+            # that could not finish is not filed under "differ", or the
+            # reverse. It changes only when the status does.
+            gh issue edit "$number" --title "$title"
+            if ! gh issue view "$number" --json body,comments \
+                --jq '[.body] + [.comments[].body] | .[]' | grep -q "$fingerprint"; then
+              gh issue comment "$number" --body-file "$body"
+            fi
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the data pull request
+        if: steps.check.outputs.files != '0'
+        env:
+          DRIFT_TOKEN: ${{ secrets.FCA_DRIFT_TOKEN }}
+          ISSUE_TOKEN: ${{ github.token }}
+          ISSUE: ${{ steps.issue.outputs.number }}
+          CHANGED: ${{ steps.check.outputs.changed }}
+        run: |
+          if [ -z "$DRIFT_TOKEN" ]; then
+            GH_TOKEN="$ISSUE_TOKEN" gh issue comment "$ISSUE" --body \
+              "FCA's files differ from the archive, but the data pull request could not be opened because the FCA_DRIFT_TOKEN secret is not set."
+            exit 1
+          fi
+          export GH_TOKEN="$DRIFT_TOKEN"
+          remote="https://x-access-token:${DRIFT_TOKEN}@github.com/${GH_REPO}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+
+          existing=$(gh pr list --label fca-drift --state open --json headRefName \
+            --jq '.[0].headRefName // empty')
+          if [ -n "$existing" ]; then
+            branch="$existing"
+            git fetch "$remote" "$branch"
+            git checkout -B "$branch" FETCH_HEAD
+            if ! git merge --no-edit origin/main; then
+              gh issue comment "$ISSUE" --body \
+                "The drift pull request's branch, $branch, does not merge cleanly with main. Merge main into it by hand."
+              exit 1
+            fi
+          else
+            branch="fca-drift/$(date -u +%F)"
+            git checkout -b "$branch"
+          fi
+
+          python scripts/check_fca_drift.py apply --report "$REPORT" --download-dir "$ZIPS"
+          # git status, not git diff: diff ignores untracked files, so a new
+          # quarter's zip would look like no change and never be committed.
+          if [ -z "$(git status --porcelain -- data/fca-call-report)" ] && [ -n "$existing" ]; then
+            echo "The open drift pull request already holds FCA's files." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # A replaced quarter makes the incremental base out of date, so
+          # both bases are rebuilt from every quarter.
+          rebuild=()
+          if [ "$CHANGED" != "0" ]; then
+            rebuild=(--rebuild)
+          fi
+          python scripts/generate_fca_schedule_metadata.py "${rebuild[@]}"
+          python scripts/generate_fca_institution_registry.py "${rebuild[@]}"
+          python scripts/check_fca_drift.py describe --report "$REPORT" \
+            --issue "$ISSUE" --previous-data "$PREVIOUS_DATA" --body "$RUNNER_TEMP/body.md"
+
+          title="[MNT] Bring the FCA archive up to date with FCA's site (#$ISSUE)"
+          git add data/ src/call_report/fca/data docs/source/changelog.rst
+          git commit -m "$title" -m "The nightly fca-drift check found releases on FCA's download page that differ from data/fca-call-report/. This copies FCA's files in and regenerates the shipped schedule metadata and institution registry."
+          git push "$remote" "HEAD:refs/heads/$branch"
+
+          if [ -n "$existing" ]; then
+            gh pr edit "$branch" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --base main --head "$branch" --title "$title" \
+              --body-file "$RUNNER_TEMP/body.md" \
+              --label fca-drift --label run-exhaustive
+          fi
+
+      - name: Fail when the check could not finish
+        if: steps.check.outputs.status == '2'
+        run: |
+          echo "::error::The FCA drift check could not finish. See the summary."
+          exit 1

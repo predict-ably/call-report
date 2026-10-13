@@ -1,0 +1,162 @@
+name: fca-mirror
+
+# Publishes every FCA release zip in data/fca-call-report/ as assets of this
+# repository's GitHub releases, with manifest.json (each file's SHA-256) and
+# metadata.zip (the shipped schedule metadata and institution registry).
+# call_report.fca.catalog.FCAReleaseCatalog.from_github reads the manifest.
+#
+# Two kinds of release hold the mirror:
+#   fca-call-report-data   the rolling release. It always holds the current
+#                          files.
+#   fca-data-<YYYY-MM-DD>  a snapshot release, cut each time the files
+#                          change and never edited after. A second change on
+#                          the same date gets a "-2" suffix, and so on.
+#
+# This workflow never edits a snapshot release. The repository's "release
+# immutability" setting is what stops anyone else editing one, so it is
+# turned on after the first run. It applies only to releases published after
+# it is on, and it locks a release's assets once published. So:
+#   - gh release create, given assets, creates a draft, uploads them, then
+#     publishes, so each snapshot is complete before it is locked.
+#   - The rolling release is edited on every change, so it must be created
+#     by the first run, before the setting is turned on. If it is ever
+#     deleted, turn the setting off, run this workflow by hand, and turn it
+#     back on.
+#
+# None of these tags matches publish.yml's v<major>.<minor>.<patch> pattern,
+# so none publishes to PyPI. Each release is created with --latest=false, so
+# the package's own release stays the one GitHub shows as latest.
+#
+# Triggers:
+#   push               a push to main that changes the archive or the
+#                      shipped metadata.
+#   workflow_dispatch  run it by hand, for example to publish the mirror the
+#                      first time. A run that finds nothing changed stops
+#                      before publishing anything.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/fca-call-report/**"
+      - "src/call_report/fca/data/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Two runs must never update the rolling release at the same time.
+concurrency:
+  group: fca-mirror
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish the FCA mirror
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ROLLING_TAG: fca-call-report-data
+    steps:
+      - name: Name the working folder
+        # runner.temp is not available in a job's env, so the path is set
+        # here.
+        run: echo "MIRROR_DIR=$RUNNER_TEMP/mirror" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install the package
+        run: pip install -e .
+
+      - name: Fetch the rolling release's current manifest
+        id: previous
+        # Before the first publish there is no rolling release, and every
+        # file counts as new.
+        run: |
+          previous="$RUNNER_TEMP/previous"
+          mkdir -p "$previous"
+          if gh release view "$ROLLING_TAG" > /dev/null 2>&1 \
+            && gh release download "$ROLLING_TAG" --pattern manifest.json --dir "$previous"; then
+            echo "manifest=$previous/manifest.json" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Choose the snapshot name
+        id: snapshot
+        run: |
+          today=$(date -u +%F)
+          snapshot="$today"
+          n=1
+          while gh release view "fca-data-$snapshot" > /dev/null 2>&1; do
+            n=$((n + 1))
+            snapshot="$today-$n"
+          done
+          echo "name=$snapshot" >> "$GITHUB_OUTPUT"
+
+      - name: Build the manifest and metadata bundle
+        env:
+          SNAPSHOT: ${{ steps.snapshot.outputs.name }}
+          PREVIOUS_MANIFEST: ${{ steps.previous.outputs.manifest }}
+        run: |
+          args=(--snapshot "$SNAPSHOT" --out-dir "$MIRROR_DIR")
+          if [ -n "$PREVIOUS_MANIFEST" ]; then
+            args+=(--previous-manifest "$PREVIOUS_MANIFEST")
+          fi
+          python scripts/build_fca_mirror_manifest.py "${args[@]}"
+          echo "changed=$(jq -r .changed "$MIRROR_DIR/changes.json")" >> "$GITHUB_ENV"
+
+      - name: Publish the snapshot release
+        if: env.changed == 'true'
+        env:
+          SNAPSHOT: ${{ steps.snapshot.outputs.name }}
+        run: |
+          gh release create "fca-data-$SNAPSHOT" \
+            data/fca-call-report/*.zip \
+            "$MIRROR_DIR/manifest.json" \
+            "$MIRROR_DIR/metadata.zip" \
+            --target "$GITHUB_SHA" \
+            --title "FCA call report data, $SNAPSHOT" \
+            --notes "Every FCA call report release zip as it stood on $SNAPSHOT, built from $GITHUB_SHA. manifest.json lists each zip's SHA-256, and metadata.zip holds the schedule metadata and institution registry. This release is never changed." \
+            --latest=false
+
+      - name: Bring the rolling release in line
+        if: env.changed == 'true'
+        # The manifest goes up last, so it never lists a file the release
+        # does not hold yet.
+        run: |
+          if ! gh release view "$ROLLING_TAG" > /dev/null 2>&1; then
+            gh release create "$ROLLING_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "FCA call report data" \
+              --notes "Every FCA call report release zip, kept current. manifest.json lists each zip's SHA-256 and names the snapshot release holding the same files. metadata.zip holds the schedule metadata and institution registry." \
+              --latest=false
+          fi
+          jq -r '.upload[] | select(. != "metadata.zip")' "$MIRROR_DIR/changes.json" |
+            while read -r name; do
+              gh release upload "$ROLLING_TAG" "data/fca-call-report/$name" --clobber
+            done
+          jq -r '.remove[]' "$MIRROR_DIR/changes.json" |
+            while read -r name; do
+              gh release delete-asset "$ROLLING_TAG" "$name" --yes
+            done
+          gh release upload "$ROLLING_TAG" "$MIRROR_DIR/metadata.zip" --clobber
+          gh release upload "$ROLLING_TAG" "$MIRROR_DIR/manifest.json" --clobber
+
+      - name: Report
+        env:
+          SNAPSHOT: ${{ steps.snapshot.outputs.name }}
+        run: |
+          if [ "$changed" = "true" ]; then
+            echo "Published snapshot $SNAPSHOT." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The mirror already matches the archive. Nothing was published." >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -16,6 +16,7 @@ from hypothesis import HealthCheck, settings
 
 from call_report.config import config_context, get_config, set_config
 from call_report.core import _http
+from call_report.fca import catalog
 from tests.helpers import ALL_BACKENDS
 from tests.http_server import LocalHTTPServer
 
@@ -166,3 +167,32 @@ def recorded_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     monkeypatch.setattr(_http, "_sleep", sleeps.append)
     monkeypatch.setattr(_http, "_jitter", lambda: 0.0)
     return sleeps
+
+
+@pytest.fixture
+def mirror(http_server: LocalHTTPServer, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point the GitHub mirror at the local server, and return its releases folder.
+
+    A file at ``<returned folder>/<tag>/<name>`` is served as that mirror
+    release's asset, so a test publishes a release by writing files there.
+    """
+    releases = http_server.root / "releases"
+    releases.mkdir()
+    monkeypatch.setattr(catalog, "MIRROR_BASE_URL", http_server.url("releases/"))
+    return releases
+
+
+@pytest.fixture
+def fca_site(http_server: LocalHTTPServer, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point FCA's download page at the local server, and return the site's folder.
+
+    The page itself is served from ``bank-oversight/call-report-data-for-download``
+    under the returned folder, and its relative zip links resolve to the
+    same server.
+    """
+    monkeypatch.setattr(
+        catalog,
+        "DOWNLOAD_PAGE_URL",
+        http_server.url("bank-oversight/call-report-data-for-download"),
+    )
+    return http_server.root

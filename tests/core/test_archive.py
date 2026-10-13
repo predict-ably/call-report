@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from call_report.core._archive import extract_zip, sha256_of
+from call_report.core._archive import extract_zip, sha256_of, sha256_of_bytes
 from call_report.exceptions import CallReportError, ZipArchiveUnpackingError
 
 
@@ -170,3 +170,11 @@ def test_the_archive_module_does_not_import_the_http_module() -> None:
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
     )
     assert result.stdout.strip() == "False"
+
+
+def test_sha256_of_bytes_matches_sha256_of_a_file(tmp_path: Path) -> None:
+    """The bytes digest equals the file digest of a file holding those bytes."""
+    data = b"call report" * 1000
+    path = tmp_path / "data.bin"
+    path.write_bytes(data)
+    assert sha256_of_bytes(data) == sha256_of(path)

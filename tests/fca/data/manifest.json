@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "snapshot": "2026-10-12",
+  "snapshots": ["2026-08-31", "2026-10-12"],
+  "releases": [
+    {
+      "period": "2000-03-31",
+      "file": "Mar2000.zip",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "size": 101,
+      "generated": null,
+      "source_url": "https://www.fca.gov/template-fca/download/CallReportData/Mar2000.zip"
+    },
+    {
+      "period": "2014-09-30",
+      "file": "Sept2014.zip",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "size": 102,
+      "generated": null,
+      "source_url": "https://www.fca.gov/template-fca/download/CallReportData/Sept2014.zip"
+    },
+    {
+      "period": "2026-06-30",
+      "file": "2026June.zip",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "size": 103,
+      "generated": "2026-08-04",
+      "source_url": "https://www.fca.gov/template-fca/bank/2026June.zip"
+    }
+  ],
+  "metadata": {
+    "file": "metadata.zip",
+    "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+    "size": 104,
+    "through": "2026-06-30",
+    "schema_version": 1
+  }
+}

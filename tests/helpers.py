@@ -20,6 +20,7 @@ import functools
 import importlib.util
 import math
 import sys
+import zipfile
 from collections.abc import Iterable
 from pathlib import Path
 from types import ModuleType
@@ -91,6 +92,58 @@ def load_institution_registry_script() -> ModuleType:
         The executed ``generate_fca_institution_registry`` script.
     """
     return _load_script("generate_fca_institution_registry")
+
+
+@functools.cache
+def load_mirror_manifest_script() -> ModuleType:
+    """Load the GitHub mirror manifest script as a module.
+
+    Cached for the same reason as `load_generation_script`.
+
+    Returns
+    -------
+    types.ModuleType
+        The executed ``build_fca_mirror_manifest`` script.
+    """
+    return _load_script("build_fca_mirror_manifest")
+
+
+@functools.cache
+def load_drift_script() -> ModuleType:
+    """Load the FCA drift check script as a module.
+
+    Cached for the same reason as `load_generation_script`.
+
+    Returns
+    -------
+    types.ModuleType
+        The executed ``check_fca_drift`` script.
+    """
+    return _load_script("check_fca_drift")
+
+
+def write_release_zip(path: Path, members: dict[str, str] | None = None) -> Path:
+    """Write a small release zip, by default holding one layout and one data file.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        The zip to write. Its name decides the quarter it stands for.
+    members : dict[str, str], optional
+        The files to put in it, by name. Defaults to a ``D_RCB.TXT`` layout
+        and a matching modern data file.
+
+    Returns
+    -------
+    pathlib.Path
+        `path`.
+    """
+    if members is None:
+        members = {"D_RCB.TXT": "layout\n", "RCB_Q202603_G20260507.TXT": "1,2\n"}
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, text in members.items():
+            archive.writestr(name, text)
+    return path
 
 
 ALL_BACKENDS = ("pandas", "polars", "pyarrow")

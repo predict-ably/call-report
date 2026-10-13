@@ -43,6 +43,13 @@ reproduce the incrementally-maintained base exactly)::
 
     python scripts/generate_fca_schedule_metadata.py --full
 
+Rebuild everything from scratch and write the result even where it differs
+from the previous base. Use this when FCA has republished an archived
+quarter, so the previous base is out of date. Each difference is logged for
+review::
+
+    python scripts/generate_fca_schedule_metadata.py --rebuild
+
 Restrict processing to one or more schedules (skips the full-set audit)::
 
     python scripts/generate_fca_schedule_metadata.py --schedule RCB
@@ -543,13 +550,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         The parsed arguments.
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--full",
         action="store_true",
         help="Rebuild every period from scratch (ignoring any existing base), then "
         "audit the result against the previously-existing base. Ignored when "
         "--schedule restricts processing, since a partial rebuild can't be "
         "compared against the full previous base.",
+    )
+    mode.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Rebuild every period from scratch like --full, log each difference "
+        "from the previous base, and write the result anyway. Use it when FCA "
+        "has republished an archived quarter.",
     )
     parser.add_argument(
         "--schedule",
@@ -581,9 +596,10 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = _parse_args(argv)
     roots_filter = frozenset(args.schedules) if args.schedules else None
+    full = args.full or args.rebuild
 
     previous_bases = _load_existing_bases()
-    if args.full:
+    if full:
         seed: dict[str, FileMetadata] = {}
         resume_period = _FIRST_RELEASE_PERIOD
     else:
@@ -598,11 +614,14 @@ def main(argv: list[str] | None = None) -> int:
         resume_period=resume_period, roots_filter=roots_filter, seed=seed
     )
 
-    if args.full and roots_filter is None and not _audit(bases, previous_bases):
-        _log.error(
-            "Full rebuild drifted from the existing base -- review before committing."
-        )
-        return 1
+    if full and roots_filter is None and not _audit(bases, previous_bases):
+        if not args.rebuild:
+            _log.error(
+                "Full rebuild drifted from the existing base. Review it before "
+                "committing."
+            )
+            return 1
+        _log.warning("Writing the rebuild over the existing base (--rebuild).")
 
     processed_roots = frozenset(bases)
     if roots_filter is None and processed_roots != _EXPECTED_ROOTS:

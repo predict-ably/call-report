@@ -13,6 +13,7 @@ from call_report.exceptions import (
     InvalidPeriodError,
     LayoutParseError,
     PeriodNotAvailableError,
+    ReleaseCatalogError,
     ReshapeError,
     ScheduleNotFoundError,
     SchemaError,
@@ -33,6 +34,7 @@ from call_report.exceptions import (
         InstitutionError,
         ReshapeError,
         ZipArchiveUnpackingError,
+        ReleaseCatalogError,
     ],
 )
 def test_all_errors_are_rooted_at_call_report_error(
@@ -53,3 +55,13 @@ def test_insecure_connection_warning_is_a_user_warning() -> None:
     """InsecureConnectionWarning is shown by default and can be filtered alone."""
     assert issubclass(InsecureConnectionWarning, UserWarning)
     assert not issubclass(InsecureConnectionWarning, CallReportError)
+
+
+def test_release_catalog_error_is_a_download_error_and_a_value_error() -> None:
+    """Text that is not a list of releases is a failed download and bad input.
+
+    Code that catches `DownloadError` around a download keeps working, and
+    code that expects `ValueError` for bad input text gets one.
+    """
+    assert issubclass(ReleaseCatalogError, DownloadError)
+    assert issubclass(ReleaseCatalogError, ValueError)
