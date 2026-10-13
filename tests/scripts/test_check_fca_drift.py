@@ -244,13 +244,19 @@ def test_a_mirror_out_of_step_is_drift(
     }
 
 
-def test_a_mirror_with_no_manifest_is_drift(
+def test_a_mirror_that_cannot_be_read_is_an_error(
     archive: Path, tmp_path: Path, fca_site: Path, mirror: Path
 ) -> None:
-    """Before the mirror is first published, the check says so."""
+    """A mirror whose manifest cannot be read is an error, not drift.
+
+    Nothing is known to differ, so a brief GitHub outage must not report
+    that FCA's releases differ from the archive.
+    """
     _publish_fca_copy(fca_site, archive)
     report = _check(archive, tmp_path)
-    assert report.status == "drift"
+    assert report.status == "error"
+    assert report.exit_code == drift.EXIT_ERROR
+    assert report.errors == []
     assert report.mirror["status"] == "unavailable"
     assert "404" in report.mirror["error"]
 
@@ -260,6 +266,7 @@ def test_a_report_round_trips_through_json(
 ) -> None:
     """The report the check writes is the report apply and describe read."""
     _publish_fca_copy(fca_site, archive)
+    _publish_manifest(mirror, archive)
     _zip(fca_site / _MODERN / "2026June.zip")
     _publish_page(fca_site, [f"{_MODERN.as_posix()}/2026June.zip"])
     report = _check(archive, tmp_path)
@@ -523,12 +530,39 @@ def test_update_changelog_leaves_another_issues_entry(tmp_path: Path) -> None:
     assert text.index(":issue:`140`") < text.index(":issue:`130`")
 
 
-def test_update_changelog_needs_an_unreleased_heading(tmp_path: Path) -> None:
-    """A changelog with nowhere to put the entry raises ValueError."""
+def test_update_changelog_adds_an_unreleased_section_before_a_release(
+    tmp_path: Path,
+) -> None:
+    """Right after a release there is no Unreleased section, so one is added.
+
+    Without this, the first drift pull request after a release would fail.
+    """
     path = tmp_path / "changelog.rst"
-    path.write_text("Changelog\n=========\n")
-    with pytest.raises(ValueError, match="Unreleased"):
-        drift.update_changelog(path, "- x\n", issue=140)
+    path.write_text(
+        "Changelog\n=========\n\n.. _changelog_0.2.0:\n\n0.2.0\n=====\n\n- Old.\n"
+    )
+    drift.update_changelog(path, "- New (:issue:`140`).\n", issue=140)
+    assert path.read_text() == (
+        "Changelog\n=========\n\n"
+        ".. _changelog_unreleased:\n\nUnreleased\n==========\n\n"
+        "- New (:issue:`140`).\n\n"
+        ".. _changelog_0.2.0:\n\n0.2.0\n=====\n\n- Old.\n"
+    )
+
+
+@pytest.mark.parametrize("text", ["Changelog\n=========\n", "Changelog\n=========\n\n"])
+def test_update_changelog_adds_an_unreleased_section_at_the_end(
+    tmp_path: Path, text: str
+) -> None:
+    """A changelog with no release yet gets the section at its end."""
+    path = tmp_path / "changelog.rst"
+    path.write_text(text)
+    drift.update_changelog(path, "- New (:issue:`140`).\n", issue=140)
+    assert path.read_text() == (
+        "Changelog\n=========\n\n"
+        ".. _changelog_unreleased:\n\nUnreleased\n==========\n\n"
+        "- New (:issue:`140`).\n\n"
+    )
 
 
 def _data_dir(folder: Path, registry: FCAInstitutionRegistry, schedule: str) -> Path:
@@ -614,6 +648,9 @@ def test_main_check_without_a_summary_file(
 ) -> None:
     """The summary file is optional, and a drift exits 1."""
     _publish_fca_copy(fca_site, archive)
+    _publish_manifest(mirror, archive)
+    _zip(fca_site / _MODERN / "2026June.zip")
+    _publish_page(fca_site, [f"{_MODERN.as_posix()}/2026June.zip"])
     status = drift.main(
         [
             "check",
@@ -691,3 +728,89 @@ def test_main_describe_writes_the_body(tmp_path: Path) -> None:
     )
     assert status == drift.EXIT_CLEAN
     assert "- 2025Q4 (`2025December.zip`)" in body.read_text()
+
+
+def test_main_check_that_fails_still_writes_a_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unexpected failure writes a report holding it, and exits 2.
+
+    An uncaught exception would exit 1, which the workflow reads as drift,
+    and would leave no report to open the issue from.
+    """
+
+    def fail(**_: Any) -> Any:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(drift, "check", fail)
+    report = tmp_path / "drift.json"
+    argv = ["check", "--report", str(report), "--download-dir", str(tmp_path)]
+    with caplog.at_level(logging.ERROR):
+        assert drift.main(argv) == drift.EXIT_ERROR
+    written = json.loads(report.read_text())
+    assert written["status"] == "error"
+    assert "disk full" in written["errors"][0]
+    assert "The check failed." in caplog.text
+
+
+def test_main_describe_failure_exits_2(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A describe that raises is logged and exits 2, not 1."""
+    report = tmp_path / "drift.json"
+    report.write_text(drift.DriftReport(new=["2026-09-30"]).to_json())
+    argv = [
+        "describe",
+        "--report",
+        str(report),
+        "--issue",
+        "140",
+        "--previous-data",
+        str(tmp_path / "missing"),
+        "--body",
+        str(tmp_path / "body.md"),
+    ]
+    with caplog.at_level(logging.ERROR):
+        assert drift.main(argv) == drift.EXIT_ERROR
+    assert "The describe command failed." in caplog.text
+    assert not (tmp_path / "body.md").exists()
+
+
+def test_apply_leaves_no_partial_file_when_a_copy_fails(
+    archive: Path,
+    tmp_path: Path,
+    fca_site: Path,
+    mirror: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed copy removes its temporary file and raises the error."""
+    report = _drifted_report(archive, tmp_path, fca_site)
+
+    def fail(source: Path, target: Path) -> None:
+        Path(target).write_bytes(b"partial")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(drift.shutil, "copyfile", fail)
+    with pytest.raises(OSError, match="disk full"):
+        drift.apply(report, download_dir=tmp_path / "downloads", archive_dir=archive)
+    assert list(archive.glob("*.part")) == []
+
+
+@pytest.mark.parametrize(
+    ("command", "text"),
+    [
+        ("check", "The JSON report to write."),
+        ("apply", "The folder the check saved the zips to."),
+        ("describe", "The drift issue the PR closes."),
+    ],
+)
+def test_every_command_documents_its_options(
+    command: str, text: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Each command's --help describes its options."""
+    with pytest.raises(SystemExit) as caught:
+        drift._parse_args([command, "--help"])
+    assert caught.value.code == 0
+    assert text in " ".join(capsys.readouterr().out.split())

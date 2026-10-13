@@ -174,8 +174,8 @@ exclude = [
     "^test_",
     "\\.test_",
     "\\.__init__$",
-    # Module constants. See numpydoc_validation_exclude in docs/source/conf.py.
-    "\\.[A-Z][A-Z0-9_]*$",
+    # Two module constants. See numpydoc_validation_exclude in docs/source/conf.py.
+    "^call_report\\.fca\\.catalog\\.(DOWNLOAD_PAGE_URL|MIRROR_BASE_URL)$",
 ]
 
 [tool.doc8]

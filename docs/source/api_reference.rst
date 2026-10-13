@@ -105,6 +105,7 @@ The exception hierarchy shared across sources.
    call_report.exceptions.LayoutParseError
    call_report.exceptions.InstitutionError
    call_report.exceptions.DownloadError
+   call_report.exceptions.ReleaseCatalogError
    call_report.exceptions.ZipArchiveUnpackingError
    call_report.exceptions.ReshapeError
    call_report.exceptions.InsecureConnectionWarning

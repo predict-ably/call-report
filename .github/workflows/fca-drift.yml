@@ -19,8 +19,9 @@ name: fca-drift
 # run still opens the issue and says the pull request could not be opened.
 #
 # The run fails only when the check itself could not finish (FCA refusing
-# the request, for example) or the pull request could not be built. A
-# difference alone is reported through the issue.
+# the request, or the mirror's manifest unreadable, for example) or the pull
+# request could not be built. A difference alone is reported through the
+# issue.
 on:
   schedule:
     - cron: "17 7 * * *"
@@ -94,10 +95,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STATUS: ${{ steps.check.outputs.status }}
         # A fingerprint of the report, without its timestamp, is hidden in
         # each comment. The issue gets a new comment only when the findings
-        # change, not every night they stay the same.
+        # change, not every night they stay the same. Exit status 2 means the
+        # check could not finish (FCA refused a request, or the mirror could
+        # not be read), so the issue says that rather than that files differ.
         run: |
+          if [ "$STATUS" = "2" ]; then
+            title="The FCA drift check could not finish"
+          else
+            title="FCA's call report releases differ from the archive"
+          fi
           fingerprint=$(jq -S 'del(.checked_at)' "$REPORT" | sha256sum | cut -c1-16)
           body="$RUNNER_TEMP/issue.md"
           {
@@ -107,12 +116,12 @@ jobs:
             cat "$SUMMARY"
           } > "$body"
           gh label create fca-drift --color D93F0B \
-            --description "FCA's call report releases differ from the archive" --force
+            --description "Found by the nightly FCA drift check" --force
           number=$(gh issue list --label fca-drift --state open --json number \
             --jq '.[0].number // empty')
           if [ -z "$number" ]; then
             url=$(gh issue create --label fca-drift --body-file "$body" \
-              --title "FCA's call report releases differ from the archive")
+              --title "$title")
             number="${url##*/}"
           elif ! gh issue view "$number" --json body,comments \
               --jq '[.body] + [.comments[].body] | .[]' | grep -q "$fingerprint"; then
@@ -155,7 +164,9 @@ jobs:
           fi
 
           python scripts/check_fca_drift.py apply --report "$REPORT" --download-dir "$ZIPS"
-          if git diff --quiet -- data/fca-call-report && [ -n "$existing" ]; then
+          # git status, not git diff: diff ignores untracked files, so a new
+          # quarter's zip would look like no change and never be committed.
+          if [ -z "$(git status --porcelain -- data/fca-call-report)" ] && [ -n "$existing" ]; then
             echo "The open drift pull request already holds FCA's files." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi

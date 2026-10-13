@@ -13,7 +13,11 @@ from typing import Any
 import pytest
 
 from call_report.core import ReportingPeriod
-from call_report.exceptions import DownloadError, PeriodNotAvailableError
+from call_report.exceptions import (
+    DownloadError,
+    PeriodNotAvailableError,
+    ReleaseCatalogError,
+)
 from call_report.fca import catalog
 from call_report.fca.catalog import FCAReleaseCatalog
 from tests.helpers import archived_periods
@@ -89,6 +93,25 @@ def test_catalog_rejects_a_checksum_with_no_url() -> None:
         FCAReleaseCatalog(urls={MAR2000: "a"}, sha256={JUN2026: "3"})
 
 
+def test_catalog_cannot_be_hashed() -> None:
+    """hash() raises at once, since a catalog holds mappings.
+
+    A frozen dataclass invites use as a set member or a cache key. Without
+    an explicit opt out, the generated __hash__ would fail later, on the
+    mappings, with a message about a dict.
+    """
+    found = FCAReleaseCatalog(urls={MAR2000: "a"})
+    with pytest.raises(TypeError, match="FCAReleaseCatalog"):
+        hash(found)
+    assert found == FCAReleaseCatalog(urls={MAR2000: "a"})
+
+
+def test_bad_text_is_also_a_value_error() -> None:
+    """A caller that expects ValueError for bad input text gets one."""
+    with pytest.raises(ValueError, match="not valid JSON"):
+        FCAReleaseCatalog.from_manifest_json("{not json")
+
+
 def test_catalog_repr_summarizes_it() -> None:
     """The repr gives the size, the span, and the snapshot when there is one."""
     plain = FCAReleaseCatalog(urls={MAR2000: "a", JUN2026: "c"})
@@ -134,6 +157,7 @@ def test_from_manifest_json_reads_urls_checksums_and_snapshot() -> None:
         ("{not json", "not valid JSON"),
         ("[]", "not a JSON object"),
         (json.dumps(_manifest(schema_version="1")), "unknown schema_version"),
+        (json.dumps(_manifest(schema_version=True)), "unknown schema_version"),
         (json.dumps(_manifest(snapshot="latest")), "invalid snapshot"),
         (json.dumps(_manifest(snapshot=20261012)), "invalid snapshot"),
         (json.dumps(_manifest(releases=[])), "lists no releases"),
@@ -141,6 +165,7 @@ def test_from_manifest_json_reads_urls_checksums_and_snapshot() -> None:
         (json.dumps(_manifest(releases=["2026June.zip"])), "not a JSON object"),
         (_with_release(period=None), "missing 'period' in a release"),
         (_with_release(period="2000-04-30"), "invalid period"),
+        (_with_release(period=20000331), "invalid period"),
         (_with_release(file=None), "missing 'file' in the 2000Q1 release"),
         (_with_release(file="2000March.zip"), "names '2000March.zip' for 2000Q1"),
         (_with_release(sha256=None), "missing 'sha256' in the 2000Q1 release"),
@@ -150,8 +175,8 @@ def test_from_manifest_json_reads_urls_checksums_and_snapshot() -> None:
     ],
 )
 def test_from_manifest_json_rejects_a_bad_manifest(text: str, message: str) -> None:
-    """A manifest the package cannot trust raises DownloadError saying why."""
-    with pytest.raises(DownloadError, match=message):
+    """A manifest the package cannot trust raises ReleaseCatalogError saying why."""
+    with pytest.raises(ReleaseCatalogError, match=message):
         FCAReleaseCatalog.from_manifest_json(text)
 
 
@@ -160,14 +185,14 @@ def test_from_manifest_json_names_a_missing_top_level_key(key: str) -> None:
     """A manifest without one of its required keys names the key."""
     manifest = _manifest()
     del manifest[key]
-    with pytest.raises(DownloadError, match=f"missing '{key}' in the manifest"):
+    with pytest.raises(ReleaseCatalogError, match=f"missing '{key}' in the manifest"):
         FCAReleaseCatalog.from_manifest_json(json.dumps(manifest))
 
 
 def test_from_manifest_json_asks_for_an_upgrade_for_a_newer_format() -> None:
     """A manifest in a newer format says to upgrade call-report."""
     text = json.dumps(_manifest(schema_version=2))
-    with pytest.raises(DownloadError, match="Upgrade call-report"):
+    with pytest.raises(ReleaseCatalogError, match="Upgrade call-report"):
         FCAReleaseCatalog.from_manifest_json(text)
 
 
@@ -214,23 +239,27 @@ def test_from_github_reads_a_pinned_snapshot(
 def test_from_github_rejects_a_manifest_for_another_snapshot(mirror: Path) -> None:
     """A snapshot release whose manifest names another snapshot is not trusted."""
     _publish(mirror, "fca-data-2026-08-31", _MANIFEST)
-    with pytest.raises(DownloadError, match="describes snapshot 2026-10-12"):
+    with pytest.raises(ReleaseCatalogError, match="describes snapshot 2026-10-12"):
         FCAReleaseCatalog.from_github(snapshot="2026-08-31")
 
 
 def test_from_github_rejects_a_manifest_that_is_not_utf8(mirror: Path) -> None:
-    """Bytes that are not UTF-8 text raise DownloadError naming the URL."""
+    """Bytes that are not UTF-8 text raise ReleaseCatalogError naming the URL."""
     folder = mirror / "fca-call-report-data"
     folder.mkdir()
     (folder / "manifest.json").write_bytes(b"\xff\xfe{")
-    with pytest.raises(DownloadError, match="not UTF-8 text"):
+    with pytest.raises(ReleaseCatalogError, match="not UTF-8 text"):
         FCAReleaseCatalog.from_github()
 
 
 def test_from_github_raises_when_the_mirror_has_no_manifest(mirror: Path) -> None:
-    """A missing manifest is a DownloadError, never an empty catalog."""
-    with pytest.raises(DownloadError, match="404"):
+    """A missing manifest is a DownloadError, never an empty catalog.
+
+    It is not a ReleaseCatalogError, since nothing was read.
+    """
+    with pytest.raises(DownloadError, match="404") as caught:
         FCAReleaseCatalog.from_github()
+    assert not isinstance(caught.value, ReleaseCatalogError)
 
 
 def test_from_github_rejects_an_invalid_snapshot() -> None:
@@ -312,14 +341,14 @@ def test_from_html_ignores_a_query_string_and_letter_case() -> None:
 def test_from_html_rejects_two_files_for_one_quarter() -> None:
     """Two different links for one quarter mean the page layout has changed."""
     page = '<a href="/a/2026June.zip">June</a><a href="/b/2026June.zip">June</a>'
-    with pytest.raises(DownloadError, match="two files for 2026Q2"):
+    with pytest.raises(ReleaseCatalogError, match="two files for 2026Q2"):
         FCAReleaseCatalog.from_html(page)
 
 
 def test_from_html_rejects_a_page_with_no_release_links() -> None:
     """A page with no release zip raises rather than returning an empty catalog."""
     page = '<a href="instructions.zip">Instructions</a>'
-    with pytest.raises(DownloadError, match="layout may have changed"):
+    with pytest.raises(ReleaseCatalogError, match="layout may have changed"):
         FCAReleaseCatalog.from_html(page)
 
 

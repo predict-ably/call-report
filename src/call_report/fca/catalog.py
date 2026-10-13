@@ -22,9 +22,9 @@ from urllib.parse import unquote, urljoin, urlsplit
 from call_report.core import Quarter, ReportingPeriod
 from call_report.core._http import HttpClient, fetch_bytes
 from call_report.exceptions import (
-    DownloadError,
     InvalidPeriodError,
     PeriodNotAvailableError,
+    ReleaseCatalogError,
 )
 
 DOWNLOAD_PAGE_URL = "https://www.fca.gov/bank-oversight/call-report-data-for-download"
@@ -273,7 +273,7 @@ def construct_fca_mirror_url(
     snapshot : str, default "latest"
         Which mirror snapshot to download from. ``"latest"`` is the current
         files. A date such as ``"2026-10-12"`` is the mirror as it stood on
-        that date. Only ``source="github"`` has snapshots.
+        that date. FCA's own site keeps no snapshots.
 
     Returns
     -------
@@ -498,6 +498,11 @@ class FCAReleaseCatalog:
     snapshot: str | None = None
     unmatched: tuple[str, ...] = ()
 
+    # A catalog holds mappings, which cannot be hashed. Saying so here makes
+    # hash() fail at once with a clear message, rather than from the
+    # __hash__ a frozen dataclass would otherwise generate.
+    __hash__ = None  # type: ignore[assignment]
+
     def __post_init__(self) -> None:
         """Check the catalog and store read-only, sorted copies of its mappings.
 
@@ -568,7 +573,7 @@ class FCAReleaseCatalog:
 
         Raises
         ------
-        DownloadError
+        ReleaseCatalogError
             If the text is not a manifest this version of the package can
             read. A manifest in a newer format asks for an upgrade.
 
@@ -608,7 +613,7 @@ class FCAReleaseCatalog:
         for entry in manifest["releases"]:
             period, name, checksum = _parse_manifest_release(entry)
             if period in urls:
-                raise DownloadError(
+                raise ReleaseCatalogError(
                     f"The mirror's manifest lists {period.label} more than once."
                 )
             urls[period] = _mirror_asset_url(name, snapshot)
@@ -635,7 +640,7 @@ class FCAReleaseCatalog:
         snapshot : str, default "latest"
             Which mirror snapshot to download from. ``"latest"`` is the current
             files. A date such as ``"2026-10-12"`` is the mirror as it stood on
-            that date. Only ``source="github"`` has snapshots.
+            that date. FCA's own site keeps no snapshots.
         timeout : float, default 60.0
             Seconds to wait for the server before a request fails.
         max_retries : int, default 3
@@ -653,8 +658,10 @@ class FCAReleaseCatalog:
         Raises
         ------
         DownloadError
-            If the manifest cannot be downloaded or read, or it describes a
-            different snapshot from the one asked for.
+            If the manifest cannot be downloaded.
+        ReleaseCatalogError
+            If the manifest cannot be read, or it describes a different
+            snapshot from the one asked for. It is a `DownloadError` too.
         ValueError
             If `snapshot` is neither ``"latest"`` nor a snapshot date.
 
@@ -676,12 +683,12 @@ class FCAReleaseCatalog:
         try:
             text = body.decode("utf-8")
         except UnicodeDecodeError as error:
-            raise DownloadError(
+            raise ReleaseCatalogError(
                 f"The mirror's manifest at {url} is not UTF-8 text."
             ) from error
         catalog = cls.from_manifest_json(text)
         if snapshot != "latest" and catalog.snapshot != snapshot:
-            raise DownloadError(
+            raise ReleaseCatalogError(
                 f"The manifest at {url} describes snapshot {catalog.snapshot}, "
                 f"not {snapshot}."
             )
@@ -709,7 +716,7 @@ class FCAReleaseCatalog:
 
         Raises
         ------
-        DownloadError
+        ReleaseCatalogError
             If the page has no link to a release zip, or links two different
             URLs for one period. Either means the page layout may have
             changed.
@@ -750,12 +757,12 @@ class FCAReleaseCatalog:
                     unmatched.append(url)
                 continue
             if urls.setdefault(period, url) != url:
-                raise DownloadError(
+                raise ReleaseCatalogError(
                     f"FCA's download page links two files for {period.label}: "
                     f"{urls[period]} and {url}. The page layout may have changed."
                 )
         if not urls:
-            raise DownloadError(
+            raise ReleaseCatalogError(
                 f"FCA's download page at {base_url} has no link to a release zip. "
                 "The page layout may have changed."
             )
@@ -793,8 +800,10 @@ class FCAReleaseCatalog:
         Raises
         ------
         DownloadError
-            If the page cannot be downloaded, or it has no link to a release
-            zip.
+            If the page cannot be downloaded.
+        ReleaseCatalogError
+            If the page has no link to a release zip, or links two different
+            URLs for one period. It is a `DownloadError` too.
 
         See Also
         --------
@@ -828,7 +837,8 @@ class FCAReleaseCatalog:
         Examples
         --------
         >>> catalog = FCAReleaseCatalog.from_html(
-        ...     '<a href="2026June.zip"></a><a href="2026March.zip"></a>'
+        ...     '<a href="/template-fca/bank/2026June.zip">June 2026</a>'
+        ...     '<a href="/template-fca/bank/2026March.zip">March 2026</a>'
         ... )
         >>> [period.label for period in catalog.periods]
         ['2026Q1', '2026Q2']
@@ -849,7 +859,9 @@ class FCAReleaseCatalog:
         Examples
         --------
         >>> catalog = FCAReleaseCatalog.from_html(
-        ...     '<a href="Dec2014.zip"></a><a href="2015March.zip"></a>'
+        ...     '<a href="/template-fca/download/CallReportData/Dec2014.zip">'
+        ...     "December 2014</a>"
+        ...     '<a href="/template-fca/bank/2015March.zip">March 2015</a>'
         ... )
         >>> catalog.earliest.label
         '2014Q4'
@@ -871,7 +883,9 @@ class FCAReleaseCatalog:
         Examples
         --------
         >>> catalog = FCAReleaseCatalog.from_html(
-        ...     '<a href="Dec2014.zip"></a><a href="2015March.zip"></a>'
+        ...     '<a href="/template-fca/download/CallReportData/Dec2014.zip">'
+        ...     "December 2014</a>"
+        ...     '<a href="/template-fca/bank/2015March.zip">March 2015</a>'
         ... )
         >>> catalog.latest.label
         '2015Q1'
@@ -901,9 +915,11 @@ class FCAReleaseCatalog:
 
         Examples
         --------
-        >>> catalog = FCAReleaseCatalog.from_html('<a href="2026March.zip"></a>')
+        >>> catalog = FCAReleaseCatalog.from_html(
+        ...     '<a href="/template-fca/bank/2026March.zip">March 2026</a>'
+        ... )
         >>> catalog.url_for(period=ReportingPeriod.from_period_end(value="2026-03-31"))
-        'https://www.fca.gov/bank-oversight/2026March.zip'
+        'https://www.fca.gov/template-fca/bank/2026March.zip'
         >>> catalog.url_for(period=ReportingPeriod.from_period_end(value="2026-06-30"))
         Traceback (most recent call last):
         ...
@@ -937,36 +953,39 @@ def _parse_manifest(text: str) -> dict[str, Any]:
 
     Raises
     ------
-    DownloadError
+    ReleaseCatalogError
         If the text is not a manifest this version of the package can read.
     """
     try:
         manifest = json.loads(text)
     except json.JSONDecodeError as error:
-        raise DownloadError(
+        raise ReleaseCatalogError(
             f"The mirror's manifest is not valid JSON: {error}."
         ) from error
     if not isinstance(manifest, dict):
-        raise DownloadError("The mirror's manifest is not a JSON object.")
+        raise ReleaseCatalogError("The mirror's manifest is not a JSON object.")
     version = _manifest_value(manifest, "schema_version", "the manifest")
-    if isinstance(version, int) and version > _MANIFEST_SCHEMA_VERSION:
-        raise DownloadError(
+    # bool is a subclass of int, and True == 1, so the type is checked
+    # exactly. Otherwise "schema_version": true would pass.
+    is_int = type(version) is int
+    if is_int and version > _MANIFEST_SCHEMA_VERSION:
+        raise ReleaseCatalogError(
             f"The mirror's manifest uses format version {version}, which is newer "
             f"than this version of call-report reads ({_MANIFEST_SCHEMA_VERSION}). "
             "Upgrade call-report to read it."
         )
-    if version != _MANIFEST_SCHEMA_VERSION:
-        raise DownloadError(
+    if not is_int or version != _MANIFEST_SCHEMA_VERSION:
+        raise ReleaseCatalogError(
             f"The mirror's manifest has an unknown schema_version, {version!r}."
         )
     snapshot = _manifest_value(manifest, "snapshot", "the manifest")
     if not _is_snapshot(snapshot):
-        raise DownloadError(
+        raise ReleaseCatalogError(
             f"The mirror's manifest names an invalid snapshot, {snapshot!r}."
         )
     releases = _manifest_value(manifest, "releases", "the manifest")
     if not isinstance(releases, list) or not releases:
-        raise DownloadError("The mirror's manifest lists no releases.")
+        raise ReleaseCatalogError("The mirror's manifest lists no releases.")
     return manifest
 
 
@@ -987,30 +1006,34 @@ def _parse_manifest_release(entry: object) -> tuple[ReportingPeriod, str, str]:
 
     Raises
     ------
-    DownloadError
+    ReleaseCatalogError
         If the entry is not an object, misses a key, names an invalid
         period, a filename that is not that period's, or a checksum that is
         not lower case SHA-256 hex.
     """
     if not isinstance(entry, dict):
-        raise DownloadError("A release in the mirror's manifest is not a JSON object.")
+        raise ReleaseCatalogError(
+            "A release in the mirror's manifest is not a JSON object."
+        )
     value = _manifest_value(entry, "period", "a release")
     try:
-        period = ReportingPeriod.from_period_end(value=str(value))
+        if not isinstance(value, str):
+            raise InvalidPeriodError(f"{value!r} is not a date string.")
+        period = ReportingPeriod.from_period_end(value=value)
     except InvalidPeriodError as error:
-        raise DownloadError(
+        raise ReleaseCatalogError(
             f"A release in the mirror's manifest has an invalid period, {value!r}."
         ) from error
     name = _manifest_value(entry, "file", f"the {period.label} release")
     expected = f"{fca_release_stem(period=period)}.zip"
     if name != expected:
-        raise DownloadError(
+        raise ReleaseCatalogError(
             f"The mirror's manifest names {name!r} for {period.label}, not "
             f"{expected!r}."
         )
     checksum = _manifest_value(entry, "sha256", f"the {period.label} release")
     if not isinstance(checksum, str) or _SHA256.fullmatch(checksum) is None:
-        raise DownloadError(
+        raise ReleaseCatalogError(
             f"The mirror's manifest has an invalid sha256 for {period.label}."
         )
     return period, expected, checksum
@@ -1037,12 +1060,12 @@ def _manifest_value(mapping: Mapping[str, Any], key: str, where: str) -> Any:
 
     Raises
     ------
-    DownloadError
+    ReleaseCatalogError
         If `key` is missing.
     """
     try:
         return mapping[key]
     except KeyError:
-        raise DownloadError(
+        raise ReleaseCatalogError(
             f"The mirror's manifest is missing {key!r} in {where}."
         ) from None

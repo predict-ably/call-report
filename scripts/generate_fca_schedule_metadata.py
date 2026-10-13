@@ -617,7 +617,7 @@ def main(argv: list[str] | None = None) -> int:
     if full and roots_filter is None and not _audit(bases, previous_bases):
         if not args.rebuild:
             _log.error(
-                "Full rebuild drifted from the existing base -- review before "
+                "Full rebuild drifted from the existing base. Review it before "
                 "committing."
             )
             return 1

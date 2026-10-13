@@ -87,6 +87,17 @@ class DownloadError(CallReportError):
     """
 
 
+class ReleaseCatalogError(DownloadError, ValueError):
+    """A list of releases could not be read.
+
+    Raised for a mirror manifest or a download page whose text cannot be
+    read as a list of releases, such as invalid JSON, a missing key, or a
+    page with no release links. It is a `DownloadError`, so code that
+    catches failed downloads also catches it. It is also a `ValueError`,
+    since the problem is the text passed in.
+    """
+
+
 class ZipArchiveUnpackingError(CallReportError):
     """A zip archive could not be unpacked.
 

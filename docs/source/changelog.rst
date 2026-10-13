@@ -63,7 +63,11 @@ Unreleased
   page, or this project's GitHub mirror of every release, which also gives
   each zip's SHA-256. New
   :func:`~call_report.fca.catalog.construct_fca_mirror_url` builds the mirror
-  URL of a period's zip (:issue:`119`).
+  URL of a period's zip. A manifest or page whose text cannot be read as a
+  list of releases raises the new
+  :class:`~call_report.exceptions.ReleaseCatalogError`, which is both a
+  :class:`~call_report.exceptions.DownloadError` and a :class:`ValueError`
+  (:issue:`119`).
 - New :func:`~call_report.core.default_download_dir` gives the folder
   downloaded files are kept in. Set the ``CALL_REPORT_DOWNLOAD_DIR``
   environment variable to choose another (:issue:`119`).

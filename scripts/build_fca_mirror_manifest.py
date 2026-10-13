@@ -40,7 +40,6 @@ current manifest. Without it, every file counts as new.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import io
 import json
 import logging
@@ -52,7 +51,7 @@ from pathlib import Path
 from typing import Any
 
 from call_report.core import FileMetadata, ReportingPeriod
-from call_report.core._archive import sha256_of
+from call_report.core._archive import sha256_of, sha256_of_bytes
 from call_report.exceptions import ZipArchiveUnpackingError
 from call_report.fca import FCAInstitutionRegistry
 from call_report.fca._discovery import check_release_zip
@@ -328,7 +327,7 @@ def build_manifest(
         "releases": [release.to_json() for release in releases],
         "metadata": {
             "file": METADATA_NAME,
-            "sha256": _sha256_of_bytes(metadata),
+            "sha256": sha256_of_bytes(metadata),
             "size": len(metadata),
             "through": through.period_end.isoformat(),
             "schema_version": METADATA_SCHEMA_VERSION,
@@ -386,24 +385,6 @@ def _checksums(manifest: Mapping[str, Any]) -> dict[str, str]:
     if "metadata" in manifest:
         checksums[manifest["metadata"]["file"]] = manifest["metadata"]["sha256"]
     return checksums
-
-
-def _sha256_of_bytes(data: bytes) -> str:
-    """Return the SHA-256 of some bytes, as lower case hex.
-
-    This is the form the manifest records.
-
-    Parameters
-    ----------
-    data : bytes
-        The bytes to hash.
-
-    Returns
-    -------
-    str
-        The checksum.
-    """
-    return hashlib.sha256(data).hexdigest()
 
 
 def build(

@@ -12,6 +12,17 @@ name: fca-mirror
 #                          change and never edited after. A second change on
 #                          the same date gets a "-2" suffix, and so on.
 #
+# This workflow never edits a snapshot release. The repository's "release
+# immutability" setting is what stops anyone else editing one, so it is
+# turned on after the first run. It applies only to releases published after
+# it is on, and it locks a release's assets once published. So:
+#   - gh release create, given assets, creates a draft, uploads them, then
+#     publishes, so each snapshot is complete before it is locked.
+#   - The rolling release is edited on every change, so it must be created
+#     by the first run, before the setting is turned on. If it is ever
+#     deleted, turn the setting off, run this workflow by hand, and turn it
+#     back on.
+#
 # None of these tags matches publish.yml's v<major>.<minor>.<patch> pattern,
 # so none publishes to PyPI. Each release is created with --latest=false, so
 # the package's own release stays the one GitHub shows as latest.

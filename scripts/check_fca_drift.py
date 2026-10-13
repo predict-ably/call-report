@@ -45,10 +45,10 @@ Copy them into the archive::
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 import textwrap
@@ -60,7 +60,7 @@ from pathlib import Path
 from typing import Any
 
 from call_report.core import ReportingPeriod
-from call_report.core._archive import sha256_of
+from call_report.core._archive import sha256_of, sha256_of_bytes
 from call_report.core._http import HttpClient, fetch_bytes
 from call_report.exceptions import (
     DownloadError,
@@ -85,6 +85,8 @@ EXIT_DRIFT = 1
 EXIT_ERROR = 2
 
 _DOWNLOAD_WORKERS = 4
+# The label above a release's changelog section, such as ".. _changelog_0.1.0:".
+_RELEASE_LABEL = re.compile(r"\.\. _changelog_\d[^:]*:")
 _CHANGELOG_WIDTH = 78
 
 _log = logging.getLogger("check_fca_drift")
@@ -136,16 +138,18 @@ class DriftReport:
     def status(self) -> str:
         """Return ``"error"``, ``"drift"``, or ``"clean"``.
 
-        An error outranks a difference, since a check that could not finish may have
-        missed one.
+        An error outranks a difference, since a check that could not finish
+        may have missed one. A mirror whose manifest cannot be read is an
+        error, not drift, because nothing is known to differ.
 
         Returns
         -------
         str
-            ``"error"`` if the check could not finish, ``"drift"`` if
-            anything differs, and ``"clean"`` otherwise.
+            ``"error"`` if the check could not finish or the mirror could
+            not be read, ``"drift"`` if anything differs, and ``"clean"``
+            otherwise.
         """
-        if self.errors:
+        if self.errors or self.mirror.get("status") == "unavailable":
             return "error"
         drifted = self.new or self.changed or self.missing or self.unmatched
         if drifted or self.mirror.get("status") != "in_step":
@@ -255,7 +259,7 @@ def check(
     DriftReport
         What the check found.
     """
-    report = DriftReport(checked_at=datetime.now(UTC).isoformat(timespec="seconds"))
+    report = DriftReport(checked_at=_now())
     archived = archived_checksums(archive_dir)
     options: dict[str, Any] = {
         "timeout": timeout,
@@ -315,7 +319,7 @@ def _check_fca(
         except DownloadError as error:
             report.errors.append(f"{period.label}: {error}")
             return
-        checksum = _sha256_of_bytes(body)
+        checksum = sha256_of_bytes(body)
         if archived.get(period) == checksum:
             return
         name = f"{fca_release_stem(period=period)}.zip"
@@ -391,7 +395,7 @@ def apply(
 ) -> list[Path]:
     """Copy the new and changed zips a check saved into the archive.
 
-    Every saved zip is checked first, so either all are written or none are.
+    Every saved zip is checked before any is written.
 
     Parameters
     ----------
@@ -412,6 +416,9 @@ def apply(
     ValueError
         If a saved zip is missing, or its SHA-256 differs from the report's.
         Nothing is written then.
+    OSError
+        If a copy fails. The zips copied before it stay written, and no
+        partly written file is left behind.
     """
     sources = []
     for key, entry in report.files.items():
@@ -427,10 +434,15 @@ def apply(
         target = archive_dir / source.name
         # Copy to a temporary file beside the target, then rename it into
         # place, so the archive never holds a partly written zip.
-        handle, temporary = tempfile.mkstemp(dir=archive_dir, suffix=".part")
+        handle, name = tempfile.mkstemp(dir=archive_dir, suffix=".part")
         os.close(handle)
-        shutil.copyfile(source, temporary)
-        Path(temporary).replace(target)
+        temporary = Path(name)
+        try:
+            shutil.copyfile(source, temporary)
+            temporary.replace(target)
+        except OSError:
+            temporary.unlink(missing_ok=True)
+            raise
         written.append(target)
         _log.info("Wrote %s.", target)
     return written
@@ -795,7 +807,9 @@ def update_changelog(path: Path, entry: str, *, issue: int) -> None:
     """Add a data entry under the changelog's Unreleased heading.
 
     An entry this script wrote earlier for the same issue is replaced, so
-    running it again on the same pull request leaves one entry.
+    running it again on the same pull request leaves one entry. A changelog
+    with no Unreleased section, as right after a release, gets one before
+    its newest release.
 
     Parameters
     ----------
@@ -805,18 +819,11 @@ def update_changelog(path: Path, entry: str, *, issue: int) -> None:
         The entry `changelog_entry` returned.
     issue : int
         The drift issue the entry names.
-
-    Raises
-    ------
-    ValueError
-        If the changelog has no Unreleased heading.
     """
-    text = path.read_text(encoding="utf-8")
-    lines = text.splitlines(keepends=True)
-    try:
-        heading = lines.index("Unreleased\n")
-    except ValueError:
-        raise ValueError(f"{path} has no 'Unreleased' heading.") from None
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    if "Unreleased\n" not in lines:
+        lines = _add_unreleased_section(lines)
+    heading = lines.index("Unreleased\n")
     marker = f"(:issue:`{issue}`)."
     start = next(
         (
@@ -836,6 +843,45 @@ def update_changelog(path: Path, entry: str, *, issue: int) -> None:
         # entry.
         lines.insert(heading + 3, entry)
     path.write_text("".join(lines), encoding="utf-8", newline="\n")
+
+
+def _add_unreleased_section(lines: Sequence[str]) -> list[str]:
+    """Return a changelog's lines with an empty Unreleased section added.
+
+    The section goes before the first release's label, such as
+    ``.. _changelog_0.2.0:``, or at the end when there is no release yet.
+
+    Parameters
+    ----------
+    lines : Sequence[str]
+        The changelog's lines, each ending in a newline.
+
+    Returns
+    -------
+    list[str]
+        The lines with the section added. It ends in two blank lines, and an
+        entry goes between them.
+    """
+    section = [
+        ".. _changelog_unreleased:\n",
+        "\n",
+        "Unreleased\n",
+        "==========\n",
+        "\n",
+        "\n",
+    ]
+    release = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if _RELEASE_LABEL.fullmatch(line.rstrip("\n"))
+        ),
+        None,
+    )
+    if release is None:
+        ending = [] if not lines or lines[-1] == "\n" else ["\n"]
+        return [*lines, *ending, *section]
+    return [*lines[:release], *section, *lines[release:]]
 
 
 def _entry_end(lines: Sequence[str], start: int, marker: str) -> int | None:
@@ -911,6 +957,19 @@ def describe(
     )
 
 
+def _now() -> str:
+    """Return the current time as an ISO 8601 UTC timestamp, in seconds.
+
+    A report records when its check ran in this form.
+
+    Returns
+    -------
+    str
+        The timestamp, such as ``"2026-10-12T06:00:00+00:00"``.
+    """
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
 def _key(period: ReportingPeriod) -> str:
     """Return the key a report uses for a period, its period end.
 
@@ -968,24 +1027,6 @@ def _series(keys: Sequence[str]) -> str:
     return f"{', '.join(labels[:-1])}, and {labels[-1]}"
 
 
-def _sha256_of_bytes(data: bytes) -> str:
-    """Return the SHA-256 of some bytes, as lower case hex.
-
-    This is the form the mirror's manifest records.
-
-    Parameters
-    ----------
-    data : bytes
-        The bytes to hash.
-
-    Returns
-    -------
-    str
-        The checksum.
-    """
-    return hashlib.sha256(data).hexdigest()
-
-
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse this script's command-line arguments.
 
@@ -1007,30 +1048,93 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     commands = parser.add_subparsers(dest="command", required=True)
 
     check_parser = commands.add_parser("check", help="Compare FCA and the mirror.")
-    check_parser.add_argument("--report", type=Path, required=True)
-    check_parser.add_argument("--summary", type=Path)
-    check_parser.add_argument("--download-dir", type=Path, required=True)
-    check_parser.add_argument("--archive-dir", type=Path, default=_ARCHIVE_DIR)
-    check_parser.add_argument("--timeout", type=float, default=60.0)
-    check_parser.add_argument("--max-retries", type=int, default=3)
     check_parser.add_argument(
-        "--http-client", choices=("urllib", "curl_cffi"), default="urllib"
+        "--report", type=Path, required=True, help="The JSON report to write."
+    )
+    check_parser.add_argument(
+        "--summary", type=Path, help="A Markdown summary to write, for the issue."
+    )
+    check_parser.add_argument(
+        "--download-dir",
+        type=Path,
+        required=True,
+        help="The folder to save each new or changed zip to.",
+    )
+    check_parser.add_argument(
+        "--archive-dir",
+        type=Path,
+        default=_ARCHIVE_DIR,
+        help="The folder of release zips. Defaults to data/fca-call-report.",
+    )
+    check_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=60.0,
+        help="Seconds to wait for the server before a request fails.",
+    )
+    check_parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=3,
+        help="How many times to send a request again after a transient failure.",
+    )
+    check_parser.add_argument(
+        "--http-client",
+        choices=("urllib", "curl_cffi"),
+        default="urllib",
+        help="The library used for HTTP requests.",
     )
 
     apply_parser = commands.add_parser("apply", help="Copy saved zips to the archive.")
-    apply_parser.add_argument("--report", type=Path, required=True)
-    apply_parser.add_argument("--download-dir", type=Path, required=True)
-    apply_parser.add_argument("--archive-dir", type=Path, default=_ARCHIVE_DIR)
+    apply_parser.add_argument(
+        "--report", type=Path, required=True, help="The report the check wrote."
+    )
+    apply_parser.add_argument(
+        "--download-dir",
+        type=Path,
+        required=True,
+        help="The folder the check saved the zips to.",
+    )
+    apply_parser.add_argument(
+        "--archive-dir",
+        type=Path,
+        default=_ARCHIVE_DIR,
+        help="The folder of release zips. Defaults to data/fca-call-report.",
+    )
 
     describe_parser = commands.add_parser(
         "describe", help="Write the pull request description and changelog entry."
     )
-    describe_parser.add_argument("--report", type=Path, required=True)
-    describe_parser.add_argument("--issue", type=int, required=True)
-    describe_parser.add_argument("--previous-data", type=Path, required=True)
-    describe_parser.add_argument("--body", type=Path, required=True)
-    describe_parser.add_argument("--data-dir", type=Path, default=_DATA_DIR)
-    describe_parser.add_argument("--changelog", type=Path, default=_CHANGELOG)
+    describe_parser.add_argument(
+        "--report", type=Path, required=True, help="The report the check wrote."
+    )
+    describe_parser.add_argument(
+        "--issue", type=int, required=True, help="The drift issue the PR closes."
+    )
+    describe_parser.add_argument(
+        "--previous-data",
+        type=Path,
+        required=True,
+        help="A copy of src/call_report/fca/data from before regeneration.",
+    )
+    describe_parser.add_argument(
+        "--body",
+        type=Path,
+        required=True,
+        help="The file to write the pull request description to.",
+    )
+    describe_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=_DATA_DIR,
+        help="The shipped data folder. Defaults to src/call_report/fca/data.",
+    )
+    describe_parser.add_argument(
+        "--changelog",
+        type=Path,
+        default=_CHANGELOG,
+        help="The changelog to update. Defaults to docs/source/changelog.rst.",
+    )
     return parser.parse_args(argv)
 
 
@@ -1053,7 +1157,46 @@ def main(argv: list[str] | None = None) -> int:
     """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = _parse_args(argv)
-    if args.command == "check":
+    # Any failure must reach the workflow as EXIT_ERROR. An uncaught
+    # exception would exit 1, which the workflow reads as drift.
+    try:
+        if args.command == "check":
+            return _run_check(args)
+        report = DriftReport.from_json(args.report.read_text(encoding="utf-8"))
+        if args.command == "apply":
+            apply(report, download_dir=args.download_dir, archive_dir=args.archive_dir)
+        else:
+            body = describe(
+                report,
+                issue=args.issue,
+                previous_data=args.previous_data,
+                data_dir=args.data_dir,
+                changelog=args.changelog,
+            )
+            args.body.write_text(body, encoding="utf-8", newline="\n")
+    except Exception:
+        _log.exception("The %s command failed.", args.command)
+        return EXIT_ERROR
+    return EXIT_CLEAN
+
+
+def _run_check(args: argparse.Namespace) -> int:
+    """Run the check command, and write its report and summary.
+
+    A check that fails unexpectedly still writes a report, holding the error,
+    so the workflow can open the issue from it.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        The parsed ``check`` arguments.
+
+    Returns
+    -------
+    int
+        The report's exit status.
+    """
+    try:
         report = check(
             download_dir=args.download_dir,
             archive_dir=args.archive_dir,
@@ -1061,31 +1204,15 @@ def main(argv: list[str] | None = None) -> int:
             max_retries=args.max_retries,
             http_client=args.http_client,
         )
-        args.report.write_text(report.to_json(), encoding="utf-8", newline="\n")
-        summary = render_summary(report)
-        if args.summary is not None:
-            args.summary.write_text(summary, encoding="utf-8", newline="\n")
-        _log.info("%s", summary)
-        return report.exit_code
-
-    report = DriftReport.from_json(args.report.read_text(encoding="utf-8"))
-    if args.command == "apply":
-        try:
-            apply(report, download_dir=args.download_dir, archive_dir=args.archive_dir)
-        except ValueError as error:
-            _log.error("%s", error)
-            return EXIT_ERROR
-        return EXIT_CLEAN
-
-    body = describe(
-        report,
-        issue=args.issue,
-        previous_data=args.previous_data,
-        data_dir=args.data_dir,
-        changelog=args.changelog,
-    )
-    args.body.write_text(body, encoding="utf-8", newline="\n")
-    return EXIT_CLEAN
+    except Exception as error:
+        _log.exception("The check failed.")
+        report = DriftReport(checked_at=_now(), errors=[f"The check failed: {error!r}"])
+    args.report.write_text(report.to_json(), encoding="utf-8", newline="\n")
+    summary = render_summary(report)
+    if args.summary is not None:
+        args.summary.write_text(summary, encoding="utf-8", newline="\n")
+    _log.info("%s", summary)
+    return report.exit_code
 
 
 if __name__ == "__main__":
